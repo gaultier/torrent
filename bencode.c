@@ -17,8 +17,13 @@ typedef struct {
 } BencodeSlice;
 
 typedef struct {
-  StringSlice keys;
-  BencodeSlice values;
+  BencodeValue *data;
+  u64 len, cap;
+} DynBencodeValues;
+
+typedef struct {
+  DynString keys;
+  DynBencodeValues values;
 } BencodeDictionary;
 
 struct BencodeValue {
@@ -42,7 +47,7 @@ typedef struct {
   String remaining;
 } BencodeParseResult;
 
-[[nodiscard]] static BencodeParseResult bencode_parse(String s);
+[[nodiscard]] static BencodeParseResult bencode_parse(String s, Arena *arena);
 
 typedef struct {
   Status status;
@@ -117,7 +122,7 @@ typedef struct {
 } BencodeDictionaryParseResult;
 
 [[nodiscard]] static BencodeDictionaryParseResult
-bencode_parse_dictionary(String s) {
+bencode_parse_dictionary(String s, Arena *arena) {
   BencodeDictionaryParseResult res = {0};
 
   StringConsumeResult prefix = string_consume(s, 'd');
@@ -134,12 +139,19 @@ bencode_parse_dictionary(String s) {
       break;
     }
 
-    BencodeParseResult res_value = bencode_parse(remaining);
+    BencodeStringParseResult res_key = bencode_parse_string(remaining);
+    if (STATUS_OK != res_key.status) {
+      return res;
+    }
+    remaining = res_key.remaining;
+    *dyn_push(&res.dict.keys, arena) = res_key.s;
+
+    BencodeParseResult res_value = bencode_parse(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
     }
 
-    // TODO: Store value.
+    *dyn_push(&res.dict.values, arena) = res_value.value;
 
     remaining = res_value.remaining;
   }
@@ -154,7 +166,7 @@ bencode_parse_dictionary(String s) {
   return res;
 }
 
-[[nodiscard]] static BencodeParseResult bencode_parse(String s) {
+[[nodiscard]] static BencodeParseResult bencode_parse(String s, Arena *arena) {
   BencodeParseResult res = {0};
 
   if (0 == s.len) {
@@ -162,7 +174,7 @@ bencode_parse_dictionary(String s) {
   }
   switch (slice_at(s, 0)) {
   case 'd': {
-    BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s);
+    BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s, arena);
     if (STATUS_OK != res_dict.status) {
       return res;
     }

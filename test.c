@@ -75,22 +75,23 @@ static void test_bencode_parse_string() {
 }
 
 static void test_bencode_parse() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
   {
-    BencodeParseResult res = bencode_parse(S("i123ei456e"));
+    BencodeParseResult res = bencode_parse(S("i123ei456e"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     ASSERT(123 == res.value.num);
     ASSERT(string_eq(S("i456e"), res.remaining));
   }
   {
-    BencodeParseResult res = bencode_parse(S("d2:abi123eefoo"));
+    BencodeParseResult res = bencode_parse(S("d2:abi123eefoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
     ASSERT(string_eq(S("foo"), res.remaining));
     // TODO
   }
   {
-    BencodeParseResult res = bencode_parse(S("2:abfoo"));
+    BencodeParseResult res = bencode_parse(S("2:abfoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_STRING == res.value.kind);
     ASSERT(string_eq(S("ab"), res.value.s));

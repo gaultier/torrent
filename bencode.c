@@ -38,9 +38,11 @@ typedef enum {
 
 typedef struct {
   Status status;
-  BencodeValue res;
+  BencodeValue value;
   String remaining;
 } BencodeParseResult;
+
+[[nodiscard]] static BencodeParseResult bencode_parse(String s);
 
 typedef struct {
   Status status;
@@ -131,7 +133,15 @@ bencode_parse_dictionary(String s) {
     if ('e' == slice_at(remaining, 0)) {
       break;
     }
-    // TODO
+
+    BencodeParseResult res_value = bencode_parse(remaining);
+    if (STATUS_OK != res_value.status) {
+      return res;
+    }
+
+    // TODO: Store value.
+
+    remaining = res_value.remaining;
   }
 
   StringConsumeResult suffix = string_consume(remaining, 'e');
@@ -142,6 +152,63 @@ bencode_parse_dictionary(String s) {
   res.status = STATUS_OK;
 
   return res;
+}
+
+[[nodiscard]] static BencodeParseResult bencode_parse(String s) {
+  BencodeParseResult res = {0};
+
+  if (0 == s.len) {
+    return res;
+  }
+  switch (slice_at(s, 0)) {
+  case 'd': {
+    BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s);
+    if (STATUS_OK != res_dict.status) {
+      return res;
+    }
+    res.remaining = res_dict.remaining;
+    res.status = STATUS_OK;
+    res.value.kind = BENCODE_KIND_DICTIONARY;
+    res.value.dict = res_dict.dict;
+    return res;
+  }
+  case 'i': {
+    BencodeNumberParseResult res_num = bencode_parse_number(s);
+    if (STATUS_OK != res_num.status) {
+      return res;
+    }
+    res.status = STATUS_OK;
+    res.remaining = res_num.remaining;
+    res.value.kind = BENCODE_KIND_NUMBER;
+    res.value.num = res_num.num;
+    return res;
+  }
+  case 'l': {
+    ASSERT(false && "TODO");
+  }
+  case '0':
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+  case '8':
+  case '9': {
+    BencodeStringParseResult res_str = bencode_parse_string(s);
+    if (STATUS_OK != res_str.status) {
+      return res;
+    }
+    res.status = STATUS_OK;
+    res.remaining = res_str.remaining;
+    res.value.kind = BENCODE_KIND_STRING;
+    res.value.s = res_str.s;
+    return res;
+  }
+  default:
+    return res;
+  }
 }
 
 typedef struct {
@@ -158,8 +225,10 @@ typedef struct {
   Metainfo metainfo;
 } ParseMetaInfoResult;
 
+#if 0
 [[nodiscard]] static ParseMetaInfoResult parse_metainfo(String s) {
   ParseMetaInfoResult res = {0};
 
   return res;
 }
+#endif

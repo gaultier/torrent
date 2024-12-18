@@ -74,7 +74,25 @@ static void test_bencode_parse_string() {
   }
 }
 
+static void test_bencode_parse() {
+  {
+    BencodeParseResult res = bencode_parse(S("i123ei456e"));
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
+    ASSERT(123 == res.value.num);
+    ASSERT(string_eq(S("i456e"), res.remaining));
+  }
+  {
+    BencodeParseResult res = bencode_parse(S("d2:abi123eefoo"));
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
+    ASSERT(string_eq(S("foo"), res.remaining));
+    // TODO
+  }
+}
+
 int main() {
   test_bencode_parse_u64();
   test_bencode_parse_string();
+  test_bencode_parse();
 }

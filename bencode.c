@@ -295,5 +295,60 @@ typedef struct {
                                                         Arena *arena) {
   ParseMetaInfoResult res = {0};
 
+  BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s, arena);
+  if (STATUS_OK != res_dict.status) {
+    return res;
+  }
+  if (0 != res_dict.remaining.len) {
+    return res;
+  }
+
+  for (u64 i = 0; i < res_dict.dict.keys.len; i++) {
+    String key = dyn_at(res_dict.dict.keys, i);
+    BencodeValue *value = dyn_at_ptr(&res_dict.dict.values, i);
+
+    if (string_eq(key, S("announce"))) {
+      if (BENCODE_KIND_STRING != value->kind) {
+        return res;
+      }
+
+      res.metainfo.announce = value->s;
+    } else if (string_eq(key, S("info"))) {
+      if (BENCODE_KIND_DICTIONARY != value->kind) {
+        return res;
+      }
+      BencodeDictionary *info = &value->dict;
+
+      for (u64 j = 0; j < info->keys.len; j++) {
+        String info_key = dyn_at(info->keys, j);
+        BencodeValue *info_value = dyn_at_ptr(&info->values, j);
+
+        if (string_eq(info_key, S("name"))) {
+          if (BENCODE_KIND_STRING != info_value->kind) {
+            return res;
+          }
+          res.metainfo.name = info_value->s;
+        } else if (string_eq(info_key, S("piece length"))) {
+          if (BENCODE_KIND_NUMBER != info_value->kind) {
+            return res;
+          }
+          res.metainfo.piece_length = info_value->num;
+        } else if (string_eq(info_key, S("pieces"))) {
+          if (BENCODE_KIND_STRING != info_value->kind) {
+            return res;
+          }
+          res.metainfo.pieces = info_value->s;
+        } else if (string_eq(info_key, S("length"))) {
+          if (BENCODE_KIND_NUMBER != info_value->kind) {
+            return res;
+          }
+          res.metainfo.length = info_value->num;
+        }
+        // TODO: `files`.
+      }
+    }
+  }
+
+  res.status = STATUS_OK;
   return res;
 }

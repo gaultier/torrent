@@ -190,9 +190,31 @@ static void test_bencode_parse() {
   }
 }
 
+static void test_parse_metainfo() {
+  Arena arena = arena_make_from_virtual_mem(32 * KiB);
+  String torrent_file_content = S(
+      "d8:announce43:http://OpenBSD.somedomain.net:6969/"
+      "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
+      "fresh (andrew@afresh1.com)\n"
+      "http://OpenBSD.somedomain.net/10:created by13:mktorrent 1.113:creation "
+      "datei1697360758e4:infod6:lengthi234883072e4:name31:OpenBSD_7.4_alpha_"
+      "install74.iso12:piece "
+      "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
+      "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
+  ParseMetaInfoResult res = parse_metainfo(torrent_file_content, &arena);
+  ASSERT(STATUS_OK == res.status);
+  ASSERT(string_eq(res.metainfo.announce,
+                   S("http://OpenBSD.somedomain.net:6969/announce")));
+  ASSERT(234883072 == res.metainfo.length);
+  ASSERT(string_eq(res.metainfo.name, S("OpenBSD_7.4_alpha_install74.iso")));
+  ASSERT(262144 == res.metainfo.piece_length);
+  ASSERT(string_eq(res.metainfo.pieces, S("abcdefgh")));
+}
+
 int main() {
   test_bencode_parse_u64();
   test_bencode_parse_string();
   test_bencode_parse();
   test_bencode_parse_list();
+  test_parse_metainfo();
 }

@@ -41,19 +41,19 @@ typedef struct {
   Status status;
   BencodeValue value;
   String remaining;
-} BencodeValueParseResult;
+} BencodeValueDecodeResult;
 
-[[nodiscard]] static BencodeValueParseResult bencode_parse_value(String s,
-                                                                 Arena *arena);
+[[nodiscard]] static BencodeValueDecodeResult
+bencode_decode_value(String s, Arena *arena);
 
 typedef struct {
   Status status;
   u64 num;
   String remaining;
-} BencodeNumberParseResult;
+} BencodeNumberDecodeResult;
 
-[[nodiscard]] static BencodeNumberParseResult bencode_parse_number(String s) {
-  BencodeNumberParseResult res = {0};
+[[nodiscard]] static BencodeNumberDecodeResult bencode_decode_number(String s) {
+  BencodeNumberDecodeResult res = {0};
 
   StringConsumeResult prefix = string_consume(s, 'i');
   if (!prefix.consumed) {
@@ -81,10 +81,10 @@ typedef struct {
   Status status;
   String s;
   String remaining;
-} BencodeStringParseResult;
+} BencodeStringDecodeResult;
 
-[[nodiscard]] static BencodeStringParseResult bencode_parse_string(String s) {
-  BencodeStringParseResult res = {0};
+[[nodiscard]] static BencodeStringDecodeResult bencode_decode_string(String s) {
+  BencodeStringDecodeResult res = {0};
 
   ParseNumberResult num_res = string_parse_u64(s);
   if (!num_res.present) {
@@ -116,11 +116,11 @@ typedef struct {
   Status status;
   BencodeDictionary dict;
   String remaining;
-} BencodeDictionaryParseResult;
+} BencodeDictionaryDecodeResult;
 
-[[nodiscard]] static BencodeDictionaryParseResult
-bencode_parse_dictionary(String s, Arena *arena) {
-  BencodeDictionaryParseResult res = {0};
+[[nodiscard]] static BencodeDictionaryDecodeResult
+bencode_decode_dictionary(String s, Arena *arena) {
+  BencodeDictionaryDecodeResult res = {0};
 
   StringConsumeResult prefix = string_consume(s, 'd');
   if (!prefix.consumed) {
@@ -136,7 +136,7 @@ bencode_parse_dictionary(String s, Arena *arena) {
       break;
     }
 
-    BencodeStringParseResult res_key = bencode_parse_string(remaining);
+    BencodeStringDecodeResult res_key = bencode_decode_string(remaining);
     if (STATUS_OK != res_key.status) {
       return res;
     }
@@ -154,7 +154,7 @@ bencode_parse_dictionary(String s, Arena *arena) {
     *dyn_push(&res.dict.keys, arena) = res_key.s;
 
     // TODO: Address stack overflow.
-    BencodeValueParseResult res_value = bencode_parse_value(remaining, arena);
+    BencodeValueDecodeResult res_value = bencode_decode_value(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
     }
@@ -180,11 +180,11 @@ typedef struct {
   Status status;
   DynBencodeValues values;
   String remaining;
-} BencodeListParseResult;
+} BencodeListDecodeResult;
 
-[[nodiscard]] static BencodeListParseResult bencode_parse_list(String s,
-                                                               Arena *arena) {
-  BencodeListParseResult res = {0};
+[[nodiscard]] static BencodeListDecodeResult bencode_decode_list(String s,
+                                                                 Arena *arena) {
+  BencodeListDecodeResult res = {0};
 
   StringConsumeResult prefix = string_consume(s, 'l');
   if (!prefix.consumed) {
@@ -201,7 +201,7 @@ typedef struct {
     }
 
     // TODO: Address stack overflow.
-    BencodeValueParseResult res_value = bencode_parse_value(remaining, arena);
+    BencodeValueDecodeResult res_value = bencode_decode_value(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
     }
@@ -221,16 +221,17 @@ typedef struct {
   return res;
 }
 
-[[nodiscard]] static BencodeValueParseResult bencode_parse_value(String s,
-                                                                 Arena *arena) {
-  BencodeValueParseResult res = {0};
+[[nodiscard]] static BencodeValueDecodeResult
+bencode_decode_value(String s, Arena *arena) {
+  BencodeValueDecodeResult res = {0};
 
   if (0 == s.len) {
     return res;
   }
   switch (slice_at(s, 0)) {
   case 'd': {
-    BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s, arena);
+    BencodeDictionaryDecodeResult res_dict =
+        bencode_decode_dictionary(s, arena);
     if (STATUS_OK != res_dict.status) {
       return res;
     }
@@ -241,7 +242,7 @@ typedef struct {
     return res;
   }
   case 'i': {
-    BencodeNumberParseResult res_num = bencode_parse_number(s);
+    BencodeNumberDecodeResult res_num = bencode_decode_number(s);
     if (STATUS_OK != res_num.status) {
       return res;
     }
@@ -252,7 +253,7 @@ typedef struct {
     return res;
   }
   case 'l': {
-    BencodeListParseResult res_list = bencode_parse_list(s, arena);
+    BencodeListDecodeResult res_list = bencode_decode_list(s, arena);
     if (STATUS_OK != res_list.status) {
       return res;
     }
@@ -272,7 +273,7 @@ typedef struct {
   case '7':
   case '8':
   case '9': {
-    BencodeStringParseResult res_str = bencode_parse_string(s);
+    BencodeStringDecodeResult res_str = bencode_decode_string(s);
     if (STATUS_OK != res_str.status) {
       return res;
     }
@@ -344,13 +345,13 @@ typedef struct {
 typedef struct {
   Status status;
   Metainfo metainfo;
-} ParseMetaInfoResult;
+} DecodeMetaInfoResult;
 
-[[nodiscard]] static ParseMetaInfoResult parse_metainfo(String s,
-                                                        Arena *arena) {
-  ParseMetaInfoResult res = {0};
+[[nodiscard]] static DecodeMetaInfoResult decode_metainfo(String s,
+                                                          Arena *arena) {
+  DecodeMetaInfoResult res = {0};
 
-  BencodeDictionaryParseResult res_dict = bencode_parse_dictionary(s, arena);
+  BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);
   if (STATUS_OK != res_dict.status) {
     return res;
   }

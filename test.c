@@ -1,104 +1,104 @@
 #include "bencode.c"
 
-static void test_bencode_parse_u64() {
+static void test_bencode_decode_u64() {
   {
-    BencodeNumberParseResult res = bencode_parse_number(S(""));
+    BencodeNumberDecodeResult res = bencode_decode_number(S(""));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("a"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("a"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("i"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("i"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("ie"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("ie"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("i123"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("i123"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("123"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("123"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("i-123e"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("i-123e"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeNumberParseResult res = bencode_parse_number(S("i123ehello"));
+    BencodeNumberDecodeResult res = bencode_decode_number(S("i123ehello"));
     ASSERT(STATUS_OK == res.status);
     ASSERT(123 == res.num);
     ASSERT(string_eq(res.remaining, S("hello")));
   }
 }
 
-static void test_bencode_parse_string() {
+static void test_bencode_decode_string() {
   {
-    BencodeStringParseResult res = bencode_parse_string(S(""));
+    BencodeStringDecodeResult res = bencode_decode_string(S(""));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("a"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("a"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("1"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("1"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("0"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("0"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("0:"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("0:"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("1:"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("1:"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("2:a"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("2:a"));
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeStringParseResult res = bencode_parse_string(S("2:abc"));
+    BencodeStringDecodeResult res = bencode_decode_string(S("2:abc"));
     ASSERT(STATUS_OK == res.status);
     ASSERT(string_eq(res.s, S("ab")));
     ASSERT(string_eq(res.remaining, S("c")));
   }
 }
 
-static void test_bencode_parse_list() {
+static void test_bencode_decode_list() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   {
-    BencodeListParseResult res = bencode_parse_list(S(""), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(S(""), &arena);
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeListParseResult res = bencode_parse_list(S("a"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(S("a"), &arena);
     ASSERT(STATUS_ERR == res.status);
   }
   {
-    BencodeListParseResult res = bencode_parse_list(S("l"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(S("l"), &arena);
     ASSERT(STATUS_ERR == res.status);
   }
 
   {
-    BencodeListParseResult res = bencode_parse_list(S("lefoo"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(S("lefoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(0 == res.values.len);
     ASSERT(string_eq(res.remaining, S("foo")));
   }
 
   {
-    BencodeListParseResult res =
-        bencode_parse_list(S("l2:abi123eefoo"), &arena);
+    BencodeListDecodeResult res =
+        bencode_decode_list(S("l2:abi123eefoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(2 == res.values.len);
     ASSERT(string_eq(res.remaining, S("foo")));
@@ -116,8 +116,8 @@ static void test_bencode_parse_list() {
     }
   }
   {
-    BencodeValueParseResult res =
-        bencode_parse_value(S("l2:abi123eefoo"), &arena);
+    BencodeValueDecodeResult res =
+        bencode_decode_value(S("l2:abi123eefoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_LIST == res.value.kind);
     ASSERT(string_eq(res.remaining, S("foo")));
@@ -139,10 +139,11 @@ static void test_bencode_parse_list() {
   }
 }
 
-static void test_bencode_parse() {
+static void test_bencode_decode() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   {
-    BencodeValueParseResult res = bencode_parse_value(S("i123ei456e"), &arena);
+    BencodeValueDecodeResult res =
+        bencode_decode_value(S("i123ei456e"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     ASSERT(123 == res.value.num);
@@ -151,14 +152,14 @@ static void test_bencode_parse() {
 
   // Unordered keys.
   {
-    BencodeValueParseResult res =
-        bencode_parse_value(S("d2:abi123e2:ab5:helloefoo"), &arena);
+    BencodeValueDecodeResult res =
+        bencode_decode_value(S("d2:abi123e2:ab5:helloefoo"), &arena);
     ASSERT(STATUS_OK != res.status);
   }
 
   {
-    BencodeValueParseResult res =
-        bencode_parse_value(S("d2:abi123e3:xyz5:helloefoo"), &arena);
+    BencodeValueDecodeResult res =
+        bencode_decode_value(S("d2:abi123e3:xyz5:helloefoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
     ASSERT(string_eq(S("foo"), res.remaining));
@@ -190,7 +191,7 @@ static void test_bencode_parse() {
     }
   }
   {
-    BencodeValueParseResult res = bencode_parse_value(S("2:abfoo"), &arena);
+    BencodeValueDecodeResult res = bencode_decode_value(S("2:abfoo"), &arena);
     ASSERT(STATUS_OK == res.status);
     ASSERT(BENCODE_KIND_STRING == res.value.kind);
     ASSERT(string_eq(S("ab"), res.value.s));
@@ -198,7 +199,7 @@ static void test_bencode_parse() {
   }
 }
 
-static void test_parse_metainfo() {
+static void test_decode_metainfo() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   String torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
@@ -209,7 +210,7 @@ static void test_parse_metainfo() {
       "install74.iso12:piece "
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
-  ParseMetaInfoResult res = parse_metainfo(torrent_file_content, &arena);
+  DecodeMetaInfoResult res = decode_metainfo(torrent_file_content, &arena);
   ASSERT(STATUS_OK == res.status);
   ASSERT(string_eq(res.metainfo.announce,
                    S("http://OpenBSD.somedomain.net:6969/announce")));
@@ -230,8 +231,8 @@ static void test_bencode_decode_encode() {
       "install74.iso12:piece "
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
-  BencodeValueParseResult res =
-      bencode_parse_value(torrent_file_content, &arena);
+  BencodeValueDecodeResult res =
+      bencode_decode_value(torrent_file_content, &arena);
   ASSERT(STATUS_OK == res.status);
 
   DynU8 sb = {0};
@@ -241,10 +242,10 @@ static void test_bencode_decode_encode() {
 }
 
 int main() {
-  test_bencode_parse_u64();
-  test_bencode_parse_string();
-  test_bencode_parse();
-  test_bencode_parse_list();
-  test_parse_metainfo();
+  test_bencode_decode_u64();
+  test_bencode_decode_string();
+  test_bencode_decode();
+  test_bencode_decode_list();
+  test_decode_metainfo();
   test_bencode_decode_encode();
 }

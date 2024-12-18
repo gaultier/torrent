@@ -287,8 +287,50 @@ typedef struct {
   }
 }
 
-/* [[nodiscard]] static DynString bencode_encode(BencodeValue value, */
-/*                                               Arena *arena) {} */
+static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
+  switch (value.kind) {
+  case BENCODE_KIND_NUMBER: {
+    *dyn_push(sb, arena) = 'i';
+    dynu8_append_u64(sb, value.num, arena);
+    *dyn_push(sb, arena) = 'e';
+
+    break;
+  }
+  case BENCODE_KIND_STRING: {
+    dynu8_append_u64(sb, value.s.len, arena);
+    *dyn_push(sb, arena) = ':';
+    dyn_append_slice(sb, value.s, arena);
+
+    break;
+  }
+  case BENCODE_KIND_LIST: {
+    *dyn_push(sb, arena) = 'l';
+    for (u64 i = 0; i < value.list.len; i++) {
+      BencodeValue v = slice_at(value.list, i);
+      bencode_encode(v, sb, arena);
+    }
+    *dyn_push(sb, arena) = 'e';
+
+    break;
+  }
+  case BENCODE_KIND_DICTIONARY: {
+    *dyn_push(sb, arena) = 'd';
+    for (u64 i = 0; i < value.dict.keys.len; i++) {
+      String k = slice_at(value.dict.keys, i);
+      BencodeValue v = slice_at(value.dict.values, i);
+      bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k}, sb,
+                     arena);
+      bencode_encode(v, sb, arena);
+    }
+    *dyn_push(sb, arena) = 'e';
+
+    break;
+  }
+  case BENCODE_KIND_NONE:
+  default:
+    ASSERT(0);
+  }
+}
 
 typedef struct {
   String announce;

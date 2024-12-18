@@ -219,10 +219,32 @@ static void test_parse_metainfo() {
   ASSERT(string_eq(res.metainfo.pieces, S("abcdefgh")));
 }
 
+static void test_bencode_decode_encode() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  String torrent_file_content = S(
+      "d8:announce43:http://OpenBSD.somedomain.net:6969/"
+      "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
+      "fresh (andrew@afresh1.com)\n"
+      "http://OpenBSD.somedomain.net/10:created by13:mktorrent 1.113:creation "
+      "datei1697360758e4:infod6:lengthi234883072e4:name31:OpenBSD_7.4_alpha_"
+      "install74.iso12:piece "
+      "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
+      "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
+  BencodeValueParseResult res =
+      bencode_parse_value(torrent_file_content, &arena);
+  ASSERT(STATUS_OK == res.status);
+
+  DynU8 sb = {0};
+  bencode_encode(res.value, &sb, &arena);
+  String encoded = dyn_slice(String, sb);
+  ASSERT(string_eq(encoded, torrent_file_content));
+}
+
 int main() {
   test_bencode_parse_u64();
   test_bencode_parse_string();
   test_bencode_parse();
   test_bencode_parse_list();
   test_parse_metainfo();
+  test_bencode_decode_encode();
 }

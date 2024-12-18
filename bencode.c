@@ -41,9 +41,10 @@ typedef struct {
   Status status;
   BencodeValue value;
   String remaining;
-} BencodeParseResult;
+} BencodeValueParseResult;
 
-[[nodiscard]] static BencodeParseResult bencode_parse(String s, Arena *arena);
+[[nodiscard]] static BencodeValueParseResult bencode_parse_value(String s,
+                                                                 Arena *arena);
 
 typedef struct {
   Status status;
@@ -143,7 +144,7 @@ bencode_parse_dictionary(String s, Arena *arena) {
     *dyn_push(&res.dict.keys, arena) = res_key.s;
 
     // TODO: Address stack overflow.
-    BencodeParseResult res_value = bencode_parse(remaining, arena);
+    BencodeValueParseResult res_value = bencode_parse_value(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
     }
@@ -190,7 +191,7 @@ typedef struct {
     }
 
     // TODO: Address stack overflow.
-    BencodeParseResult res_value = bencode_parse(remaining, arena);
+    BencodeValueParseResult res_value = bencode_parse_value(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
     }
@@ -210,8 +211,9 @@ typedef struct {
   return res;
 }
 
-[[nodiscard]] static BencodeParseResult bencode_parse(String s, Arena *arena) {
-  BencodeParseResult res = {0};
+[[nodiscard]] static BencodeValueParseResult bencode_parse_value(String s,
+                                                                 Arena *arena) {
+  BencodeValueParseResult res = {0};
 
   if (0 == s.len) {
     return res;
@@ -289,10 +291,9 @@ typedef struct {
   Metainfo metainfo;
 } ParseMetaInfoResult;
 
-#if 0
-[[nodiscard]] static ParseMetaInfoResult parse_metainfo(String s) {
+[[nodiscard]] static ParseMetaInfoResult parse_metainfo(String s,
+                                                        Arena *arena) {
   ParseMetaInfoResult res = {0};
 
   return res;
 }
-#endif

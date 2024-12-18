@@ -115,6 +115,27 @@ static void test_bencode_parse_list() {
       ASSERT(123 == v2.num);
     }
   }
+  {
+    BencodeParseResult res = bencode_parse(S("l2:abi123eefoo"), &arena);
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(BENCODE_KIND_LIST == res.value.kind);
+    ASSERT(string_eq(res.remaining, S("foo")));
+
+    DynBencodeValues values = res.value.list;
+    ASSERT(2 == values.len);
+
+    {
+      BencodeValue v1 = dyn_at(values, 0);
+      ASSERT(BENCODE_KIND_STRING == v1.kind);
+      ASSERT(string_eq(S("ab"), v1.s));
+    }
+
+    {
+      BencodeValue v2 = dyn_at(values, 1);
+      ASSERT(BENCODE_KIND_NUMBER == v2.kind);
+      ASSERT(123 == v2.num);
+    }
+  }
 }
 
 static void test_bencode_parse() {

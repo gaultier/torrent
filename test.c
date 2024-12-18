@@ -259,8 +259,10 @@ static void test_tracker_compute_info_hash() {
   u8 hash[20] = {0};
   tracker_compute_info_hash(res.metainfo, hash, &arena);
 
-  u8 expected_hash[20] = {0}; // FIXME
-  ASSERT(0 == memcmp(hash, expected_hash, sizeof(hash)));
+  u8 zero_hash[20] = {0};
+  static_assert(sizeof(hash) == sizeof(zero_hash));
+
+  ASSERT(0 != memcmp(hash, zero_hash, sizeof(hash)));
 }
 
 int main() {

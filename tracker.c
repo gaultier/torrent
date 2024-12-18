@@ -17,7 +17,7 @@ typedef struct {
   TrackerRequestEvent event;
 } TrackerRequest;
 
-[[nodiscard]] static String
+[[maybe_unused]] [[nodiscard]] static String
 tracker_request_event_to_string(TrackerRequestEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
@@ -65,5 +65,5 @@ static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
   bencode_encode(value, &sb, arena);
   String encoded = dyn_slice(String, sb);
 
-  // TODO: sha1(encoded).
+  sha1(encoded, hash);
 }

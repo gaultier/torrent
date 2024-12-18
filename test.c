@@ -26,6 +26,10 @@ static void test_bencode_parse_u64() {
     ASSERT(BENCODE_ERR == res.status);
   }
   {
+    BencodeNumberParseResult res = bencode_parse_number(S("i-123e"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
     BencodeNumberParseResult res = bencode_parse_number(S("i123ehello"));
     ASSERT(BENCODE_OK == res.status);
     ASSERT(123 == res.num);

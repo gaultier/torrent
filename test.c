@@ -74,6 +74,49 @@ static void test_bencode_parse_string() {
   }
 }
 
+static void test_bencode_parse_list() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  {
+    BencodeListParseResult res = bencode_parse_list(S(""), &arena);
+    ASSERT(STATUS_ERR == res.status);
+  }
+  {
+    BencodeListParseResult res = bencode_parse_list(S("a"), &arena);
+    ASSERT(STATUS_ERR == res.status);
+  }
+  {
+    BencodeListParseResult res = bencode_parse_list(S("l"), &arena);
+    ASSERT(STATUS_ERR == res.status);
+  }
+
+  {
+    BencodeListParseResult res = bencode_parse_list(S("lefoo"), &arena);
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(0 == res.values.len);
+    ASSERT(string_eq(res.remaining, S("foo")));
+  }
+
+  {
+    BencodeListParseResult res =
+        bencode_parse_list(S("l2:abi123eefoo"), &arena);
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(2 == res.values.len);
+    ASSERT(string_eq(res.remaining, S("foo")));
+
+    {
+      BencodeValue v1 = dyn_at(res.values, 0);
+      ASSERT(BENCODE_KIND_STRING == v1.kind);
+      ASSERT(string_eq(S("ab"), v1.s));
+    }
+
+    {
+      BencodeValue v2 = dyn_at(res.values, 1);
+      ASSERT(BENCODE_KIND_NUMBER == v2.kind);
+      ASSERT(123 == v2.num);
+    }
+  }
+}
+
 static void test_bencode_parse() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   {
@@ -129,4 +172,5 @@ int main() {
   test_bencode_parse_u64();
   test_bencode_parse_string();
   test_bencode_parse();
+  test_bencode_parse_list();
 }

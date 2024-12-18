@@ -169,6 +169,51 @@ bencode_parse_dictionary(String s, Arena *arena) {
   return res;
 }
 
+typedef struct {
+  Status status;
+  DynBencodeValues values;
+  String remaining;
+} BencodeListParseResult;
+
+[[nodiscard]] static BencodeListParseResult bencode_parse_list(String s,
+                                                               Arena *arena) {
+  BencodeListParseResult res = {0};
+
+  StringConsumeResult prefix = string_consume(s, 'l');
+  if (!prefix.consumed) {
+    return res;
+  }
+
+  String remaining = prefix.remaining;
+  for (u64 lim = 0; lim < remaining.len; lim++) {
+    if (0 == remaining.len) {
+      return res;
+    }
+    if ('e' == slice_at(remaining, 0)) {
+      break;
+    }
+
+    // TODO: Address stack overflow.
+    BencodeParseResult res_value = bencode_parse(remaining, arena);
+    if (STATUS_OK != res_value.status) {
+      return res;
+    }
+
+    *dyn_push(&res.values, arena) = res_value.value;
+
+    remaining = res_value.remaining;
+  }
+
+  StringConsumeResult suffix = string_consume(remaining, 'e');
+  if (!suffix.consumed) {
+    return res;
+  }
+  res.remaining = suffix.remaining;
+  res.status = STATUS_OK;
+
+  return res;
+}
+
 [[nodiscard]] static BencodeParseResult bencode_parse(String s, Arena *arena) {
   BencodeParseResult res = {0};
 

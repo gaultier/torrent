@@ -82,6 +82,7 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req, Arena *arena) {
   http_req.method = HM_GET;
   *dyn_push(&http_req.path_components, arena) = S("announce"); // FIXME
   u16 port = 6969;                                             // FIXME.
+                   // TODO: url params.
 
   struct sockaddr_in addr = {
       .sin_family = AF_INET,

@@ -32,18 +32,18 @@ struct BencodeValue {
 };
 
 typedef enum {
-  BENCODE_OK,
   BENCODE_ERR,
-} BencodeParseResultKind;
+  BENCODE_OK,
+} BencodeParseResultStatus;
 
 typedef struct {
-  BencodeParseResultKind kind;
+  BencodeParseResultStatus status;
   BencodeValue res;
   StringSlice remaining;
 } BencodeParseResult;
 
 typedef struct {
-  BencodeParseResultKind kind;
+  BencodeParseResultStatus status;
   u64 num;
   String remaining;
 } BencodeNumberParseResult;
@@ -63,11 +63,12 @@ typedef struct {
 
   res.num = num_res.n;
 
-  StringConsumeResult suffix = string_consume(num_res.remaining, 'i');
+  StringConsumeResult suffix = string_consume(num_res.remaining, 'e');
   if (!suffix.consumed) {
     return res;
   }
   res.remaining = suffix.remaining;
+  res.status = BENCODE_OK;
 
   return res;
 }

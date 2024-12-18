@@ -32,18 +32,18 @@ struct BencodeValue {
 };
 
 typedef enum {
-  BENCODE_ERR,
-  BENCODE_OK,
-} BencodeParseResultStatus;
+  STATUS_ERR,
+  STATUS_OK,
+} Status;
 
 typedef struct {
-  BencodeParseResultStatus status;
+  Status status;
   BencodeValue res;
   StringSlice remaining;
 } BencodeParseResult;
 
 typedef struct {
-  BencodeParseResultStatus status;
+  Status status;
   u64 num;
   String remaining;
 } BencodeNumberParseResult;
@@ -68,13 +68,13 @@ typedef struct {
     return res;
   }
   res.remaining = suffix.remaining;
-  res.status = BENCODE_OK;
+  res.status = STATUS_OK;
 
   return res;
 }
 
 typedef struct {
-  BencodeParseResultStatus status;
+  Status status;
   String s;
   String remaining;
 } BencodeStringParseResult;
@@ -103,7 +103,21 @@ typedef struct {
   res.remaining = prefix.remaining;
   res.s = slice_range(prefix.remaining, 0, num_res.n);
   res.remaining = slice_range(prefix.remaining, num_res.n, 0);
-  res.status = BENCODE_OK;
+  res.status = STATUS_OK;
 
   return res;
 }
+
+typedef struct {
+  String announce;
+  String name;
+  u64 piece_length;
+  String pieces;
+  u64 length;
+  BencodeDictionary files; // TODO.
+} Metainfo;
+
+typedef struct {
+  Status status;
+  Metainfo metainfo;
+} ParseMetaInfoResult;

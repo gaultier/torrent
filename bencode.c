@@ -42,8 +42,32 @@ typedef struct {
   StringSlice remaining;
 } BencodeParseResult;
 
-BencodeParseResult bencode_parse(String s) {
-  BencodeParseResult res = {0};
-  // TODO.
+typedef struct {
+  BencodeParseResultKind kind;
+  u64 num;
+  String remaining;
+} BencodeNumberParseResult;
+
+[[nodiscard]] static BencodeNumberParseResult bencode_parse_number(String s) {
+  BencodeNumberParseResult res = {0};
+
+  StringConsumeResult prefix = string_consume(s, 'i');
+  if (!prefix.consumed) {
+    return res;
+  }
+
+  ParseNumberResult num_res = string_parse_u64(prefix.remaining);
+  if (!num_res.present) {
+    return res;
+  }
+
+  res.num = num_res.n;
+
+  StringConsumeResult suffix = string_consume(num_res.remaining, 'i');
+  if (!suffix.consumed) {
+    return res;
+  }
+  res.remaining = suffix.remaining;
+
   return res;
 }

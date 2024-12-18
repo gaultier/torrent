@@ -15,3 +15,17 @@ typedef struct {
   u64 downloaded, uploaded, left;
   TrackerRequestEvent event;
 } TrackerRequest;
+
+[[nodiscard]] static String
+tracker_request_event_to_string(TrackerRequestEvent event) {
+  switch (event) {
+  case TRACKER_EVENT_STARTED:
+    return S("started");
+  case TRACKER_EVENT_STOPPED:
+    return S("stopped");
+  case TRACKER_EVENT_COMPLETED:
+    return S("completed");
+  default:
+    ASSERT(0);
+  }
+}

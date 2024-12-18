@@ -39,7 +39,7 @@ typedef enum {
 typedef struct {
   Status status;
   BencodeValue res;
-  StringSlice remaining;
+  String remaining;
 } BencodeParseResult;
 
 typedef struct {
@@ -109,6 +109,42 @@ typedef struct {
 }
 
 typedef struct {
+  Status status;
+  BencodeDictionary dict;
+  String remaining;
+} BencodeDictionaryParseResult;
+
+[[nodiscard]] static BencodeDictionaryParseResult
+bencode_parse_dictionary(String s) {
+  BencodeDictionaryParseResult res = {0};
+
+  StringConsumeResult prefix = string_consume(s, 'd');
+  if (!prefix.consumed) {
+    return res;
+  }
+
+  String remaining = prefix.remaining;
+  for (u64 lim = 0; lim < remaining.len; lim++) {
+    if (0 == remaining.len) {
+      return res;
+    }
+    if ('e' == slice_at(remaining, 0)) {
+      break;
+    }
+    // TODO
+  }
+
+  StringConsumeResult suffix = string_consume(remaining, 'e');
+  if (!suffix.consumed) {
+    return res;
+  }
+  res.remaining = suffix.remaining;
+  res.status = STATUS_OK;
+
+  return res;
+}
+
+typedef struct {
   String announce;
   String name;
   u64 piece_length;
@@ -121,3 +157,9 @@ typedef struct {
   Status status;
   Metainfo metainfo;
 } ParseMetaInfoResult;
+
+[[nodiscard]] static ParseMetaInfoResult parse_metainfo(String s) {
+  ParseMetaInfoResult res = {0};
+
+  return res;
+}

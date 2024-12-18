@@ -141,6 +141,16 @@ bencode_parse_dictionary(String s, Arena *arena) {
       return res;
     }
     remaining = res_key.remaining;
+
+    // Ensure ordering.
+    if (res.dict.keys.len > 0) {
+      String last_key = dyn_last(res.dict.keys);
+      StringCompare cmp = string_cmp(last_key, res_key.s);
+      if (STRING_CMP_LESS != cmp) {
+        return res;
+      }
+    }
+
     *dyn_push(&res.dict.keys, arena) = res_key.s;
 
     // TODO: Address stack overflow.

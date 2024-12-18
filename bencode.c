@@ -146,6 +146,7 @@ bencode_parse_dictionary(String s, Arena *arena) {
     remaining = res_key.remaining;
     *dyn_push(&res.dict.keys, arena) = res_key.s;
 
+    // TODO: Address stack overflow.
     BencodeParseResult res_value = bencode_parse(remaining, arena);
     if (STATUS_OK != res_value.status) {
       return res;
@@ -162,6 +163,8 @@ bencode_parse_dictionary(String s, Arena *arena) {
   }
   res.remaining = suffix.remaining;
   res.status = STATUS_OK;
+
+  ASSERT(res.dict.keys.len == res.dict.values.len);
 
   return res;
 }

@@ -6,15 +6,11 @@ typedef enum {
   BENCODE_KIND_NONE,
   BENCODE_KIND_NUMBER,
   BENCODE_KIND_STRING,
-  BENCODE_KIND_ARRAY,
+  BENCODE_KIND_LIST,
   BENCODE_KIND_DICTIONARY,
 } BencodeValueKind;
 
 typedef struct BencodeValue BencodeValue;
-typedef struct {
-  u64 len;
-  BencodeValue *values;
-} BencodeSlice;
 
 typedef struct {
   BencodeValue *data;
@@ -31,7 +27,7 @@ struct BencodeValue {
   union {
     u64 num;
     String s;
-    BencodeSlice array;
+    DynBencodeValues list;
     BencodeDictionary dict;
   };
 };
@@ -244,7 +240,15 @@ typedef struct {
     return res;
   }
   case 'l': {
-    ASSERT(false && "TODO");
+    BencodeListParseResult res_list = bencode_parse_list(s, arena);
+    if (STATUS_OK != res_list.status) {
+      return res;
+    }
+    res.status = STATUS_OK;
+    res.remaining = res_list.remaining;
+    res.value.kind = BENCODE_KIND_LIST;
+    res.value.list = res_list.values;
+    return res;
   }
   case '0':
   case '1':

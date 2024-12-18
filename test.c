@@ -89,6 +89,13 @@ static void test_bencode_parse() {
     ASSERT(string_eq(S("foo"), res.remaining));
     // TODO
   }
+  {
+    BencodeParseResult res = bencode_parse(S("2:abfoo"));
+    ASSERT(STATUS_OK == res.status);
+    ASSERT(BENCODE_KIND_STRING == res.value.kind);
+    ASSERT(string_eq(S("ab"), res.value.s));
+    ASSERT(string_eq(S("foo"), res.remaining));
+  }
 }
 
 int main() {

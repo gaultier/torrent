@@ -287,6 +287,9 @@ typedef struct {
   }
 }
 
+/* [[nodiscard]] static DynString bencode_encode(BencodeValue value, */
+/*                                               Arena *arena) {} */
+
 typedef struct {
   String announce;
   String name;

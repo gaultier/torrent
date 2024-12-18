@@ -148,6 +148,14 @@ static void test_bencode_parse() {
     ASSERT(123 == res.value.num);
     ASSERT(string_eq(S("i456e"), res.remaining));
   }
+
+  // Unordered keys.
+  {
+    BencodeValueParseResult res =
+        bencode_parse_value(S("d2:abi123e2:ab5:helloefoo"), &arena);
+    ASSERT(STATUS_OK != res.status);
+  }
+
   {
     BencodeValueParseResult res =
         bencode_parse_value(S("d2:abi123e3:xyz5:helloefoo"), &arena);

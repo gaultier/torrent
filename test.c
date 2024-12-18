@@ -191,7 +191,7 @@ static void test_bencode_parse() {
 }
 
 static void test_parse_metainfo() {
-  Arena arena = arena_make_from_virtual_mem(32 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
   String torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "

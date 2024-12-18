@@ -1,5 +1,6 @@
 #pragma once
 #include "bencode.c"
+#include "submodules/c-http/http.c"
 #include "submodules/cstd/lib.c"
 
 typedef enum {
@@ -66,4 +67,31 @@ static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
   String encoded = dyn_slice(String, sb);
 
   sha1(encoded, hash);
+}
+
+typedef struct {
+  Status status;
+  BencodeValue response;
+} TrackerResponse;
+
+[[nodiscard]]
+static TrackerResponse tracker_send_get_req(TrackerRequest req, Arena *arena) {
+  TrackerResponse res = {0};
+
+  HttpRequest http_req = {0};
+  http_req.method = HM_GET;
+  *dyn_push(&http_req.path_components, arena) = S("announce"); // FIXME
+  u16 port = 6969;                                             // FIXME.
+
+  struct sockaddr_in addr = {
+      .sin_family = AF_INET,
+      .sin_port = htons(port),
+  };
+  HttpResponse resp = http_client_request((struct sockaddr *)&addr,
+                                          sizeof(addr), http_req, arena);
+  if (resp.err) {
+    return res;
+  }
+
+  return res;
 }

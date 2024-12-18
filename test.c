@@ -264,9 +264,6 @@ static void test_tracker_compute_info_hash() {
   static_assert(sizeof(hash) == sizeof(zero_hash));
 
   ASSERT(0 != memcmp(hash, zero_hash, sizeof(hash)));
-
-  HttpRequest req = {0};
-  (void)req;
 }
 
 int main() {

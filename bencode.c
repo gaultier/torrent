@@ -72,3 +72,38 @@ typedef struct {
 
   return res;
 }
+
+typedef struct {
+  BencodeParseResultStatus status;
+  String s;
+  String remaining;
+} BencodeStringParseResult;
+
+[[nodiscard]] static BencodeStringParseResult bencode_parse_string(String s) {
+  BencodeStringParseResult res = {0};
+
+  ParseNumberResult num_res = string_parse_u64(s);
+  if (!num_res.present) {
+    return res;
+  }
+
+  if (0 == num_res.n) {
+    return res;
+  }
+
+  StringConsumeResult prefix = string_consume(num_res.remaining, ':');
+  if (!prefix.consumed) {
+    return res;
+  }
+
+  if (prefix.remaining.len < num_res.n) {
+    return res;
+  }
+
+  res.remaining = prefix.remaining;
+  res.s = slice_range(prefix.remaining, 0, num_res.n);
+  res.remaining = slice_range(prefix.remaining, num_res.n, 0);
+  res.status = BENCODE_OK;
+
+  return res;
+}

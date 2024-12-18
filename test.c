@@ -33,4 +33,44 @@ static void test_bencode_parse_u64() {
   }
 }
 
-int main() { test_bencode_parse_u64(); }
+static void test_bencode_parse_string() {
+  {
+    BencodeStringParseResult res = bencode_parse_string(S(""));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("a"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("1"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("0"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("0:"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("1:"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("2:a"));
+    ASSERT(BENCODE_ERR == res.status);
+  }
+  {
+    BencodeStringParseResult res = bencode_parse_string(S("2:abc"));
+    ASSERT(BENCODE_OK == res.status);
+    ASSERT(string_eq(res.s, S("ab")));
+    ASSERT(string_eq(res.remaining, S("c")));
+  }
+}
+
+int main() {
+  test_bencode_parse_u64();
+  test_bencode_parse_string();
+}

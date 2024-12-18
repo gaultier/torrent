@@ -1,4 +1,5 @@
 #include "bencode.c"
+#include "tracker.c"
 
 static void test_bencode_decode_u64() {
   {
@@ -241,6 +242,27 @@ static void test_bencode_decode_encode() {
   ASSERT(string_eq(encoded, torrent_file_content));
 }
 
+static void test_tracker_compute_info_hash() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  String torrent_file_content = S(
+      "d8:announce43:http://OpenBSD.somedomain.net:6969/"
+      "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
+      "fresh (andrew@afresh1.com)\n"
+      "http://OpenBSD.somedomain.net/10:created by13:mktorrent 1.113:creation "
+      "datei1697360758e4:infod6:lengthi234883072e4:name31:OpenBSD_7.4_alpha_"
+      "install74.iso12:piece "
+      "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
+      "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
+  DecodeMetaInfoResult res = decode_metainfo(torrent_file_content, &arena);
+  ASSERT(STATUS_OK == res.status);
+
+  u8 hash[20] = {0};
+  tracker_compute_info_hash(res.metainfo, hash, &arena);
+
+  u8 expected_hash[20] = {0}; // FIXME
+  ASSERT(0 == memcmp(hash, expected_hash, sizeof(hash)));
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -248,4 +270,5 @@ int main() {
   test_bencode_decode_list();
   test_decode_metainfo();
   test_bencode_decode_encode();
+  test_tracker_compute_info_hash();
 }

@@ -53,5 +53,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  sleep(100);
+  // TODO: Fetch info from the tracker regularly.
+  pause();
 }

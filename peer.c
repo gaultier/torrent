@@ -8,7 +8,7 @@ static void peer_run(Peer peer, Arena *arena) {
       L("port", peer.port));
 
   for (;;) {
-    sleep(100);
+    pause();
     // TODO
   }
 }

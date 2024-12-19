@@ -39,6 +39,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  struct sigaction sa = {.sa_flags = SA_NOCLDWAIT};
+  if (-1 == sigaction(SIGCHLD, &sa, nullptr)) {
+    log(LOG_LEVEL_ERROR, "sigaction(2)", &arena, L("err", errno));
+    return errno;
+  }
+
   for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
     Peer peer = slice_at(res_tracker.resp.peers, i);
 

@@ -3,7 +3,7 @@
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
-  Arena arena = arena_make_from_virtual_mem(512 * KiB);
+  Arena arena = arena_make_from_virtual_mem(128 * KiB);
 
   String torrent_file_path = cstr_to_string(argv[1]);
   ReadFileResult res_torrent_file_read =
@@ -52,4 +52,6 @@ int main(int argc, char *argv[]) {
       peer_run(peer, &arena_peer);
     }
   }
+
+  sleep(100);
 }

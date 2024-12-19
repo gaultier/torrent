@@ -225,9 +225,15 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   HttpResponse resp = http_client_request(
       req_tracker.announce.host, req_tracker.announce.port, req_http, arena);
   if (resp.err) {
+    log(LOG_LEVEL_ERROR, "tracker announce request", arena,
+        L("host", req_tracker.announce.host),
+        L("port", req_tracker.announce.port), L("err", resp.err));
     return res;
   }
   if (200 != resp.status) {
+    log(LOG_LEVEL_ERROR, "tracker announce request non 200 status", arena,
+        L("host", req_tracker.announce.host),
+        L("port", req_tracker.announce.port), L("status", resp.status));
     return res;
   }
 

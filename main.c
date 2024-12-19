@@ -37,4 +37,12 @@ int main(int argc, char *argv[]) {
         L("err", res_tracker.status));
     return 1;
   }
+
+  for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
+    Peer peer = slice_at(res_tracker.resp.peers, i);
+
+    int child_pid = fork();
+    if (-1 == child_pid) {
+    }
+  }
 }

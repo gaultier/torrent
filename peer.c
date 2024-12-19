@@ -42,7 +42,7 @@ typedef union {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 
-  int socket_peer = socket(AF_INET, SOCK_DGRAM, 0);
+  int socket_peer = socket(AF_INET, SOCK_STREAM, 0);
   if (-1 == socket_peer) {
     log(LOG_LEVEL_ERROR, "peer create socket", arena, L("ipv4", peer->ipv4),
         L("port", peer->port), L("err", errno));
@@ -118,10 +118,8 @@ static void peer_run(Peer *peer, String info_hash, Arena *arena) {
     return;
   }
 
-#if 0
   for (;;) {
-    pause();
+    sleep(UINT32_MAX);
     // TODO
   }
-#endif
 }

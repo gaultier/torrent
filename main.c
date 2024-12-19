@@ -49,6 +49,8 @@ int main(int argc, char *argv[]) {
 
   for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
     Peer peer = slice_at(res_tracker.resp.peers, i);
+    log(LOG_LEVEL_INFO, "spawning peer", &arena, L("i", i),
+        L("ipv4", peer.ipv4), L("port", peer.port));
 
     int child_pid = fork();
     if (-1 == child_pid) {
@@ -64,9 +66,10 @@ int main(int argc, char *argv[]) {
         exit((int)err);
       }
       peer_run(&peer, req_tracker.info_hash, &arena_peer);
+      exit(0);
     }
   }
 
   // TODO: Fetch info from the tracker regularly.
-  pause();
+  sleep(UINT32_MAX);
 }

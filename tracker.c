@@ -80,17 +80,72 @@ typedef struct {
 } DynPeer;
 
 typedef struct {
-  Status status;
-  BencodeValue response;
   DynPeer peers;
   String failure;
   u64 interval_secs;
 } TrackerResponse;
 
-[[nodiscard]]
-static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
-                                            Arena *arena) {
-  TrackerResponse res = {0};
+typedef struct {
+  Status status;
+  TrackerResponse resp;
+} TrackerResponseResult;
+
+[[nodiscard]] static TrackerResponseResult
+tracker_parse_response(String s, Arena *arena) {
+  TrackerResponseResult res = {0};
+
+  BencodeValueDecodeResult tracker_response_bencode_res =
+      bencode_decode_value(s, arena);
+  if (STATUS_OK != tracker_response_bencode_res.status) {
+    return res;
+  }
+  if (tracker_response_bencode_res.remaining.len != 0) {
+    return res;
+  }
+
+  if (BENCODE_KIND_DICTIONARY != tracker_response_bencode_res.value.kind) {
+    return res;
+  }
+
+  BencodeDictionary dict = tracker_response_bencode_res.value.dict;
+
+  for (u64 i = 0; i < dict.keys.len; i++) {
+    String key = slice_at(dict.keys, i);
+    BencodeValue value = slice_at(dict.values, i);
+
+    if (string_eq(key, S("failure reason"))) {
+      if (BENCODE_KIND_STRING != value.kind) {
+        return res;
+      }
+
+      res.resp.failure = value.s;
+    } else if (string_eq(key, S("interval"))) {
+      if (BENCODE_KIND_NUMBER != value.kind) {
+        return res;
+      }
+      ParseNumberResult parse_num_res = string_parse_u64(value.s);
+      if (!parse_num_res.present) {
+        return res;
+      }
+      if (0 != parse_num_res.remaining.len) {
+        return res;
+      }
+
+      res.resp.interval_secs = parse_num_res.n;
+    } else if (string_eq(key, S("peers"))) {
+      if (BENCODE_KIND_STRING != value.kind) {
+        return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
+      }
+      // TODO
+    }
+  }
+
+  return res;
+}
+
+[[nodiscard]] static TrackerResponseResult
+tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
+  TrackerResponseResult res = {0};
 
   HttpRequest req_http = {0};
   req_http.method = HM_GET;
@@ -141,17 +196,5 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
     return res;
   }
 
-  BencodeValueDecodeResult tracker_response_bencode_res =
-      bencode_decode_value(resp.body, arena);
-  if (STATUS_OK != tracker_response_bencode_res.status) {
-    return res;
-  }
-  if (tracker_response_bencode_res.remaining.len != 0) {
-    return res;
-  }
-
-  res.status = STATUS_OK;
-  res.response = tracker_response_bencode_res.value;
-
-  return res;
+  return tracker_parse_response(resp.body, arena);
 }

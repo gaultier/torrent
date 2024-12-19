@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
   };
   tracker_compute_info_hash(res_decode_metainfo.metainfo, req_tracker.info_hash,
                             &arena);
-  TrackerResponse res_tracker = tracker_send_get_req(req_tracker, &arena);
+  TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);
   if (STATUS_OK != res_tracker.status) {
     log(LOG_LEVEL_ERROR, "tracker response", &arena,
         L("err", res_tracker.status));

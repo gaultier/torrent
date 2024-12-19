@@ -75,21 +75,49 @@ typedef struct {
 } TrackerResponse;
 
 [[nodiscard]]
-static TrackerResponse tracker_send_get_req(TrackerRequest req, Arena *arena) {
+static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
+                                            Arena *arena) {
   TrackerResponse res = {0};
 
-  HttpRequest http_req = {0};
-  http_req.method = HM_GET;
-  *dyn_push(&http_req.path_components, arena) = S("announce"); // FIXME
-  u16 port = 6969;                                             // FIXME.
-                   // TODO: url params.
+  HttpRequest req_http = {0};
+  req_http.method = HM_GET;
+  *dyn_push(&req_http.path_components, arena) = S("announce"); // FIXME
+  u16 port_tracker = 6969;                                     // FIXME.
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("peer_id"),
+      .value =
+          (String){
+              .data = req_tracker.peer_id,
+              .len = 20,
+          },
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("port"),
+      .value = u64_to_string(req_tracker.port, arena),
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("uploaded"),
+      .value = u64_to_string(req_tracker.uploaded, arena),
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("downloaded"),
+      .value = u64_to_string(req_tracker.downloaded, arena),
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("left"),
+      .value = u64_to_string(req_tracker.left, arena),
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("event"),
+      .value = tracker_request_event_to_string(req_tracker.event),
+  };
 
   struct sockaddr_in addr = {
       .sin_family = AF_INET,
-      .sin_port = htons(port),
+      .sin_port = htons(port_tracker),
   };
   HttpResponse resp = http_client_request((struct sockaddr *)&addr,
-                                          sizeof(addr), http_req, arena);
+                                          sizeof(addr), req_http, arena);
   if (resp.err) {
     return res;
   }

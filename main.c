@@ -1,4 +1,4 @@
-#include "tracker.c"
+#include "peer.c"
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -43,6 +43,13 @@ int main(int argc, char *argv[]) {
 
     int child_pid = fork();
     if (-1 == child_pid) {
+      log(LOG_LEVEL_ERROR, "peers fork", &arena, L("err", errno));
+      return errno;
+    }
+
+    if (0 == child_pid) {
+      Arena arena_peer = arena_make_from_virtual_mem(4 * KiB);
+      peer_run(peer, &arena_peer);
     }
   }
 }

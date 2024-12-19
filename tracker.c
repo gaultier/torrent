@@ -136,6 +136,7 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
     return res;
   }
 
+  res.status = STATUS_OK;
   res.response = tracker_response_bencode_res.value;
 
   return res;

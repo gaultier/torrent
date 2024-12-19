@@ -37,10 +37,28 @@ typedef union {
   };
 } PeerMessage;
 
+[[nodiscard]] static String peer_make_handshake(String info_hash,
+                                                Arena *arena) {
+  DynU8 sb = {0};
+  dyn_append_slice(&sb,
+                   S("\x13"
+                     "BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00"),
+                   arena);
+  dyn_append_slice(&sb, info_hash, arena);
+
+  String peer_id = S("00000000000000000000");
+  ASSERT(20 == peer_id.len);
+
+  return dyn_slice(String, sb);
+}
+
 [[noreturn]]
 static void peer_run(Peer peer, String info_hash, Arena *arena) {
   log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer.ipv4),
       L("port", peer.port));
+
+  String handshake = peer_make_handshake(info_hash, arena);
+  peer.writer.write(peer.writer.ctx, handshake.data, handshake.len);
 
   for (;;) {
     pause();

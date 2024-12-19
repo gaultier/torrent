@@ -28,6 +28,7 @@ int main(int argc, char *argv[]) {
       .left = res_decode_metainfo.metainfo.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.metainfo.announce,
+      .info_hash = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
   };
   tracker_compute_info_hash(res_decode_metainfo.metainfo, req_tracker.info_hash,
                             &arena);

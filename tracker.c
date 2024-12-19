@@ -110,12 +110,8 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
       .value = tracker_request_event_to_string(req_tracker.event),
   };
 
-  struct sockaddr_in addr = {
-      .sin_family = AF_INET,
-      .sin_port = htons(req_tracker.announce.port),
-  };
-  HttpResponse resp = http_client_request((struct sockaddr *)&addr,
-                                          sizeof(addr), req_http, arena);
+  HttpResponse resp = http_client_request(
+      req_tracker.announce.host, req_tracker.announce.port, req_http, arena);
   if (resp.err) {
     return res;
   }

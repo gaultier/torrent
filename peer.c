@@ -28,6 +28,15 @@ typedef enum {
   PEER_MSG_KIND_CANCEL = 8,
 } PeerMessageKind;
 
+typedef union {
+  PeerMessageKind kind;
+  union {
+    PeerMessagePiece piece;
+    PeerMessageCancel cancel;
+    PeerMessageRequest request;
+  };
+} PeerMessage;
+
 [[noreturn]]
 static void peer_run(Peer peer, Arena *arena) {
   log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer.ipv4),

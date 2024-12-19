@@ -42,13 +42,26 @@ typedef union {
   DynU8 sb = {0};
   dyn_append_slice(&sb,
                    S("\x13"
-                     "BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00"),
+                     "BitTorrent protocol"
+                     "\x00"
+                     "\x00"
+                     "\x00"
+                     "\x00"
+                     "\x00"
+                     "\x00"
+                     "\x00"
+                     "\x00"),
                    arena);
+  ASSERT(1 + 19 + 8 == sb.len);
+
+  ASSERT(20 == info_hash.len);
   dyn_append_slice(&sb, info_hash, arena);
 
   String peer_id = S("00000000000000000000");
   ASSERT(20 == peer_id.len);
+  dyn_append_slice(&sb, peer_id, arena);
 
+  ASSERT(68 == sb.len);
   return dyn_slice(String, sb);
 }
 

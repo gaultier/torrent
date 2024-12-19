@@ -14,6 +14,7 @@ typedef struct {
   u16 port;
   u64 downloaded, uploaded, left;
   TrackerRequestEvent event;
+  Url announce;
 } TrackerRequest;
 
 [[maybe_unused]] [[nodiscard]] static String
@@ -79,8 +80,7 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
 
   HttpRequest req_http = {0};
   req_http.method = HM_GET;
-  *dyn_push(&req_http.path_components, arena) = S("announce"); // FIXME
-  u16 port_tracker = 6969;                                     // FIXME.
+  req_http.path_components = req_tracker.announce.path_components;
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("peer_id"),
       .value =
@@ -112,13 +112,27 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
 
   struct sockaddr_in addr = {
       .sin_family = AF_INET,
-      .sin_port = htons(port_tracker),
+      .sin_port = htons(req_tracker.announce.port),
   };
   HttpResponse resp = http_client_request((struct sockaddr *)&addr,
                                           sizeof(addr), req_http, arena);
   if (resp.err) {
     return res;
   }
+  if (200 != resp.status) {
+    return res;
+  }
+
+  BencodeValueDecodeResult tracker_response_bencode_res =
+      bencode_decode_value(resp.body, arena);
+  if (STATUS_OK != tracker_response_bencode_res.status) {
+    return res;
+  }
+  if (tracker_response_bencode_res.remaining.len != 0) {
+    return res;
+  }
+
+  res.response = tracker_response_bencode_res.value;
 
   return res;
 }

@@ -69,8 +69,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
 }
 
 typedef struct {
-  String id;
-  String address; // DNS name or IP address.
+  u32 ipv4;
   u16 port;
 } Peer;
 
@@ -89,6 +88,31 @@ typedef struct {
   Status status;
   TrackerResponse resp;
 } TrackerResponseResult;
+
+typedef struct {
+  Status status;
+  DynPeer peers;
+} ParseCompactPeersResult;
+[[nodiscard]] static ParseCompactPeersResult
+tracker_parse_compact_peers(String s) {
+  ParseCompactPeersResult res = {0};
+
+  if (s.len % 6 != 0) {
+    return res;
+  }
+
+  String remaining = s;
+  for (u64 lim = 0; lim < s.len; lim++) {
+    String ipv4_str = slice_range(remaining, 0, 4);
+    String port_str = slice_range(remaining, 4, 6);
+
+    remaining = slice_range(remaining, 6, 0);
+  }
+  // TODO
+
+  res.status = STATUS_OK;
+  return res;
+}
 
 [[nodiscard]] static TrackerResponseResult
 tracker_parse_response(String s, Arena *arena) {

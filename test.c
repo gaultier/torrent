@@ -1,5 +1,4 @@
 #include "bencode.c"
-#include "submodules/c-http/http.c"
 #include "tracker.c"
 
 static void test_bencode_decode_u64() {
@@ -214,8 +213,14 @@ static void test_decode_metainfo() {
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   DecodeMetaInfoResult res = decode_metainfo(torrent_file_content, &arena);
   ASSERT(STATUS_OK == res.status);
-  ASSERT(string_eq(res.metainfo.announce,
-                   S("http://OpenBSD.somedomain.net:6969/announce")));
+
+  ASSERT(string_eq(S("http"), res.metainfo.announce.scheme));
+  ASSERT(string_eq(S("OpenBSD.somedomain.net"), res.metainfo.announce.host));
+  ASSERT(6969 == res.metainfo.announce.port);
+  ASSERT(1 == res.metainfo.announce.path_components.len);
+  String path_component0 = slice_at(res.metainfo.announce.path_components, 0);
+  ASSERT(string_eq(S("announce"), path_component0));
+
   ASSERT(234883072 == res.metainfo.length);
   ASSERT(string_eq(res.metainfo.name, S("OpenBSD_7.4_alpha_install74.iso")));
   ASSERT(262144 == res.metainfo.piece_length);

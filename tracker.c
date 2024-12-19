@@ -1,7 +1,5 @@
 #pragma once
 #include "bencode.c"
-#include "submodules/c-http/http.c"
-#include "submodules/cstd/lib.c"
 
 typedef enum {
   TRACKER_EVENT_STARTED,

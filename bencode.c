@@ -1,6 +1,6 @@
 #pragma once
 
-#include "submodules/cstd/lib.c"
+#include "submodules/c-http/http.c"
 
 typedef enum {
   BENCODE_KIND_NONE,
@@ -334,7 +334,7 @@ static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
 }
 
 typedef struct {
-  String announce;
+  Url announce;
   String name;
   u64 piece_length;
   String pieces;
@@ -368,7 +368,12 @@ typedef struct {
         return res;
       }
 
-      res.metainfo.announce = value->s;
+      ParseUrlResult url_parse_res = url_parse(value->s, arena);
+      if (!url_parse_res.ok) {
+        return res;
+      }
+
+      res.metainfo.announce = url_parse_res.url;
     } else if (string_eq(key, S("info"))) {
       if (BENCODE_KIND_DICTIONARY != value->kind) {
         return res;

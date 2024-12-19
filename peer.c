@@ -37,6 +37,34 @@ typedef union {
   };
 } PeerMessage;
 
+[[nodiscard]] static Error peer_connect(Peer *peer, Arena *arena) {
+  ASSERT(0 != peer->ipv4);
+  ASSERT(0 != peer->port);
+
+  int socket_peer = socket(AF_INET, SOCK_DGRAM, 0);
+  if (-1 == socket_peer) {
+    log(LOG_LEVEL_ERROR, "peer create socket", arena, L("ipv4", peer->ipv4),
+        L("port", peer->port), L("err", errno));
+    return (Error)errno;
+  }
+  struct sockaddr_in addr = {
+      .sin_port = htons(peer->port),
+      .sin_addr = {htonl(peer->ipv4)},
+  };
+
+  if (-1 == connect(socket_peer, (struct sockaddr *)&addr, sizeof(addr))) {
+    log(LOG_LEVEL_ERROR, "peer connect", arena, L("ipv4", peer->ipv4),
+        L("port", peer->port), L("err", errno));
+    return (Error)errno;
+  }
+  peer->reader = reader_make_from_socket(socket_peer);
+  peer->writer = writer_make_from_socket(socket_peer);
+
+  log(LOG_LEVEL_INFO, "peer connected", arena, L("ipv4", peer->ipv4),
+      L("port", peer->port));
+  return 0;
+}
+
 [[nodiscard]] static String peer_make_handshake(String info_hash,
                                                 Arena *arena) {
   DynU8 sb = {0};

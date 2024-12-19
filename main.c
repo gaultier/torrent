@@ -51,8 +51,11 @@ int main(int argc, char *argv[]) {
     if (0 == child_pid) {
       Arena arena_peer = arena_make_from_virtual_mem(4 * KiB);
 
-      // TODO: init socket (writer).
-      peer_run(peer, req_tracker.info_hash, &arena_peer);
+      Error err = peer_connect(&peer, &arena_peer);
+      if (err) {
+        exit((int)err);
+      }
+      peer_run(&peer, req_tracker.info_hash, &arena_peer);
     }
   }
 

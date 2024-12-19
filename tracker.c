@@ -74,6 +74,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 typedef struct {
   u32 ipv4;
   u16 port;
+  Reader reader;
   Writer writer;
 } Peer;
 

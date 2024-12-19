@@ -322,6 +322,13 @@ static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
       bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k}, sb,
                      arena);
       bencode_encode(v, sb, arena);
+
+      // Ensure ordering.
+      if (i > 0) {
+        String previous_key = slice_at(value.dict.keys, i - 1);
+        StringCompare cmp = string_cmp(previous_key, k);
+        ASSERT(STRING_CMP_LESS == cmp);
+      }
     }
     *dyn_push(sb, arena) = 'e';
 

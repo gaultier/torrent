@@ -37,7 +37,8 @@ typedef union {
   };
 } PeerMessage;
 
-[[nodiscard]] static Error peer_connect(Peer *peer, Arena *arena) {
+[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer,
+                                                         Arena *arena) {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 

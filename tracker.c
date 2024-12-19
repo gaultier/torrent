@@ -94,7 +94,7 @@ typedef struct {
   DynPeer peers;
 } ParseCompactPeersResult;
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(String s) {
+tracker_parse_compact_peers(String s, Arena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
@@ -103,12 +103,27 @@ tracker_parse_compact_peers(String s) {
 
   String remaining = s;
   for (u64 lim = 0; lim < s.len; lim++) {
+    if (0 == remaining.len) {
+      break;
+    }
+
     String ipv4_str = slice_range(remaining, 0, 4);
     String port_str = slice_range(remaining, 4, 6);
 
     remaining = slice_range(remaining, 6, 0);
+
+    u32 ipv4_network_order = 0;
+    memcpy(&ipv4_network_order, ipv4_str.data, ipv4_str.len);
+
+    u16 port_network_order = 0;
+    memcpy(&port_network_order, port_str.data, port_str.len);
+
+    Peer peer = {
+        .ipv4 = ntohl(ipv4_network_order),
+        .port = ntohs(port_network_order),
+    };
+    *dyn_push(&res.peers, arena) = peer;
   }
-  // TODO
 
   res.status = STATUS_OK;
   return res;
@@ -152,7 +167,13 @@ tracker_parse_response(String s, Arena *arena) {
       if (BENCODE_KIND_STRING != value.kind) {
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
-      // TODO
+      ParseCompactPeersResult res_parse_compact_peers =
+          tracker_parse_compact_peers(value.s, arena);
+
+      if (STATUS_OK != res_parse_compact_peers.status) {
+        return res;
+      }
+      res.resp.peers = res_parse_compact_peers.peers;
     }
   }
 

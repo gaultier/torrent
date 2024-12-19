@@ -82,11 +82,19 @@ static TrackerResponse tracker_send_get_req(TrackerRequest req_tracker,
   req_http.method = HM_GET;
   req_http.path_components = req_tracker.announce.path_components;
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+      .key = S("info_hash"),
+      .value =
+          (String){
+              .data = req_tracker.info_hash,
+              .len = sizeof(req_tracker.info_hash),
+          },
+  };
+  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("peer_id"),
       .value =
           (String){
               .data = req_tracker.peer_id,
-              .len = 20,
+              .len = sizeof(req_tracker.peer_id),
           },
   };
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){

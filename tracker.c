@@ -69,8 +69,22 @@ static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
 }
 
 typedef struct {
+  String id;
+  String address; // DNS name or IP address.
+  u16 port;
+} Peer;
+
+typedef struct {
+  Peer *data;
+  u64 len, cap;
+} DynPeer;
+
+typedef struct {
   Status status;
   BencodeValue response;
+  DynPeer peers;
+  String failure;
+  u64 interval_secs;
 } TrackerResponse;
 
 [[nodiscard]]

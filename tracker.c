@@ -123,15 +123,7 @@ tracker_parse_response(String s, Arena *arena) {
       if (BENCODE_KIND_NUMBER != value.kind) {
         return res;
       }
-      ParseNumberResult parse_num_res = string_parse_u64(value.s);
-      if (!parse_num_res.present) {
-        return res;
-      }
-      if (0 != parse_num_res.remaining.len) {
-        return res;
-      }
-
-      res.resp.interval_secs = parse_num_res.n;
+      res.resp.interval_secs = value.num;
     } else if (string_eq(key, S("peers"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
@@ -140,6 +132,7 @@ tracker_parse_response(String s, Arena *arena) {
     }
   }
 
+  res.status = STATUS_OK;
   return res;
 }
 

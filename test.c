@@ -1,5 +1,4 @@
-#include "bencode.c"
-#include "tracker.c"
+#include "peer.c"
 
 static void test_bencode_decode_u64() {
   {
@@ -276,6 +275,22 @@ static void test_tracker_compute_info_hash() {
   ASSERT(0 == memcmp(hash.data, expected_hash, hash.len));
 }
 
+static void test_peer_send_handshake() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+
+  Peer peer = {
+      .port = 6881,
+      .writer = writer_make_for_buf(&arena),
+  };
+
+  String info_hash = S("abcdefghijklmnopqrst");
+  Error err = peer_send_handshake(&peer, info_hash, &arena);
+  ASSERT(0 == err);
+  WriterBufCtx *ctx = peer.writer.ctx;
+
+  ASSERT(68 == ctx->sb.len);
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -284,4 +299,5 @@ int main() {
   test_decode_metainfo();
   test_bencode_decode_encode();
   test_tracker_compute_info_hash();
+  test_peer_send_handshake();
 }

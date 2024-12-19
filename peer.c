@@ -52,16 +52,34 @@ typedef union {
   return dyn_slice(String, sb);
 }
 
-[[noreturn]]
-static void peer_run(Peer peer, String info_hash, Arena *arena) {
-  log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer.ipv4),
-      L("port", peer.port));
-
+[[nodiscard]] static Error peer_send_handshake(Peer *peer, String info_hash,
+                                               Arena *arena) {
   String handshake = peer_make_handshake(info_hash, arena);
-  peer.writer.write(peer.writer.ctx, handshake.data, handshake.len);
+  Error err = writer_write_all(peer->writer, handshake);
+  if (err) {
+    log(LOG_LEVEL_ERROR, "peer handshake", arena, L("ipv4", peer->ipv4),
+        L("port", peer->port), L("err", err));
+    return err;
+  }
 
+  return 0;
+}
+
+[[maybe_unused]]
+static void peer_run(Peer *peer, String info_hash, Arena *arena) {
+  log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer->ipv4),
+      L("port", peer->port));
+
+  Error err = 0;
+
+  if ((err = peer_send_handshake(peer, info_hash, arena))) {
+    return;
+  }
+
+#if 0
   for (;;) {
     pause();
     // TODO
   }
+#endif
 }

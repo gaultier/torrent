@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 
     if (0 == child_pid) {
       Arena arena_peer = arena_make_from_virtual_mem(4 * KiB);
-      peer_run(peer, &arena_peer);
+      peer_run(peer, req_tracker.info_hash, &arena_peer);
     }
   }
 

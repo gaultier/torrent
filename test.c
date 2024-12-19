@@ -262,13 +262,18 @@ static void test_tracker_compute_info_hash() {
   DecodeMetaInfoResult res = decode_metainfo(torrent_file_content, &arena);
   ASSERT(STATUS_OK == res.status);
 
-  u8 hash[20] = {0};
+  String hash = {
+      .data = arena_alloc(&arena, 1, 1, 20),
+      .len = 20,
+  };
   tracker_compute_info_hash(res.metainfo, hash, &arena);
 
-  u8 zero_hash[20] = {0};
-  static_assert(sizeof(hash) == sizeof(zero_hash));
-
-  ASSERT(0 != memcmp(hash, zero_hash, sizeof(hash)));
+  u8 expected_hash[20] = {
+      0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,
+      0x90, 0xe8, 0x7d, 0x3a, 0x01, 0x4f, 0x8a, 0x07, 0x2d, 0x7a,
+  };
+  ASSERT(hash.len == sizeof(expected_hash));
+  ASSERT(0 == memcmp(hash.data, expected_hash, hash.len));
 }
 
 int main() {

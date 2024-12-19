@@ -38,7 +38,7 @@ typedef union {
 } PeerMessage;
 
 [[noreturn]]
-static void peer_run(Peer peer, Arena *arena) {
+static void peer_run(Peer peer, String info_hash, Arena *arena) {
   log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer.ipv4),
       L("port", peer.port));
 

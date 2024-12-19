@@ -8,8 +8,8 @@ typedef enum {
 } TrackerRequestEvent;
 
 typedef struct {
-  u8 info_hash[20];
-  u8 peer_id[20];
+  String info_hash;
+  String peer_id;
   u32 ip;
   u16 port;
   u64 downloaded, uploaded, left;
@@ -31,7 +31,7 @@ tracker_request_event_to_string(TrackerRequestEvent event) {
   }
 }
 
-static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
+static void tracker_compute_info_hash(Metainfo metainfo, String hash,
                                       Arena *arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
@@ -65,7 +65,10 @@ static void tracker_compute_info_hash(Metainfo metainfo, u8 hash[20],
   bencode_encode(value, &sb, arena);
   String encoded = dyn_slice(String, sb);
 
-  sha1(encoded, hash);
+  u8 sha1_hash[20] = {0};
+  sha1(encoded, sha1_hash);
+  ASSERT(sizeof(sha1_hash) == hash.len);
+  memcpy(hash.data, sha1_hash, hash.len);
 }
 
 typedef struct {
@@ -181,7 +184,7 @@ tracker_parse_response(String s, Arena *arena) {
   return res;
 }
 
-[[nodiscard]] static TrackerResponseResult
+[[maybe_unused]] [[nodiscard]] static TrackerResponseResult
 tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   TrackerResponseResult res = {0};
 
@@ -190,19 +193,11 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   req_http.path_components = req_tracker.announce.path_components;
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("info_hash"),
-      .value =
-          (String){
-              .data = req_tracker.info_hash,
-              .len = sizeof(req_tracker.info_hash),
-          },
+      .value = req_tracker.info_hash,
   };
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("peer_id"),
-      .value =
-          (String){
-              .data = req_tracker.peer_id,
-              .len = sizeof(req_tracker.peer_id),
-          },
+      .value = req_tracker.peer_id,
   };
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("port"),

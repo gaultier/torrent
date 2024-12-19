@@ -29,9 +29,11 @@ int main(int argc, char *argv[]) {
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.metainfo.announce,
       .info_hash = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
+      .peer_id = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
   };
   tracker_compute_info_hash(res_decode_metainfo.metainfo, req_tracker.info_hash,
                             &arena);
+
   TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);
   if (STATUS_OK != res_tracker.status) {
     log(LOG_LEVEL_ERROR, "tracker response", &arena,

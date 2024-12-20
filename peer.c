@@ -42,24 +42,32 @@ typedef union {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 
-  int socket_peer = socket(AF_INET, SOCK_STREAM, 0);
-  if (-1 == socket_peer) {
+  int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", arena, L("ipv4", peer->ipv4),
         L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
+
+  int flags = fcntl(sock_fd, F_GETFL, 0);
+  if (-1 == fcntl(sock_fd, F_SETFL, flags & (~O_NONBLOCK))) {
+    log(LOG_LEVEL_ERROR, "socket set non blocking", arena,
+        L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
+    return (Error)errno;
+  }
+
   struct sockaddr_in addr = {
       .sin_port = htons(peer->port),
       .sin_addr = {htonl(peer->ipv4)},
   };
 
-  if (-1 == connect(socket_peer, (struct sockaddr *)&addr, sizeof(addr))) {
+  if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
     log(LOG_LEVEL_ERROR, "peer connect", arena, L("ipv4", peer->ipv4),
         L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
-  peer->reader = reader_make_from_socket(socket_peer);
-  peer->writer = writer_make_from_socket(socket_peer);
+  peer->reader = reader_make_from_socket(sock_fd);
+  peer->writer = writer_make_from_socket(sock_fd);
 
   log(LOG_LEVEL_INFO, "peer connected", arena, L("ipv4", peer->ipv4),
       L("port", peer->port));

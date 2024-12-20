@@ -37,21 +37,20 @@ typedef union {
   };
 } PeerMessage;
 
-[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer,
-                                                         Arena *arena) {
+[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer) {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 
   int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (-1 == sock_fd) {
-    log(LOG_LEVEL_ERROR, "peer create socket", arena, L("ipv4", peer->ipv4),
-        L("port", peer->port), L("err", errno));
+    log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
+        L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
 
   int flags = fcntl(sock_fd, F_GETFL, 0);
   if (-1 == fcntl(sock_fd, F_SETFL, flags & (~O_NONBLOCK))) {
-    log(LOG_LEVEL_ERROR, "socket set non blocking", arena,
+    log(LOG_LEVEL_ERROR, "socket set non blocking", &peer->arena,
         L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
@@ -62,14 +61,14 @@ typedef union {
   };
 
   if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
-    log(LOG_LEVEL_ERROR, "peer connect", arena, L("ipv4", peer->ipv4),
+    log(LOG_LEVEL_ERROR, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
         L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
   peer->reader = reader_make_from_socket(sock_fd);
   peer->writer = writer_make_from_socket(sock_fd);
 
-  log(LOG_LEVEL_INFO, "peer connected", arena, L("ipv4", peer->ipv4),
+  log(LOG_LEVEL_INFO, "peer connected", &peer->arena, L("ipv4", peer->ipv4),
       L("port", peer->port));
   return 0;
 }

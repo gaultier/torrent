@@ -42,26 +42,35 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  struct pollfd *fds =
-      arena_new(&arena, struct pollfd, res_tracker.resp.peers.len);
-  for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
-    Peer peer = slice_at(res_tracker.resp.peers, i);
+  DynPeer peers = res_tracker.resp.peers;
 
-    struct pollfd *fd = AT_PTR(fds, res_tracker.resp.peers.len, i);
-    fd->fd = (int)(u64)peer.reader.ctx;
+  struct pollfd *fds = arena_new(&arena, struct pollfd, peers.len);
+  for (u64 i = 0; i < peers.len; i++) {
+    Peer *peer = dyn_at_ptr(&peers, i);
+    peer->arena = arena_make_from_virtual_mem(4 * KiB);
+    Error err = peer_connect(peer);
+    if (err) {
+      log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
+          L("port", peer->port), L("err", err));
+      // TODO: Remove peer.
+      continue;
+    }
+
+    struct pollfd *fd = AT_PTR(fds, peers.len, i);
+    fd->fd = (int)(u64)peer->reader.ctx;
     fd->events = POLLIN | POLLOUT;
   }
 
   for (;;) {
-    int res_poll = poll(fds, res_tracker.resp.peers.len, 0);
+    int res_poll = poll(fds, peers.len, 0);
     if (-1 == res_poll) {
       log(LOG_LEVEL_ERROR, "poll", &arena, L("err", errno));
       return errno;
     }
 
-    for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
-      struct pollfd fd = AT(fds, res_tracker.resp.peers.len, i);
-      Peer *peer = dyn_at_ptr(&res_tracker.resp.peers, i);
+    for (u64 i = 0; i < peers.len; i++) {
+      struct pollfd fd = AT(fds, peers.len, i);
+      Peer *peer = dyn_at_ptr(&peers, i);
 
       if ((fd.revents & POLLERR) || (fd.revents & POLLHUP)) {
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,

@@ -116,7 +116,7 @@ typedef union {
 
 [[maybe_unused]]
 // TODO: Report if progress was made?
-static Error peer_tick(Peer *peer) {
+static Error peer_tick(Peer *peer, bool can_read, bool can_write) {
   log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
       L("port", peer->port));
 
@@ -124,12 +124,17 @@ static Error peer_tick(Peer *peer) {
 
   switch (peer->state) {
   case PEER_STATE_NONE: {
-    err = peer_send_handshake(peer);
-    peer->state = PEER_STATE_HANDSHAKE_SENT;
-    return err;
+    if (can_write) {
+      err = peer_send_handshake(peer);
+      peer->state = PEER_STATE_HANDSHAKE_SENT;
+      return err;
+    }
+    return 0;
   }
   case PEER_STATE_HANDSHAKE_SENT: {
-    // TODO
+    if (can_read) {
+      // TODO: read handshake.
+    }
     return 0;
   }
   case PEER_SENT_HANDSHAKE_RECEIVED: {

@@ -1,4 +1,5 @@
 #include "peer.c"
+#include <sys/poll.h>
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -41,31 +42,44 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-#if 0
+  struct pollfd *fds =
+      arena_new(&arena, struct pollfd, res_tracker.resp.peers.len);
   for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
     Peer peer = slice_at(res_tracker.resp.peers, i);
-    log(LOG_LEVEL_INFO, "spawning peer", &arena, L("i", i),
-        L("ipv4", peer.ipv4), L("port", peer.port));
 
-    int child_pid = fork();
-    if (-1 == child_pid) {
-      log(LOG_LEVEL_ERROR, "peers fork", &arena, L("err", errno));
+    struct pollfd *fd = AT_PTR(fds, res_tracker.resp.peers.len, i);
+    fd->fd = (int)(u64)peer.reader.ctx;
+    fd->events = POLLIN | POLLOUT;
+  }
+
+  for (;;) {
+    int res_poll = poll(fds, res_tracker.resp.peers.len, 0);
+    if (-1 == res_poll) {
+      log(LOG_LEVEL_ERROR, "poll", &arena, L("err", errno));
       return errno;
     }
 
-    if (0 == child_pid) {
-      Arena arena_peer = arena_make_from_virtual_mem(4 * KiB);
+    for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
+      struct pollfd fd = AT(fds, res_tracker.resp.peers.len, i);
+      Peer *peer = dyn_at_ptr(&res_tracker.resp.peers, i);
 
-      Error err = peer_connect(&peer, &arena_peer);
-      if (err) {
-        exit((int)err);
+      if ((fd.revents & POLLERR) || (fd.revents & POLLHUP)) {
+        log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
+            L("ipv4", peer->ipv4), L("port", peer->port),
+            L("fd.revents", (u64)fd.revents));
+        // TODO: Remove peer.
+        continue;
       }
-      peer_run(&peer, req_tracker.info_hash, &arena_peer);
-      exit(0);
+
+      bool can_read = fd.revents & POLLIN;
+      bool can_write = fd.revents & POLLOUT;
+      Error err = peer_tick(peer, can_read, can_write);
+      if (err) {
+        log(LOG_LEVEL_ERROR, "peer_tick error", &arena, L("ipv4", peer->ipv4),
+            L("port", peer->port), L("err", err));
+        // TODO: Remove peer.
+        continue;
+      }
     }
   }
-#endif
-
-  // TODO: Fetch info from the tracker regularly.
-  sleep(UINT32_MAX);
 }

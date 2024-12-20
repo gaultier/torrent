@@ -145,3 +145,5 @@ static Error peer_tick(Peer *peer, bool can_read, bool can_write) {
   }
   ASSERT(0);
 }
+
+static void peer_end(Peer *peer) { writer_close(&peer->writer); }

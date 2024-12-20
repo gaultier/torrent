@@ -1,6 +1,11 @@
 #include "peer.c"
 #include <sys/poll.h>
 
+typedef struct {
+  struct pollfd *data;
+  u64 len;
+} SlicePollFd;
+
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
@@ -43,8 +48,11 @@ int main(int argc, char *argv[]) {
   }
 
   DynPeer peers = res_tracker.resp.peers;
+  SlicePollFd poll_fds = {
+      .data = arena_new(&arena, struct pollfd, peers.len),
+      .len = peers.len,
+  };
 
-  struct pollfd *fds = arena_new(&arena, struct pollfd, peers.len);
   for (u64 i = 0; i < peers.len; i++) {
     Peer *peer = dyn_at_ptr(&peers, i);
     peer->arena = arena_make_from_virtual_mem(4 * KiB);
@@ -52,31 +60,37 @@ int main(int argc, char *argv[]) {
     if (err) {
       log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
           L("port", peer->port), L("err", err));
-      // TODO: Remove peer.
+      peer_end(peer);
+      slice_swap_remove(&peers, i);
       continue;
     }
 
-    struct pollfd *fd = AT_PTR(fds, peers.len, i);
+    struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
     fd->fd = (int)(u64)peer->reader.ctx;
     fd->events = POLLIN | POLLOUT;
   }
 
   for (;;) {
-    int res_poll = poll(fds, peers.len, 0);
+    ASSERT(peers.len == poll_fds.len);
+
+    int res_poll = poll(poll_fds.data, poll_fds.len, 0);
     if (-1 == res_poll) {
       log(LOG_LEVEL_ERROR, "poll", &arena, L("err", errno));
       return errno;
     }
 
     for (u64 i = 0; i < peers.len; i++) {
-      struct pollfd fd = AT(fds, peers.len, i);
+      struct pollfd fd = slice_at(poll_fds, i);
       Peer *peer = dyn_at_ptr(&peers, i);
 
       if ((fd.revents & POLLERR) || (fd.revents & POLLHUP)) {
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port),
             L("fd.revents", (u64)fd.revents));
-        // TODO: Remove peer.
+
+        peer_end(peer);
+        slice_swap_remove(&peers, i);
+        slice_swap_remove(&poll_fds, i);
         continue;
       }
 
@@ -86,7 +100,10 @@ int main(int argc, char *argv[]) {
       if (err) {
         log(LOG_LEVEL_ERROR, "peer_tick error", &arena, L("ipv4", peer->ipv4),
             L("port", peer->port), L("err", err));
-        // TODO: Remove peer.
+
+        peer_end(peer);
+        slice_swap_remove(&peers, i);
+        slice_swap_remove(&poll_fds, i);
         continue;
       }
     }

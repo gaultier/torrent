@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
 
     struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
     fd->fd = (int)(u64)peer->reader.ctx;
+    ASSERT(fd->fd > 0);
     fd->events = POLLIN | POLLOUT;
   }
 
@@ -83,10 +84,15 @@ int main(int argc, char *argv[]) {
       struct pollfd fd = slice_at(poll_fds, i);
       Peer *peer = dyn_at_ptr(&peers, i);
 
-      if ((fd.revents & POLLERR) || (fd.revents & POLLHUP)) {
+      if ((fd.revents & POLLERR) || (fd.revents & POLLHUP) ||
+          (fd.revents & POLLNVAL)) {
+        int error = 0;
+        socklen_t errlen = sizeof(error);
+        getsockopt(fd.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port),
-            L("fd.revents", (u64)fd.revents));
+            L("fd.revents", (u64)fd.revents), L("err", error));
 
         peer_end(peer);
         slice_swap_remove(&peers, i);

@@ -94,12 +94,11 @@ typedef union {
   return dyn_slice(String, sb);
 }
 
-[[nodiscard]] static Error peer_send_handshake(Peer *peer, String info_hash,
-                                               Arena *arena) {
-  String handshake = peer_make_handshake(info_hash, arena);
+[[nodiscard]] static Error peer_send_handshake(Peer *peer) {
+  String handshake = peer_make_handshake(peer->info_hash, &peer->arena);
   Error err = writer_write_all(peer->writer, handshake);
   if (err) {
-    log(LOG_LEVEL_ERROR, "peer handshake", arena, L("ipv4", peer->ipv4),
+    log(LOG_LEVEL_ERROR, "peer handshake", &peer->arena, L("ipv4", peer->ipv4),
         L("port", peer->port), L("err", err));
     return err;
   }
@@ -108,18 +107,29 @@ typedef union {
 }
 
 [[maybe_unused]]
-static void peer_run(Peer *peer, String info_hash, Arena *arena) {
-  log(LOG_LEVEL_INFO, "running peer", arena, L("ipv4", peer->ipv4),
+// TODO: Report if progress was made?
+static Error peer_tick(Peer *peer) {
+  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
       L("port", peer->port));
 
   Error err = 0;
 
-  if ((err = peer_send_handshake(peer, info_hash, arena))) {
-    return;
+  switch (peer->state) {
+  case PEER_STATE_NONE: {
+    err = peer_send_handshake(peer);
+    peer->state = PEER_STATE_HANDSHAKE_SENT;
+    return err;
   }
-
-  for (;;) {
-    sleep(UINT32_MAX);
+  case PEER_STATE_HANDSHAKE_SENT: {
     // TODO
+    return 0;
   }
+  case PEER_SENT_HANDSHAKE_RECEIVED: {
+    // TODO
+    return 0;
+  }
+  default:
+    ASSERT(0);
+  }
+  ASSERT(0);
 }

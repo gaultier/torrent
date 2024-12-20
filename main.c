@@ -41,12 +41,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  struct sigaction sa = {.sa_flags = SA_NOCLDWAIT};
-  if (-1 == sigaction(SIGCHLD, &sa, nullptr)) {
-    log(LOG_LEVEL_ERROR, "sigaction(2)", &arena, L("err", errno));
-    return errno;
-  }
-
+#if 0
   for (u64 i = 0; i < res_tracker.resp.peers.len; i++) {
     Peer peer = slice_at(res_tracker.resp.peers, i);
     log(LOG_LEVEL_INFO, "spawning peer", &arena, L("i", i),
@@ -69,6 +64,7 @@ int main(int argc, char *argv[]) {
       exit(0);
     }
   }
+#endif
 
   // TODO: Fetch info from the tracker regularly.
   sleep(UINT32_MAX);

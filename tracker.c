@@ -71,11 +71,21 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
   memcpy(hash.data, sha1_hash, hash.len);
 }
 
+typedef enum {
+  PEER_STATE_NONE,
+  PEER_STATE_HANDSHAKE_SENT,
+  PEER_SENT_HANDSHAKE_RECEIVED,
+  // More...
+} PeerState;
+
 typedef struct {
   u32 ipv4;
   u16 port;
   Reader reader;
   Writer writer;
+  PeerState state;
+  String info_hash;
+  Arena arena;
 } Peer;
 
 typedef struct {

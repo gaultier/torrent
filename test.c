@@ -278,15 +278,14 @@ static void test_tracker_compute_info_hash() {
 static void test_peer_send_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
 
-  Peer peer = {
-      .port = 6881,
-      .writer = writer_make_for_buf(&arena),
-  };
+  Peer peer = {0};
+  peer.port = 6881;
+  peer.writer = writer_make_for_buf(&arena);
+  peer.arena = arena;
+  peer.info_hash = S("abcdefghijklmnopqrst");
+  ASSERT(20 == peer.info_hash.len);
 
-  String info_hash = S("abcdefghijklmnopqrst");
-  ASSERT(20 == info_hash.len);
-
-  Error err = peer_send_handshake(&peer, info_hash, &arena);
+  Error err = peer_send_handshake(&peer);
   ASSERT(0 == err);
   WriterBufCtx *ctx = peer.writer.ctx;
 

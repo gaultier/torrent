@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
   for (;;) {
     ASSERT(peers.len == poll_fds.len);
 
-    int res_poll = poll(poll_fds.data, poll_fds.len, 0);
+    int res_poll = poll(poll_fds.data, poll_fds.len, -1);
     if (-1 == res_poll) {
       log(LOG_LEVEL_ERROR, "poll", &arena, L("err", errno));
       return errno;
@@ -91,7 +91,8 @@ int main(int argc, char *argv[]) {
 
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port),
-            L("fd.revents", (u64)fd.revents), L("err", error));
+            L("fd.revents", (u64)fd.revents), L("err", error),
+            L("peer_count", peers.len));
 
         peer_end(peer);
         slice_swap_remove(&peers, i);

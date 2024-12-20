@@ -2,6 +2,8 @@
 
 #include "tracker.c"
 
+#define HANDSHAKE_LENGTH 68
+
 typedef struct {
   u32 index, begin, length;
 } PeerMessageRequest;
@@ -97,7 +99,7 @@ typedef union {
   ASSERT(20 == peer_id.len);
   dyn_append_slice(&sb, peer_id, arena);
 
-  ASSERT(68 == sb.len);
+  ASSERT(HANDSHAKE_LENGTH == sb.len);
   return dyn_slice(String, sb);
 }
 
@@ -111,6 +113,22 @@ typedef union {
   }
 
   return 0;
+}
+
+[[nodiscard]] static Error peer_receive_handshake(Peer *peer) {
+  Error err = 0;
+
+  IoOperationResult res_io =
+      reader_read_exactly(&peer->reader, HANDSHAKE_LENGTH, &peer->arena);
+  if (res_io.err) {
+    return err;
+  }
+  log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
+      L("ipv4", peer->ipv4), L("port", peer->port), L("recv", res_io.s));
+
+  // TODO: Validate handshake.
+
+  return err;
 }
 
 [[maybe_unused]]
@@ -132,7 +150,9 @@ static Error peer_tick(Peer *peer, bool can_read, bool can_write) {
   }
   case PEER_STATE_HANDSHAKE_SENT: {
     if (can_read) {
-      // TODO: read handshake.
+      err = peer_receive_handshake(peer);
+      peer->state = PEER_SENT_HANDSHAKE_RECEIVED;
+      return err;
     }
     return 0;
   }

@@ -86,7 +86,6 @@ typedef struct {
   PeerState state;
   String info_hash;
   u64 next_tick_ns;
-  bool suspended;
   Arena arena;
 } Peer;
 

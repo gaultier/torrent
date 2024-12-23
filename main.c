@@ -60,20 +60,16 @@ int main(int argc, char *argv[]) {
       .len = peers.len,
   };
 
-  {
-    u64 i = 0;
-    while (i < peers.len) {
-      Peer *peer = dyn_at_ptr(&peers, i);
-      peer->arena = arena_make_from_virtual_mem(4 * KiB);
-      Error err = peer_connect(peer);
-      if (err) {
-        log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
-            L("port", peer->port), L("err", err));
-        peer_end(peer);
-        slice_swap_remove(&peers, i);
-        continue;
-      }
-      i += 1;
+  for (u64 i = 0; i < peers.len; i++) {
+    Peer *peer = dyn_at_ptr(&peers, i);
+    peer->arena = arena_make_from_virtual_mem(4 * KiB);
+    Error err = peer_connect(peer);
+    if (err) {
+      log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
+          L("port", peer->port), L("err", err));
+      peer_end(peer);
+      slice_swap_remove(&peers, i);
+      i -= 1;
     }
   }
 
@@ -89,7 +85,6 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
-      peer->suspended = false;
       poll_fds.len += 1;
 
       struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, poll_fds.len - 1);
@@ -110,18 +105,22 @@ int main(int argc, char *argv[]) {
       return errno;
     }
 
-    u64 i = 0;
-    while (i < peers.len) {
-      Peer *peer = dyn_at_ptr(&peers, i);
-      if (peer->suspended) {
-        log(LOG_LEVEL_INFO, "skipping suspended peer", &arena,
-            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
-            L("peer.next_tick_ns", peer->next_tick_ns));
-        i += 1;
+    for (u64 pi = 0; pi < peers.len; pi++) {
+      Peer *peer = dyn_at_ptr(&peers, pi);
+
+      u64 fi = UINT64_MAX;
+      for (u64 j = 0; j < poll_fds.len; j++) {
+        struct pollfd pollfd = slice_at(poll_fds, j);
+        if (pollfd.fd == (int)(u64)peer->reader.ctx) {
+          fi = j;
+          break;
+        }
+      }
+      if (UINT64_MAX == fi) {
         continue;
       }
 
-      struct pollfd fd = slice_at(poll_fds, i);
+      struct pollfd fd = slice_at(poll_fds, fi);
 
       if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
         int error = 0;
@@ -134,8 +133,9 @@ int main(int argc, char *argv[]) {
             L("peer_count", peers.len));
 
         peer_end(peer);
-        slice_swap_remove(&peers, i);
-        slice_swap_remove(&poll_fds, i);
+        slice_swap_remove(&peers, pi);
+        slice_swap_remove(&poll_fds, fi);
+        pi -= 1;
         continue;
       }
 
@@ -146,12 +146,11 @@ int main(int argc, char *argv[]) {
         ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
         u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
         peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
-        peer->suspended = true;
         log(LOG_LEVEL_INFO, "delaying inactive peer", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", ts_ns),
             L("peer.next_tick_ns", peer->next_tick_ns),
             L("revents", (u32)fd.revents));
-        i += 1;
+        pi -= 1;
         continue;
       }
 
@@ -161,10 +160,12 @@ int main(int argc, char *argv[]) {
             L("port", peer->port), L("err", res_peer_tick.err));
 
         peer_end(peer);
-        slice_swap_remove(&peers, i);
-        slice_swap_remove(&poll_fds, i);
+        slice_swap_remove(&peers, pi);
+        slice_swap_remove(&poll_fds, fi);
+        pi -= 1;
         continue;
       }
+
       log(LOG_LEVEL_INFO, "peer_tick", &arena, L("ipv4", peer->ipv4),
           L("port", peer->port),
           L("progressed", (u32)res_peer_tick.progressed));
@@ -173,16 +174,12 @@ int main(int argc, char *argv[]) {
         ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
         u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
         peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
-        peer->suspended = true;
         log(LOG_LEVEL_INFO, "delaying unprogressed peer", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
             L("peer.next_tick_ns", peer->next_tick_ns));
       } else {
         peer->next_tick_ns = 0;
-        peer->suspended = false;
       }
-
-      i += 1;
     }
     usleep(100'000);
   }

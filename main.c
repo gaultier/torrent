@@ -47,29 +47,38 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  DynPeer peers = {0}; // res_tracker.resp.peers;
-  *dyn_push(&peers, &arena) = (Peer){.ipv4 = 2130706433, .port = 1234};
+  DynPeer peers = res_tracker.resp.peers;
+  *dyn_push(&peers, &arena) = (Peer){
+      .ipv4 = 2130706433,
+      .port = 1234,
+      .info_hash = req_tracker.info_hash,
+  };
   SlicePollFd poll_fds = {
       .data = arena_new(&arena, struct pollfd, peers.len),
       .len = peers.len,
   };
 
-  for (u64 i = 0; i < peers.len; i++) {
-    Peer *peer = dyn_at_ptr(&peers, i);
-    peer->arena = arena_make_from_virtual_mem(4 * KiB);
-    Error err = peer_connect(peer);
-    if (err) {
-      log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
-          L("port", peer->port), L("err", err));
-      peer_end(peer);
-      slice_swap_remove(&peers, i);
-      continue;
-    }
+  {
+    u64 i = 0;
+    while (i < peers.len) {
+      Peer *peer = dyn_at_ptr(&peers, i);
+      peer->arena = arena_make_from_virtual_mem(4 * KiB);
+      Error err = peer_connect(peer);
+      if (err) {
+        log(LOG_LEVEL_ERROR, "peer connect", &arena, L("ipv4", peer->ipv4),
+            L("port", peer->port), L("err", err));
+        peer_end(peer);
+        slice_swap_remove(&peers, i);
+        continue;
+      }
 
-    struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
-    fd->fd = (int)(u64)peer->reader.ctx;
-    ASSERT(fd->fd > 0);
-    fd->events = POLLIN | POLLOUT;
+      struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
+      fd->fd = (int)(u64)peer->reader.ctx;
+      ASSERT(fd->fd > 0);
+      fd->events = POLLIN | POLLOUT;
+
+      i += 1;
+    }
   }
 
   for (;;) {
@@ -81,7 +90,8 @@ int main(int argc, char *argv[]) {
       return errno;
     }
 
-    for (u64 i = 0; i < peers.len; i++) {
+    u64 i = 0;
+    while (i < peers.len) {
       struct pollfd fd = slice_at(poll_fds, i);
       Peer *peer = dyn_at_ptr(&peers, i);
 
@@ -114,5 +124,7 @@ int main(int argc, char *argv[]) {
         continue;
       }
     }
+    usleep(100'000);
+    i += 1;
   }
 }

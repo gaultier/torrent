@@ -48,6 +48,8 @@ int main(int argc, char *argv[]) {
   }
 
   DynPeer peers = res_tracker.resp.peers;
+  ASSERT(20 == req_tracker.info_hash.len);
+
   *dyn_push(&peers, &arena) = (Peer){
       .ipv4 = 2130706433,
       .port = 1234,
@@ -96,7 +98,8 @@ int main(int argc, char *argv[]) {
       fd->events = POLLIN | POLLOUT;
 
       log(LOG_LEVEL_INFO, "queued peer for polling", &arena,
-          L("ipv4", peer->ipv4), L("port", peer->port));
+          L("ipv4", peer->ipv4), L("port", peer->port),
+          L("poll_fds.len", poll_fds.len));
     }
 
     ASSERT(poll_fds.len <= peers.len);
@@ -114,6 +117,7 @@ int main(int argc, char *argv[]) {
         log(LOG_LEVEL_INFO, "skipping suspended peer", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
             L("peer.next_tick_ns", peer->next_tick_ns));
+        i += 1;
         continue;
       }
 
@@ -145,7 +149,9 @@ int main(int argc, char *argv[]) {
         peer->suspended = true;
         log(LOG_LEVEL_INFO, "delaying inactive peer", &arena,
             L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", ts_ns),
-            L("peer.next_tick_ns", peer->next_tick_ns));
+            L("peer.next_tick_ns", peer->next_tick_ns),
+            L("revents", (u32)fd.revents));
+        i += 1;
         continue;
       }
 
@@ -175,8 +181,9 @@ int main(int argc, char *argv[]) {
         peer->next_tick_ns = 0;
         peer->suspended = false;
       }
+
+      i += 1;
     }
     usleep(100'000);
-    i += 1;
   }
 }

@@ -148,44 +148,52 @@ typedef union {
   return 0;
 }
 
+typedef struct {
+  Error err;
+  /* u32 next_tick_ms; */
+  bool progressed;
+} PeerTickResult;
+
 [[maybe_unused]]
 // TODO: Report if progress was made?
-static Error peer_tick(Peer *peer, bool can_read, bool can_write) {
-  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port));
+static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
+  ASSERT(can_read || can_write);
 
-  Error err = 0;
+  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
+      L("port", peer->port), L("peer.state", peer->state),
+      L("can_read", (u32)can_read), L("can_write", (u32)can_write));
+
+  PeerTickResult res = {0};
 
   switch (peer->state) {
   case PEER_STATE_NONE: {
     if (can_write) {
-      err = peer_send_handshake(peer);
+      res.err = peer_send_handshake(peer);
       peer->state = PEER_STATE_HANDSHAKE_SENT;
       log(LOG_LEVEL_INFO, "peer sent handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
+          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
 
-      return err;
+      res.progressed = res.err == 0;
     }
-    return 0;
+    break;
   }
   case PEER_STATE_HANDSHAKE_SENT: {
     if (can_read) {
-      err = peer_receive_handshake(peer);
+      res.err = peer_receive_handshake(peer);
       peer->state = PEER_SENT_HANDSHAKE_RECEIVED;
       log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
-      return err;
+          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
+      res.progressed = res.err == 0;
     }
-    return 0;
+    break;
   }
   case PEER_SENT_HANDSHAKE_RECEIVED: {
-    // TODO
-    return 0;
+    break;
   }
   default:
     ASSERT(0);
   }
-  ASSERT(0);
+  return res;
 }
 
 static void peer_end(Peer *peer) { writer_close(&peer->writer); }

@@ -71,18 +71,35 @@ int main(int argc, char *argv[]) {
         slice_swap_remove(&peers, i);
         continue;
       }
-
-      struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
-      fd->fd = (int)(u64)peer->reader.ctx;
-      ASSERT(fd->fd > 0);
-      fd->events = POLLIN | POLLOUT;
-
       i += 1;
     }
   }
 
   for (;;) {
-    ASSERT(peers.len == poll_fds.len);
+    struct timespec ts_now = {0};
+    ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts_now));
+    u64 now_ns = (u64)ts_now.tv_sec * 1000'1000'1000 + (u64)ts_now.tv_nsec;
+
+    poll_fds.len = 0;
+    for (u64 i = 0; i < peers.len; i++) {
+      Peer *peer = AT_PTR(peers.data, peers.len, i);
+      if (!(0 == peer->next_tick_ns || peer->next_tick_ns >= now_ns)) {
+        continue;
+      }
+
+      peer->suspended = false;
+      poll_fds.len += 1;
+
+      struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, poll_fds.len - 1);
+      fd->fd = (int)(u64)peer->reader.ctx;
+      ASSERT(fd->fd > 0);
+      fd->events = POLLIN | POLLOUT;
+
+      log(LOG_LEVEL_INFO, "queued peer for polling", &arena,
+          L("ipv4", peer->ipv4), L("port", peer->port));
+    }
+
+    ASSERT(poll_fds.len <= peers.len);
 
     int res_poll = poll(poll_fds.data, poll_fds.len, -1);
     if (-1 == res_poll) {
@@ -92,8 +109,15 @@ int main(int argc, char *argv[]) {
 
     u64 i = 0;
     while (i < peers.len) {
-      struct pollfd fd = slice_at(poll_fds, i);
       Peer *peer = dyn_at_ptr(&peers, i);
+      if (peer->suspended) {
+        log(LOG_LEVEL_INFO, "skipping suspended peer", &arena,
+            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
+            L("peer.next_tick_ns", peer->next_tick_ns));
+        continue;
+      }
+
+      struct pollfd fd = slice_at(poll_fds, i);
 
       if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
         int error = 0;
@@ -113,15 +137,43 @@ int main(int argc, char *argv[]) {
 
       bool can_read = fd.revents & POLLIN;
       bool can_write = fd.revents & POLLOUT;
-      Error err = peer_tick(peer, can_read, can_write);
-      if (err) {
-        log(LOG_LEVEL_ERROR, "peer_tick error", &arena, L("ipv4", peer->ipv4),
-            L("port", peer->port), L("err", err));
+      if (!(can_read || can_write)) {
+        struct timespec ts = {0};
+        ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
+        u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
+        peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
+        peer->suspended = true;
+        log(LOG_LEVEL_INFO, "delaying inactive peer", &arena,
+            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", ts_ns),
+            L("peer.next_tick_ns", peer->next_tick_ns));
+        continue;
+      }
+
+      PeerTickResult res_peer_tick = peer_tick(peer, can_read, can_write);
+      if (res_peer_tick.err) {
+        log(LOG_LEVEL_ERROR, "peer_tick", &arena, L("ipv4", peer->ipv4),
+            L("port", peer->port), L("err", res_peer_tick.err));
 
         peer_end(peer);
         slice_swap_remove(&peers, i);
         slice_swap_remove(&poll_fds, i);
         continue;
+      }
+      log(LOG_LEVEL_INFO, "peer_tick", &arena, L("ipv4", peer->ipv4),
+          L("port", peer->port),
+          L("progressed", (u32)res_peer_tick.progressed));
+      if (!res_peer_tick.progressed) {
+        struct timespec ts = {0};
+        ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
+        u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
+        peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
+        peer->suspended = true;
+        log(LOG_LEVEL_INFO, "delaying unprogressed peer", &arena,
+            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
+            L("peer.next_tick_ns", peer->next_tick_ns));
+      } else {
+        peer->next_tick_ns = 0;
+        peer->suspended = false;
       }
     }
     usleep(100'000);

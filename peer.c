@@ -3,6 +3,7 @@
 #include "tracker.c"
 
 #define HANDSHAKE_LENGTH 68
+#define ERR_HANDSHAKE_INVALID 100
 
 typedef struct {
   u32 index, begin, length;
@@ -112,19 +113,39 @@ typedef union {
 }
 
 [[nodiscard]] static Error peer_receive_handshake(Peer *peer) {
-  Error err = 0;
-
   IoOperationResult res_io =
       reader_read_exactly(&peer->reader, HANDSHAKE_LENGTH, &peer->arena);
   if (res_io.err) {
-    return err;
+    return res_io.err;
   }
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
       L("ipv4", peer->ipv4), L("port", peer->port), L("recv", res_io.s));
 
-  // TODO: Validate handshake.
+  if (HANDSHAKE_LENGTH != res_io.s.len) {
+    return ERR_HANDSHAKE_INVALID;
+  }
 
-  return err;
+  String prefix = slice_range(res_io.s, 0, 28);
+  String prefix_expected = S("\x13"
+                             "BitTorrent protocol"
+                             "\x00"
+                             "\x00"
+                             "\x00"
+                             "\x00"
+                             "\x00"
+                             "\x00"
+                             "\x00"
+                             "\x00");
+  if (!string_eq(prefix, prefix_expected)) {
+    return ERR_HANDSHAKE_INVALID;
+  }
+
+  String info_hash_received = slice_range(res_io.s, HANDSHAKE_LENGTH - 20, 0);
+  if (!string_eq(info_hash_received, peer->info_hash)) {
+    return ERR_HANDSHAKE_INVALID;
+  }
+
+  return 0;
 }
 
 [[maybe_unused]]

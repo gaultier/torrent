@@ -58,6 +58,7 @@ typedef union {
   }
 
   struct sockaddr_in addr = {
+      .sin_family = AF_INET,
       .sin_port = htons(peer->port),
       .sin_addr = {htonl(peer->ipv4)},
   };

@@ -71,33 +71,25 @@ int main(int argc, char *argv[]) {
       slice_swap_remove(&peers, i);
       i -= 1;
     }
+
+    peer->io_subscription = IO_OP_WILL_READ;
   }
 
   for (;;) {
-    struct timespec ts_now = {0};
-    ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts_now));
-    u64 now_ns = (u64)ts_now.tv_sec * 1000'1000'1000 + (u64)ts_now.tv_nsec;
-
-    poll_fds.len = 0;
     for (u64 i = 0; i < peers.len; i++) {
       Peer *peer = AT_PTR(peers.data, peers.len, i);
-      if (!(0 == peer->next_tick_ns || peer->next_tick_ns >= now_ns)) {
-        continue;
-      }
-
-      poll_fds.len += 1;
-
       struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, poll_fds.len - 1);
       fd->fd = (int)(u64)peer->reader.ctx;
       ASSERT(fd->fd > 0);
-      fd->events = POLLIN | POLLOUT;
+      fd->events |= (peer->io_subscription & IO_OP_WILL_READ) ? POLLIN : 0;
+      fd->events |= (peer->io_subscription & IO_OP_WILL_WRITE) ? POLLOUT : 0;
 
       log(LOG_LEVEL_INFO, "queued peer for polling", &arena,
           L("ipv4", peer->ipv4), L("port", peer->port),
-          L("poll_fds.len", poll_fds.len));
+          L("fd.events", (int)fd->events), L("poll_fds.len", poll_fds.len));
     }
 
-    ASSERT(poll_fds.len <= peers.len);
+    ASSERT(poll_fds.len == peers.len);
 
     int res_poll = poll(poll_fds.data, poll_fds.len, -1);
     if (-1 == res_poll) {
@@ -105,22 +97,9 @@ int main(int argc, char *argv[]) {
       return errno;
     }
 
-    for (u64 pi = 0; pi < peers.len; pi++) {
-      Peer *peer = dyn_at_ptr(&peers, pi);
-
-      u64 fi = UINT64_MAX;
-      for (u64 j = 0; j < poll_fds.len; j++) {
-        struct pollfd pollfd = slice_at(poll_fds, j);
-        if (pollfd.fd == (int)(u64)peer->reader.ctx) {
-          fi = j;
-          break;
-        }
-      }
-      if (UINT64_MAX == fi) {
-        continue;
-      }
-
-      struct pollfd fd = slice_at(poll_fds, fi);
+    for (u64 i = 0; i < peers.len; i++) {
+      Peer *peer = dyn_at_ptr(&peers, i);
+      struct pollfd fd = slice_at(poll_fds, i);
 
       if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
         int error = 0;
@@ -133,24 +112,15 @@ int main(int argc, char *argv[]) {
             L("peer_count", peers.len));
 
         peer_end(peer);
-        slice_swap_remove(&peers, pi);
-        slice_swap_remove(&poll_fds, fi);
-        pi -= 1;
+        slice_swap_remove(&peers, i);
+        slice_swap_remove(&poll_fds, i);
+        i -= 1;
         continue;
       }
 
       bool can_read = fd.revents & POLLIN;
       bool can_write = fd.revents & POLLOUT;
       if (!(can_read || can_write)) {
-        struct timespec ts = {0};
-        ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
-        u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
-        peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
-        log(LOG_LEVEL_INFO, "delaying inactive peer", &arena,
-            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", ts_ns),
-            L("peer.next_tick_ns", peer->next_tick_ns),
-            L("revents", (u32)fd.revents));
-        pi -= 1;
         continue;
       }
 
@@ -160,27 +130,16 @@ int main(int argc, char *argv[]) {
             L("port", peer->port), L("err", res_peer_tick.err));
 
         peer_end(peer);
-        slice_swap_remove(&peers, pi);
-        slice_swap_remove(&poll_fds, fi);
-        pi -= 1;
+        slice_swap_remove(&peers, i);
+        slice_swap_remove(&poll_fds, i);
+        i -= 1;
         continue;
       }
 
       log(LOG_LEVEL_INFO, "peer_tick", &arena, L("ipv4", peer->ipv4),
           L("port", peer->port),
-          L("progressed", (u32)res_peer_tick.progressed));
-      if (!res_peer_tick.progressed) {
-        struct timespec ts = {0};
-        ASSERT(0 == clock_gettime(CLOCK_MONOTONIC, &ts));
-        u64 ts_ns = (u64)ts.tv_sec * 1000'1000'1000 + (u64)ts.tv_nsec;
-        peer->next_tick_ns = ts_ns + 5'1000'1000'1000 /* 5s */;
-        log(LOG_LEVEL_INFO, "delaying unprogressed peer", &arena,
-            L("ipv4", peer->ipv4), L("port", peer->port), L("now_ns", now_ns),
-            L("peer.next_tick_ns", peer->next_tick_ns));
-      } else {
-        peer->next_tick_ns = 0;
-      }
+          L("res.io_subscription", res_peer_tick.io_subscription));
+      peer->io_subscription = res_peer_tick.io_subscription;
     }
-    usleep(100'000);
   }
 }

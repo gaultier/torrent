@@ -74,9 +74,15 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 typedef enum {
   PEER_STATE_NONE,
   PEER_STATE_HANDSHAKE_SENT,
-  PEER_SENT_HANDSHAKE_RECEIVED,
+  PEER_STATE_HANDSHAKE_RECEIVED,
   // More...
 } PeerState;
+
+typedef enum {
+  IO_OP_WILL_NONE = 0,
+  IO_OP_WILL_READ = 0b01,
+  IO_OP_WILL_WRITE = 0b10,
+} IoOperationSubscription;
 
 typedef struct {
   u32 ipv4;
@@ -85,7 +91,7 @@ typedef struct {
   Writer writer;
   PeerState state;
   String info_hash;
-  u64 next_tick_ns;
+  IoOperationSubscription io_subscription;
   Arena arena;
 } Peer;
 

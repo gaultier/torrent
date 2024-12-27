@@ -57,4 +57,6 @@ int main(int argc, char *argv[]) {
     Peer *peer = dyn_at_ptr(&peers_active, i);
     peer_spawn(peer);
   }
+
+  sleep(10000);
 }

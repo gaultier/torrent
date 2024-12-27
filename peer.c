@@ -72,6 +72,8 @@ DYN(Peer);
   if (PEER_STATE_CONNECTED == peer->state) {
     return 0;
   }
+  log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
+      L("port", peer->port));
 
   int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
@@ -79,6 +81,8 @@ DYN(Peer);
         L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
     return (Error)errno;
   }
+  peer->reader = reader_make_from_socket(sock_fd);
+  peer->writer = writer_make_from_socket(sock_fd);
 
   struct sockaddr_in addr = {
       .sin_family = AF_INET,
@@ -87,14 +91,16 @@ DYN(Peer);
   };
 
   if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
-    if (EINPROGRESS != errno) {
+    if (EINPROGRESS == errno) {
+      log(LOG_LEVEL_INFO, "peer connect in progress", &peer->arena,
+          L("ipv4", peer->ipv4), L("port", peer->port));
+      return 0;
+    } else {
       log(LOG_LEVEL_ERROR, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
           L("port", peer->port), L("err", errno));
       return (Error)errno;
     }
   }
-  peer->reader = reader_make_from_socket(sock_fd);
-  peer->writer = writer_make_from_socket(sock_fd);
 
   log(LOG_LEVEL_INFO, "peer connected", &peer->arena, L("ipv4", peer->ipv4),
       L("port", peer->port));

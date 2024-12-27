@@ -70,7 +70,6 @@ DYN(Peer);
   }
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
-  peer->state = PEER_STATE_CONNECTING;
 
   int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
@@ -92,6 +91,7 @@ DYN(Peer);
     if (EINPROGRESS == errno) {
       log(LOG_LEVEL_INFO, "peer connect in progress", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port));
+      peer->state = PEER_STATE_CONNECTING;
       return 0;
     } else {
       log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,

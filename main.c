@@ -111,6 +111,7 @@ int main(int argc, char *argv[]) {
 
         peer_end(peer);
         slice_swap_remove(&peers_active, i);
+        slice_swap_remove(&poll_fds, i);
         i -= 1;
         continue;
       }

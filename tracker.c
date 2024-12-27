@@ -92,6 +92,7 @@ typedef struct {
   PeerState state;
   String info_hash;
   IoOperationSubscription io_subscription;
+  int parent_pipe_r; // TODO
   Arena arena;
 } Peer;
 

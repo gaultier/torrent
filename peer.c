@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tracker.c"
+#include <sys/poll.h>
 
 #define HANDSHAKE_LENGTH 68
 #define ERR_HANDSHAKE_INVALID 100
@@ -196,8 +197,6 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   return res;
 }
 
-static void peer_end(Peer *peer) { writer_close(&peer->writer); }
-
 static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
                              u64 count, Arena *arena) {
   u64 real_count = MIN(peers_all->len, count);
@@ -208,4 +207,74 @@ static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
     *dyn_push(peers_active, arena) = peer;
     slice_swap_remove(peers_all, idx);
   }
+}
+
+static Error peer_run(Peer *peer) {
+  log(LOG_LEVEL_INFO, "peer_run", &peer->arena, L("ipv4", peer->ipv4),
+      L("port", peer->port), L("peer.state", peer->state));
+
+  {
+    Error err = peer_connect(peer);
+    if (err) {
+      log(LOG_LEVEL_ERROR, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
+          L("port", peer->port), L("err", err));
+      return err;
+    }
+  }
+#if 0
+  struct pollfd fds[2] = {
+      {
+          .fd = (int)(u64)peer->reader.ctx,
+          .events = POLL_IN,
+      },
+      {
+          .fd = (int)peer->parent_pipe_r,
+          .events = POLL_IN,
+      },
+  };
+#endif
+
+  for (;;) {
+    {
+      Error err = peer_send_handshake(peer);
+      if (err) {
+        log(LOG_LEVEL_ERROR, "peer sent handshake", &peer->arena,
+            L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
+        return err;
+      }
+      log(LOG_LEVEL_INFO, "peer sent handshake", &peer->arena,
+          L("ipv4", peer->ipv4), L("port", peer->port));
+    }
+
+    {
+      Error err = peer_receive_handshake(peer);
+      if (err) {
+        log(LOG_LEVEL_ERROR, "peer receive handshake", &peer->arena,
+            L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
+        return err;
+      }
+      log(LOG_LEVEL_INFO, "peer receive handshake", &peer->arena,
+          L("ipv4", peer->ipv4), L("port", peer->port));
+    }
+
+    sleep(100000);
+  }
+}
+
+static int peer_spawn(Peer *peer) {
+  int child_pid = fork();
+  if (child_pid == -1) {
+    log(LOG_LEVEL_ERROR, "peer spawn", &peer->arena, L("ipv4", peer->ipv4),
+        L("port", peer->port), L("err", errno));
+    return errno;
+  }
+
+  // Parent.
+  if (child_pid == 0) {
+    return child_pid;
+  }
+
+  // Child.
+  Error err = peer_run(peer);
+  exit((int)err);
 }

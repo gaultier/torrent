@@ -1,7 +1,6 @@
 #pragma once
 
 #include "tracker.c"
-#include <sys/poll.h>
 
 #define HANDSHAKE_LENGTH 68
 #define ERR_HANDSHAKE_INVALID 100
@@ -66,11 +65,12 @@ DYN(Peer);
 [[maybe_unused]] [[nodiscard]] static Error peer_connect_if_needed(Peer *peer) {
   ASSERT(0 != peer->address.ip);
   ASSERT(0 != peer->address.port);
-  if (PEER_STATE_CONNECTED == peer->state) {
+  if (PEER_STATE_NONE != peer->state) {
     return 0;
   }
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
+  peer->state = PEER_STATE_CONNECTING;
 
   int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
@@ -203,6 +203,9 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
       L("can_read", (u32)can_read), L("can_write", (u32)can_write));
 
   PeerTickResult res = {0};
+  if (PEER_STATE_CONNECTING == peer->state) {
+    peer->state = PEER_STATE_CONNECTED;
+  }
 
   switch (peer->state) {
   case PEER_STATE_CONNECTED: {
@@ -232,6 +235,7 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
     break;
   }
   case PEER_STATE_NONE:
+  case PEER_STATE_CONNECTING:
   default:
     ASSERT(0);
   }

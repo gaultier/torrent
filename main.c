@@ -1,4 +1,5 @@
 #include "peer.c"
+#include <sys/poll.h>
 
 typedef struct {
   struct pollfd *data;
@@ -50,6 +51,8 @@ int main(int argc, char *argv[]) {
         L("err", res_tracker.status));
     return 1;
   }
+  log(LOG_LEVEL_INFO, "tracker response", &arena,
+      L("addresses count", res_tracker.resp.peer_addresses.len));
 
   DynIpv4Address peer_addresses = res_tracker.resp.peer_addresses;
   ASSERT(20 == req_tracker.info_hash.len);
@@ -82,13 +85,18 @@ int main(int argc, char *argv[]) {
         struct pollfd *poll_fd = AT_PTR(poll_fds.data, poll_fds.len, i);
         poll_fd->events = POLL_IN;
         poll_fd->fd = (int)(u64)peer->reader.ctx;
+        ASSERT(0 != poll_fd->fd);
         poll_fd->revents = 0;
       }
+    }
 
-      int res_poll = poll(poll_fds.data, poll_fds.len, -1);
-      if (-1 == res_poll) {
-        exit(errno);
-      }
+    int res_poll = poll(poll_fds.data, poll_fds.len, -1);
+    if (-1 == res_poll) {
+      exit(errno);
+    }
+
+    for (u64 i = 0; i < peers_active.len; i++) {
+      Peer *peer = dyn_at_ptr(&peers_active, i);
       struct pollfd poll_fd = slice_at(poll_fds, i);
 
       if (poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -108,6 +116,9 @@ int main(int argc, char *argv[]) {
       }
 
       bool can_read = poll_fd.revents & POLL_IN;
+      if (!can_read) {
+        continue;
+      }
       peer_tick(peer, can_read, true);
     }
   }

@@ -1,10 +1,5 @@
 #include "peer.c"
-#include <sys/poll.h>
-
-typedef struct {
-  struct pollfd *data;
-  u64 len;
-} SlicePollFd;
+#include <sys/epoll.h>
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -57,66 +52,91 @@ int main(int argc, char *argv[]) {
   DynIpv4Address peer_addresses = res_tracker.resp.peer_addresses;
   ASSERT(20 == req_tracker.info_hash.len);
 
+  u64 PEERS_ACTIVE_DESIRED_COUNT = 16;
   DynPeer peers_active = {0};
-  dyn_ensure_cap(&peers_active, 5, &arena);
-  peer_pick_random(&peer_addresses, &peers_active, 5, req_tracker.info_hash,
-                   &arena);
+  dyn_ensure_cap(&peers_active, PEERS_ACTIVE_DESIRED_COUNT, &arena);
+  peer_pick_random(&peer_addresses, &peers_active, PEERS_ACTIVE_DESIRED_COUNT,
+                   req_tracker.info_hash, &arena);
 
-  SlicePollFd poll_fds = {
-      .data = arena_new(&arena, struct pollfd, peers_active.len),
-      .len = peers_active.len,
-  };
+  int epollfd = epoll_create1(0);
+  if (-1 == epollfd) {
+    log(LOG_LEVEL_ERROR, "epoll_create1", &arena, L("err", errno));
+    return errno;
+  }
+
   for (;;) {
-    poll_fds.len = peers_active.len;
-
     for (u64 i = 0; i < peers_active.len; i++) {
       Peer *peer = dyn_at_ptr(&peers_active, i);
+      if (peer->tombstone) {
+        continue;
+      }
+
       {
         Error err = peer_connect_if_needed(peer);
         if (err) {
-          // TODO: Add a new peer from `peers_all`.
+          epoll_ctl(epollfd, EPOLL_CTL_DEL, (int)(u64)peer->reader.ctx,
+                    nullptr);
+          peer_end(peer);
 
-          slice_swap_remove(&peers_active, i);
-          i -= 1;
+          peer_pick_random(&peer_addresses, &peers_active, 1,
+                           req_tracker.info_hash, &arena);
           continue;
         }
       }
       {
-        struct pollfd *poll_fd = AT_PTR(poll_fds.data, poll_fds.len, i);
-        poll_fd->events = POLL_IN;
-        poll_fd->fd = (int)(u64)peer->reader.ctx;
-        ASSERT(0 != poll_fd->fd);
-        poll_fd->revents = 0;
+        ASSERT(PEER_STATE_NONE != peer->state);
+
+        struct epoll_event ev = {0};
+        ev.events = EPOLLIN;
+        ev.data.fd = (int)(u64)peer->reader.ctx;
+        ASSERT(0 != ev.data.fd);
+
+        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, ev.data.fd, &ev) == -1) {
+          if (EEXIST != errno) {
+            log(LOG_LEVEL_ERROR, "epoll_ctl add", &arena, L("err", errno));
+            return errno;
+          }
+        }
       }
     }
-
-    int res_poll = poll(poll_fds.data, poll_fds.len, -1);
-    if (-1 == res_poll) {
+#define MAX_EVENTS 10
+    struct epoll_event events[MAX_EVENTS] = {0};
+    int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+    if (-1 == nfds) {
+      log(LOG_LEVEL_ERROR, "epoll_wait", &arena, L("err", errno));
       exit(errno);
     }
 
-    for (u64 i = 0; i < peers_active.len; i++) {
-      Peer *peer = dyn_at_ptr(&peers_active, i);
-      struct pollfd poll_fd = slice_at(poll_fds, i);
+    for (int i = 0; i < nfds; i++) {
+      struct epoll_event ev = events[i];
+      Peer *peer = nullptr;
+      for (u64 j = 0; j < peers_active.len; j++) {
+        Peer *p = dyn_at_ptr(&peers_active, j);
+        if ((int)(u64)p->reader.ctx == ev.data.fd) {
+          peer = p;
+          break;
+        }
+      }
+      ASSERT(nullptr != peer);
 
-      if (poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      if (ev.events & (EPOLLERR | EPOLLHUP)) {
         int error = 0;
         socklen_t errlen = sizeof(error);
-        getsockopt(poll_fd.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+        getsockopt(ev.data.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
 
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
             L("ipv4", peer->address.ip), L("port", peer->address.port),
-            L("fd.revents", (u64)poll_fd.revents), L("err", error),
+            L("events", (u64)ev.events), L("err", error),
             L("peer_count", peers_active.len));
 
+        epoll_ctl(epollfd, EPOLL_CTL_DEL, (int)(u64)peer->reader.ctx, nullptr);
         peer_end(peer);
-        slice_swap_remove(&peers_active, i);
-        slice_swap_remove(&poll_fds, i);
-        i -= 1;
+        peer_pick_random(&peer_addresses, &peers_active, 1,
+                         req_tracker.info_hash, &arena);
         continue;
       }
 
-      bool can_read = poll_fd.revents & POLL_IN;
+      bool can_read = ev.events & EPOLLIN;
       if (!can_read) {
         continue;
       }

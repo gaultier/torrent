@@ -48,6 +48,7 @@ typedef struct {
   String info_hash;
   // IoOperationSubscription io_subscription;
   Arena arena;
+  bool tombstone;
 } Peer;
 
 DYN(Peer);
@@ -253,11 +254,18 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   u64 real_count = MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
-    u32 idx = arc4random_uniform((u32)addresses_all->len);
+    u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
     Ipv4Address address = slice_at(*addresses_all, idx);
-    *dyn_push(peers_active, arena) = peer_make(address, info_hash);
+    Peer peer = peer_make(address, info_hash);
+    *dyn_push(peers_active, arena) = peer;
     slice_swap_remove(addresses_all, idx);
+
+    log(LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
+        L("ipv4", peer.address.ip), L("port", peer.address.port));
   }
 }
 
-static void peer_end(Peer *peer) { writer_close(&peer->writer); }
+static void peer_end(Peer *peer) {
+  writer_close(&peer->writer);
+  peer->tombstone = true;
+}

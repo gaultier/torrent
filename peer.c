@@ -41,9 +41,37 @@ typedef union {
   };
 } PeerMessage;
 
-[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer) {
+typedef struct {
+  u32 ipv4;
+  u16 port;
+  Reader reader;
+  Writer writer;
+  PeerState state;
+  String info_hash;
+  IoOperationSubscription io_subscription;
+  int parent_pipe_r; // TODO
+  Arena arena;
+} Peer;
+
+DYN(Peer);
+
+[[maybe_unused]] [[nodiscard]] static Peer peer_make(Ipv4Address address,
+                                                     String info_hash) {
+  Peer peer = {0};
+  peer.info_hash = info_hash;
+  peer.ipv4 = address.ip;
+  peer.port = address.port;
+  peer.arena = arena_make_from_virtual_mem(4 * KiB);
+
+  return peer;
+}
+
+[[maybe_unused]] [[nodiscard]] static Error peer_connect_if_needed(Peer *peer) {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
+  if (PEER_STATE_CONNECTED == peer->state) {
+    return 0;
+  }
 
   int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
@@ -170,7 +198,7 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   PeerTickResult res = {0};
 
   switch (peer->state) {
-  case PEER_STATE_NONE: {
+  case PEER_STATE_CONNECTED: {
     if (can_write) {
       res.err = peer_send_handshake(peer);
       peer->state = PEER_STATE_HANDSHAKE_SENT;
@@ -194,21 +222,23 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   case PEER_STATE_HANDSHAKE_SENT: {
     break;
   }
+  case PEER_STATE_NONE:
   default:
     ASSERT(0);
   }
   return res;
 }
 
-static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
-                             u64 count, Arena *arena) {
-  u64 real_count = MIN(peers_all->len, count);
+static void peer_pick_random(DynIpv4Address *addresses_all,
+                             DynPeer *peers_active, u64 count, String info_hash,
+                             Arena *arena) {
+  u64 real_count = MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
-    u32 idx = arc4random_uniform((u32)peers_all->len);
-    Peer peer = slice_at(*peers_all, idx);
-    *dyn_push(peers_active, arena) = peer;
-    slice_swap_remove(peers_all, idx);
+    u32 idx = arc4random_uniform((u32)addresses_all->len);
+    Ipv4Address address = slice_at(*addresses_all, idx);
+    *dyn_push(peers_active, arena) = peer_make(address, info_hash);
+    slice_swap_remove(addresses_all, idx);
   }
 }
 

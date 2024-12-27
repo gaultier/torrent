@@ -73,6 +73,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 
 typedef enum {
   PEER_STATE_NONE,
+  PEER_STATE_CONNECTED,
   PEER_STATE_HANDSHAKE_SENT,
   PEER_STATE_HANDSHAKE_RECEIVED,
   // More...
@@ -85,24 +86,7 @@ typedef enum {
 } IoOperationSubscription;
 
 typedef struct {
-  u32 ipv4;
-  u16 port;
-  Reader reader;
-  Writer writer;
-  PeerState state;
-  String info_hash;
-  IoOperationSubscription io_subscription;
-  int parent_pipe_r; // TODO
-  Arena arena;
-} Peer;
-
-typedef struct {
-  Peer *data;
-  u64 len, cap;
-} DynPeer;
-
-typedef struct {
-  DynPeer peers;
+  DynIpv4Address peer_addresses;
   String failure;
   u64 interval_secs;
 } TrackerResponse;
@@ -114,7 +98,7 @@ typedef struct {
 
 typedef struct {
   Status status;
-  DynPeer peers;
+  DynIpv4Address peer_addresses;
 } ParseCompactPeersResult;
 [[nodiscard]] static ParseCompactPeersResult
 tracker_parse_compact_peers(String s, Arena *arena) {
@@ -141,11 +125,11 @@ tracker_parse_compact_peers(String s, Arena *arena) {
     u16 port_network_order = 0;
     memcpy(&port_network_order, port_str.data, port_str.len);
 
-    Peer peer = {
-        .ipv4 = ntohl(ipv4_network_order),
+    Ipv4Address address = {
+        .ip = ntohl(ipv4_network_order),
         .port = ntohs(port_network_order),
     };
-    *dyn_push(&res.peers, arena) = peer;
+    *dyn_push(&res.peer_addresses, arena) = address;
   }
 
   res.status = STATUS_OK;
@@ -196,7 +180,7 @@ tracker_parse_response(String s, Arena *arena) {
       if (STATUS_OK != res_parse_compact_peers.status) {
         return res;
       }
-      res.resp.peers = res_parse_compact_peers.peers;
+      res.resp.peer_addresses = res_parse_compact_peers.peer_addresses;
     }
   }
 

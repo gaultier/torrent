@@ -51,12 +51,13 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  DynPeer peers_all = res_tracker.resp.peers;
+  DynIpv4Address peer_addresses = res_tracker.resp.peer_addresses;
   ASSERT(20 == req_tracker.info_hash.len);
 
   DynPeer peers_active = {0};
   dyn_ensure_cap(&peers_active, 5, &arena);
-  peer_pick_random(&peers_all, &peers_active, 5, &arena);
+  peer_pick_random(&peer_addresses, &peers_active, 5, req_tracker.info_hash,
+                   &arena);
 
   SlicePollFd poll_fds = {
       .data = arena_new(&arena, struct pollfd, peers_active.len),
@@ -67,6 +68,16 @@ int main(int argc, char *argv[]) {
 
     for (u64 i = 0; i < peers_active.len; i++) {
       Peer *peer = dyn_at_ptr(&peers_active, i);
+      {
+        Error err = peer_connect_if_needed(peer);
+        if (err) {
+          // TODO: Add a new peer from `peers_all`.
+
+          slice_swap_remove(&peers_active, i);
+          i -= 1;
+          continue;
+        }
+      }
       {
         struct pollfd *poll_fd = AT_PTR(poll_fds.data, poll_fds.len, i);
         poll_fd->events = POLL_IN;

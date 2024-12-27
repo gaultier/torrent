@@ -49,12 +49,6 @@ int main(int argc, char *argv[]) {
 
   DynPeer peers = res_tracker.resp.peers;
   ASSERT(20 == req_tracker.info_hash.len);
-
-  *dyn_push(&peers, &arena) = (Peer){
-      .ipv4 = 2130706433,
-      .port = 1234,
-      .info_hash = req_tracker.info_hash,
-  };
   SlicePollFd poll_fds = {
       .data = arena_new(&arena, struct pollfd, peers.len),
       .len = peers.len,
@@ -78,7 +72,7 @@ int main(int argc, char *argv[]) {
   for (;;) {
     for (u64 i = 0; i < peers.len; i++) {
       Peer *peer = AT_PTR(peers.data, peers.len, i);
-      struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, poll_fds.len - 1);
+      struct pollfd *fd = AT_PTR(poll_fds.data, poll_fds.len, i);
       fd->fd = (int)(u64)peer->reader.ctx;
       ASSERT(fd->fd > 0);
       fd->events |= (peer->io_subscription & IO_OP_WILL_READ) ? POLLIN : 0;

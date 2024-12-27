@@ -45,7 +45,7 @@ typedef union {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
@@ -105,8 +105,8 @@ typedef union {
   String handshake = peer_make_handshake(peer->info_hash, &peer->arena);
   Error err = writer_write_all(peer->writer, handshake);
   if (err) {
-    log(LOG_LEVEL_ERROR, "peer handshake", &peer->arena, L("ipv4", peer->ipv4),
-        L("port", peer->port), L("err", err));
+    log(LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
+        L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
     return err;
   }
 
@@ -117,6 +117,9 @@ typedef union {
   IoOperationResult res_io =
       reader_read_exactly(&peer->reader, HANDSHAKE_LENGTH, &peer->arena);
   if (res_io.err) {
+    log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
+        L("ipv4", peer->ipv4), L("port", peer->port), L("recv", res_io.s),
+        L("err", res_io.err));
     return res_io.err;
   }
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
@@ -238,8 +241,6 @@ static Error peer_run(Peer *peer) {
     {
       Error err = peer_send_handshake(peer);
       if (err) {
-        log(LOG_LEVEL_ERROR, "peer sent handshake", &peer->arena,
-            L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
         return err;
       }
       log(LOG_LEVEL_INFO, "peer sent handshake", &peer->arena,
@@ -249,8 +250,6 @@ static Error peer_run(Peer *peer) {
     {
       Error err = peer_receive_handshake(peer);
       if (err) {
-        log(LOG_LEVEL_ERROR, "peer receive handshake", &peer->arena,
-            L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
         return err;
       }
       log(LOG_LEVEL_INFO, "peer receive handshake", &peer->arena,
@@ -261,7 +260,7 @@ static Error peer_run(Peer *peer) {
   }
 }
 
-static int peer_spawn(Peer *peer) {
+static int peer_spawn(Peer *peer, String info_hash) {
   int child_pid = fork();
   if (child_pid == -1) {
     log(LOG_LEVEL_ERROR, "peer spawn", &peer->arena, L("ipv4", peer->ipv4),
@@ -275,6 +274,11 @@ static int peer_spawn(Peer *peer) {
   }
 
   // Child.
+  ASSERT(nullptr == peer->arena.start);
+  peer->arena = arena_make_from_virtual_mem(4 * KiB);
+  peer->info_hash = info_hash;
+
   Error err = peer_run(peer);
+
   exit((int)err);
 }

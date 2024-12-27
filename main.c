@@ -8,6 +8,11 @@ typedef struct {
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
+  struct sigaction sa = {.sa_flags = SA_NOCLDWAIT};
+  if (-1 == sigaction(SIGCHLD, &sa, nullptr)) {
+    exit(errno);
+  }
+
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
 
   String torrent_file_path = cstr_to_string(argv[1]);
@@ -55,7 +60,7 @@ int main(int argc, char *argv[]) {
 
   for (u64 i = 0; i < peers_active.len; i++) {
     Peer *peer = dyn_at_ptr(&peers_active, i);
-    peer_spawn(peer);
+    peer_spawn(peer, req_tracker.info_hash);
   }
 
   sleep(10000);

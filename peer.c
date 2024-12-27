@@ -223,7 +223,7 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
     }
     break;
   }
-  case PEER_STATE_HANDSHAKE_RECEIVED: {
+  case PEER_STATE_HANDSHAKE_SENT: {
     if (can_read) {
       res.err = peer_receive_handshake(peer);
 
@@ -231,7 +231,12 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
     }
     break;
   }
-  case PEER_STATE_HANDSHAKE_SENT: {
+  case PEER_STATE_HANDSHAKE_RECEIVED: {
+
+    log(LOG_LEVEL_INFO, "peer_tick TODO", &peer->arena,
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("peer.state", peer->state), L("can_read", (u32)can_read),
+        L("can_write", (u32)can_write));
     break;
   }
   case PEER_STATE_NONE:

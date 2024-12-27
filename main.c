@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
         getsockopt(poll_fd.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
 
         log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
-            L("ipv4", peer->ipv4), L("port", peer->port),
+            L("ipv4", peer->address.ip), L("port", peer->address.port),
             L("fd.revents", (u64)poll_fd.revents), L("err", error),
             L("peer_count", peers_active.len));
 

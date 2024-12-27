@@ -42,14 +42,12 @@ typedef union {
 } PeerMessage;
 
 typedef struct {
-  u32 ipv4;
-  u16 port;
+  Ipv4Address address;
   Reader reader;
   Writer writer;
   PeerState state;
   String info_hash;
-  IoOperationSubscription io_subscription;
-  int parent_pipe_r; // TODO
+  // IoOperationSubscription io_subscription;
   Arena arena;
 } Peer;
 
@@ -59,26 +57,26 @@ DYN(Peer);
                                                      String info_hash) {
   Peer peer = {0};
   peer.info_hash = info_hash;
-  peer.ipv4 = address.ip;
-  peer.port = address.port;
+  peer.address = address;
   peer.arena = arena_make_from_virtual_mem(4 * KiB);
 
   return peer;
 }
 
 [[maybe_unused]] [[nodiscard]] static Error peer_connect_if_needed(Peer *peer) {
-  ASSERT(0 != peer->ipv4);
-  ASSERT(0 != peer->port);
+  ASSERT(0 != peer->address.ip);
+  ASSERT(0 != peer->address.port);
   if (PEER_STATE_CONNECTED == peer->state) {
     return 0;
   }
-  log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port));
+  log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
+      L("port", peer->address.port));
 
   int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
-        L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("err", errno));
     return (Error)errno;
   }
   peer->reader = reader_make_from_socket(sock_fd);
@@ -86,24 +84,25 @@ DYN(Peer);
 
   struct sockaddr_in addr = {
       .sin_family = AF_INET,
-      .sin_port = htons(peer->port),
-      .sin_addr = {htonl(peer->ipv4)},
+      .sin_port = htons(peer->address.port),
+      .sin_addr = {htonl(peer->address.ip)},
   };
 
   if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
     if (EINPROGRESS == errno) {
       log(LOG_LEVEL_INFO, "peer connect in progress", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port));
+          L("ipv4", peer->address.ip), L("port", peer->address.port));
       return 0;
     } else {
-      log(LOG_LEVEL_ERROR, "peer connect", &peer->arena, L("ipv4", peer->ipv4),
-          L("port", peer->port), L("err", errno));
+      log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
+          L("ipv4", peer->address.ip), L("port", peer->address.port),
+          L("err", errno));
       return (Error)errno;
     }
   }
 
-  log(LOG_LEVEL_INFO, "peer connected", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port));
+  log(LOG_LEVEL_INFO, "peer connected", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port));
   return 0;
 }
 
@@ -140,7 +139,8 @@ DYN(Peer);
   Error err = writer_write_all(peer->writer, handshake);
   if (err) {
     log(LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
-        L("ipv4", peer->ipv4), L("port", peer->port), L("err", err));
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("err", err));
     return err;
   }
 
@@ -152,12 +152,13 @@ DYN(Peer);
       reader_read_exactly(&peer->reader, HANDSHAKE_LENGTH, &peer->arena);
   if (res_io.err) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
-        L("ipv4", peer->ipv4), L("port", peer->port), L("recv", res_io.s),
-        L("err", res_io.err));
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("recv", res_io.s), L("err", res_io.err));
     return res_io.err;
   }
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
-      L("ipv4", peer->ipv4), L("port", peer->port), L("recv", res_io.s));
+      L("ipv4", peer->address.ip), L("port", peer->address.port),
+      L("recv", res_io.s));
 
   if (HANDSHAKE_LENGTH != res_io.s.len) {
     return ERR_HANDSHAKE_INVALID;
@@ -197,8 +198,8 @@ typedef struct {
 static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   ASSERT(can_read || can_write);
 
-  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port), L("peer.state", peer->state),
+  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->address.ip),
+      L("port", peer->address.port), L("peer.state", peer->state),
       L("can_read", (u32)can_read), L("can_write", (u32)can_write));
 
   PeerTickResult res = {0};
@@ -209,7 +210,8 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
       res.err = peer_send_handshake(peer);
       peer->state = PEER_STATE_HANDSHAKE_SENT;
       log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
+          L("ipv4", peer->address.ip), L("port", peer->address.port),
+          L("err", res.err));
       res.io_subscription = IO_OP_WILL_READ;
     }
     break;
@@ -219,7 +221,8 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
       res.err = peer_receive_handshake(peer);
       peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
       log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
+          L("ipv4", peer->address.ip), L("port", peer->address.port),
+          L("err", res.err));
 
       res.io_subscription = IO_OP_WILL_WRITE;
     }

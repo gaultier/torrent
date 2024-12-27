@@ -45,7 +45,7 @@ typedef union {
   ASSERT(0 != peer->ipv4);
   ASSERT(0 != peer->port);
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+  int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->ipv4), L("port", peer->port), L("err", errno));
@@ -171,6 +171,16 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
 
   switch (peer->state) {
   case PEER_STATE_NONE: {
+    if (can_write) {
+      res.err = peer_send_handshake(peer);
+      peer->state = PEER_STATE_HANDSHAKE_SENT;
+      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
+          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
+      res.io_subscription = IO_OP_WILL_READ;
+    }
+    break;
+  }
+  case PEER_STATE_HANDSHAKE_RECEIVED: {
     if (can_read) {
       res.err = peer_receive_handshake(peer);
       peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
@@ -178,16 +188,6 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
           L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
 
       res.io_subscription = IO_OP_WILL_WRITE;
-    }
-    break;
-  }
-  case PEER_STATE_HANDSHAKE_RECEIVED: {
-    if (can_read) {
-      res.err = peer_send_handshake(peer);
-      peer->state = PEER_STATE_HANDSHAKE_SENT;
-      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
-      res.io_subscription = IO_OP_WILL_READ;
     }
     break;
   }

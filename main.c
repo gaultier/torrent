@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
       }
 
       bool can_read = poll_fd.revents & POLL_IN;
-      peer_tick(peer, can_read, false);
+      peer_tick(peer, can_read, true);
     }
   }
 }

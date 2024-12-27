@@ -152,54 +152,6 @@ typedef union {
   return 0;
 }
 
-typedef struct {
-  Error err;
-  /* u32 next_tick_ms; */
-  IoOperationSubscription io_subscription;
-} PeerTickResult;
-
-[[maybe_unused]]
-// TODO: Report if progress was made?
-static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
-  ASSERT(can_read || can_write);
-
-  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port), L("peer.state", peer->state),
-      L("can_read", (u32)can_read), L("can_write", (u32)can_write));
-
-  PeerTickResult res = {0};
-
-  switch (peer->state) {
-  case PEER_STATE_NONE: {
-    if (can_read) {
-      res.err = peer_receive_handshake(peer);
-      peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
-      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
-
-      res.io_subscription = IO_OP_WILL_WRITE;
-    }
-    break;
-  }
-  case PEER_STATE_HANDSHAKE_RECEIVED: {
-    if (can_read) {
-      res.err = peer_send_handshake(peer);
-      peer->state = PEER_STATE_HANDSHAKE_SENT;
-      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->ipv4), L("port", peer->port), L("err", res.err));
-      res.io_subscription = IO_OP_WILL_READ;
-    }
-    break;
-  }
-  case PEER_STATE_HANDSHAKE_SENT: {
-    break;
-  }
-  default:
-    ASSERT(0);
-  }
-  return res;
-}
-
 static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
                              u64 count, Arena *arena) {
   u64 real_count = MIN(peers_all->len, count);
@@ -214,7 +166,7 @@ static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
 
 static Error peer_run(Peer *peer) {
   log(LOG_LEVEL_INFO, "peer_run", &peer->arena, L("ipv4", peer->ipv4),
-      L("port", peer->port), L("peer.state", peer->state));
+      L("port", peer->port));
 
   {
     Error err = peer_connect(peer);

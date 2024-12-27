@@ -1,4 +1,5 @@
 #include "peer.c"
+#include "submodules/c-http/submodules/cstd/lib.c"
 #include <sys/epoll.h>
 
 int main(int argc, char *argv[]) {
@@ -68,18 +69,28 @@ int main(int argc, char *argv[]) {
     for (u64 i = 0; i < peers_active.len; i++) {
       Peer *peer = dyn_at_ptr(&peers_active, i);
       if (peer->tombstone) {
+        peer_end(peer);
+        slice_swap_remove(&peers_active, i);
+        i -= 1;
+      }
+    }
+
+    if (peers_active.len < PEERS_ACTIVE_DESIRED_COUNT) {
+      peer_pick_random(&peer_addresses, &peers_active,
+                       PEERS_ACTIVE_DESIRED_COUNT - peers_active.len,
+                       req_tracker.info_hash, &arena);
+    }
+
+    for (u64 i = 0; i < peers_active.len; i++) {
+      Peer *peer = dyn_at_ptr(&peers_active, i);
+      if (peer->tombstone) {
         continue;
       }
 
       {
         Error err = peer_connect_if_needed(peer);
         if (err) {
-          epoll_ctl(epollfd, EPOLL_CTL_DEL, (int)(u64)peer->reader.ctx,
-                    nullptr);
-          peer_end(peer);
-
-          peer_pick_random(&peer_addresses, &peers_active, 1,
-                           req_tracker.info_hash, &arena);
+          peer->tombstone = true;
           continue;
         }
       }
@@ -119,7 +130,7 @@ int main(int argc, char *argv[]) {
       }
       ASSERT(nullptr != peer);
 
-      if (ev.events & (EPOLLERR | EPOLLHUP)) {
+      if (ev.events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
         int error = 0;
         socklen_t errlen = sizeof(error);
         getsockopt(ev.data.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
@@ -129,10 +140,7 @@ int main(int argc, char *argv[]) {
             L("events", (u64)ev.events), L("err", error),
             L("peer_count", peers_active.len));
 
-        epoll_ctl(epollfd, EPOLL_CTL_DEL, (int)(u64)peer->reader.ctx, nullptr);
-        peer_end(peer);
-        peer_pick_random(&peer_addresses, &peers_active, 1,
-                         req_tracker.info_hash, &arena);
+        peer->tombstone = true;
         continue;
       }
 
@@ -140,7 +148,14 @@ int main(int argc, char *argv[]) {
       if (!can_read) {
         continue;
       }
-      peer_tick(peer, can_read, true);
+      PeerTickResult res_tick = peer_tick(peer, can_read, true);
+      if (res_tick.err) {
+        log(LOG_LEVEL_ERROR, "peer tick err, del", &arena,
+            L("ipv4", peer->address.ip), L("port", peer->address.port),
+            L("events", (u64)ev.events), L("err", res_tick.err));
+
+        peer->tombstone = true;
+      }
     }
   }
 }

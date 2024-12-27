@@ -202,7 +202,7 @@ typedef struct {
   IoOperationSubscription io_subscription;
 } PeerTickResult;
 
-[[maybe_unused]]
+[[nodiscard]] [[maybe_unused]]
 // TODO: Report if progress was made?
 static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   ASSERT(can_read || can_write);

@@ -211,3 +211,5 @@ static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
     slice_swap_remove(peers_all, idx);
   }
 }
+
+static void peer_end(Peer *peer) { writer_close(&peer->writer); }

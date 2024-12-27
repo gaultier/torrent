@@ -63,6 +63,8 @@ int main(int argc, char *argv[]) {
       .len = peers_active.len,
   };
   for (;;) {
+    poll_fds.len = peers_active.len;
+
     for (u64 i = 0; i < peers_active.len; i++) {
       Peer *peer = dyn_at_ptr(&peers_active, i);
       {
@@ -77,6 +79,22 @@ int main(int argc, char *argv[]) {
         exit(errno);
       }
       struct pollfd poll_fd = slice_at(poll_fds, i);
+
+      if (poll_fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        int error = 0;
+        socklen_t errlen = sizeof(error);
+        getsockopt(poll_fd.fd, SOL_SOCKET, SO_ERROR, (void *)&error, &errlen);
+
+        log(LOG_LEVEL_ERROR, "peer socket error/end", &arena,
+            L("ipv4", peer->ipv4), L("port", peer->port),
+            L("fd.revents", (u64)poll_fd.revents), L("err", error),
+            L("peer_count", peers_active.len));
+
+        peer_end(peer);
+        slice_swap_remove(&peers_active, i);
+        i -= 1;
+        continue;
+      }
 
       bool can_read = poll_fd.revents & POLL_IN;
       peer_tick(peer, can_read, false);

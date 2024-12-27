@@ -197,3 +197,15 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
 }
 
 static void peer_end(Peer *peer) { writer_close(&peer->writer); }
+
+static void peer_pick_random(DynPeer *peers_all, DynPeer *peers_active,
+                             u64 count, Arena *arena) {
+  u64 real_count = MIN(peers_all->len, count);
+
+  for (u64 i = 0; i < real_count; i++) {
+    u32 idx = arc4random_uniform((u32)peers_all->len);
+    Peer peer = slice_at(*peers_all, idx);
+    *dyn_push(peers_active, arena) = peer;
+    slice_swap_remove(peers_all, idx);
+  }
+}

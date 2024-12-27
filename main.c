@@ -58,10 +58,28 @@ int main(int argc, char *argv[]) {
   dyn_ensure_cap(&peers_active, 5, &arena);
   peer_pick_random(&peers_all, &peers_active, 5, &arena);
 
-  for (u64 i = 0; i < peers_active.len; i++) {
-    Peer *peer = dyn_at_ptr(&peers_active, i);
-    peer_spawn(peer, req_tracker.info_hash);
-  }
+  SlicePollFd poll_fds = {
+      .data = arena_new(&arena, struct pollfd, peers_active.len),
+      .len = peers_active.len,
+  };
+  for (;;) {
+    for (u64 i = 0; i < peers_active.len; i++) {
+      Peer *peer = dyn_at_ptr(&peers_active, i);
+      {
+        struct pollfd *poll_fd = AT_PTR(poll_fds.data, poll_fds.len, i);
+        poll_fd->events = POLL_IN;
+        poll_fd->fd = (int)(u64)peer->reader.ctx;
+        poll_fd->revents = 0;
+      }
 
-  sleep(10000);
+      int res_poll = poll(poll_fds.data, poll_fds.len, -1);
+      if (-1 == res_poll) {
+        exit(errno);
+      }
+      struct pollfd poll_fd = slice_at(poll_fds, i);
+
+      bool can_read = poll_fd.revents & POLL_IN;
+      peer_tick(peer, can_read, false);
+    }
+  }
 }

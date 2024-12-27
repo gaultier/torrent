@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tracker.c"
+#include <netinet/tcp.h>
 
 #define HANDSHAKE_LENGTH 68
 #define ERR_HANDSHAKE_INVALID 100
@@ -72,13 +73,16 @@ DYN(Peer);
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
         L("err", errno));
     return (Error)errno;
   }
+  int opt = 1;
+  setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+
   peer->reader = reader_make_from_socket(sock_fd);
   peer->writer = writer_make_from_socket(sock_fd);
 

@@ -144,6 +144,10 @@ DYN(Peer);
     return err;
   }
 
+  log(LOG_LEVEL_INFO, "peer sent handshake ok", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port));
+  peer->state = PEER_STATE_HANDSHAKE_SENT;
+
   return 0;
 }
 
@@ -184,6 +188,10 @@ DYN(Peer);
     return ERR_HANDSHAKE_INVALID;
   }
 
+  log(LOG_LEVEL_INFO, "peer_receive_handshake valid", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port));
+  peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
+
   return 0;
 }
 
@@ -211,10 +219,6 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   case PEER_STATE_CONNECTED: {
     if (can_write) {
       res.err = peer_send_handshake(peer);
-      peer->state = PEER_STATE_HANDSHAKE_SENT;
-      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->address.ip), L("port", peer->address.port),
-          L("err", res.err));
       res.io_subscription = IO_OP_WILL_READ;
     }
     break;
@@ -222,10 +226,6 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   case PEER_STATE_HANDSHAKE_RECEIVED: {
     if (can_read) {
       res.err = peer_receive_handshake(peer);
-      peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
-      log(LOG_LEVEL_INFO, "peer received handshake", &peer->arena,
-          L("ipv4", peer->address.ip), L("port", peer->address.port),
-          L("err", res.err));
 
       res.io_subscription = IO_OP_WILL_WRITE;
     }

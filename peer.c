@@ -53,6 +53,7 @@ typedef struct {
 } Peer;
 
 DYN(Peer);
+SLICE(Peer);
 
 [[maybe_unused]] [[nodiscard]] static Peer peer_make(Ipv4Address address,
                                                      String info_hash) {
@@ -73,7 +74,7 @@ DYN(Peer);
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+  int sock_fd = socket(AF_INET, SOCK_STREAM /*| SOCK_NONBLOCK*/, IPPROTO_TCP);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -167,31 +168,42 @@ DYN(Peer);
   }
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("recv", res_io.s));
+      L("recv_count", res_io.s.len));
 
   if (HANDSHAKE_LENGTH != res_io.s.len) {
+    log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake length",
+        &peer->arena, L("ipv4", peer->address.ip),
+        L("port", peer->address.port), L("recv", res_io.s),
+        L("err", res_io.err));
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String prefix = slice_range(res_io.s, 0, 28);
+  String prefix = slice_range(res_io.s, 0, 20);
   String prefix_expected = S("\x13"
-                             "BitTorrent protocol"
-                             "\x00"
-                             "\x00"
-                             "\x00"
-                             "\x00"
-                             "\x00"
-                             "\x00"
-                             "\x00"
-                             "\x00");
+                             "BitTorrent protocol");
   if (!string_eq(prefix, prefix_expected)) {
+    log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
+        &peer->arena, L("ipv4", peer->address.ip),
+        L("port", peer->address.port), L("recv", res_io.s),
+        L("err", res_io.err));
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String info_hash_received = slice_range(res_io.s, HANDSHAKE_LENGTH - 20, 0);
+  String reserved_bytes = slice_range(res_io.s, 20, 28);
+  (void)reserved_bytes; // Ignore.
+
+  String info_hash_received = slice_range(res_io.s, 28, 28 + 20);
   if (!string_eq(info_hash_received, peer->info_hash)) {
+    log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
+        &peer->arena, L("ipv4", peer->address.ip),
+        L("port", peer->address.port), L("recv", res_io.s),
+        L("err", res_io.err));
     return ERR_HANDSHAKE_INVALID;
   }
+
+  String remote_peer_id = slice_range(res_io.s, 28 + 20, 0);
+  ASSERT(20 == remote_peer_id.len);
+  // Ignore remote_peer_id for now.
 
   log(LOG_LEVEL_INFO, "peer_receive_handshake valid", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port));
@@ -252,6 +264,7 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   return res;
 }
 
+#if 0
 static void peer_pick_random(DynIpv4Address *addresses_all,
                              DynPeer *peers_active, u64 count, String info_hash,
                              Arena *arena) {
@@ -272,4 +285,46 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 static void peer_end(Peer *peer) {
   writer_close(&peer->writer);
   peer->tombstone = true;
+}
+#endif
+
+#if 0
+static void peers_run(PeerSlice peers) {
+  for (;;) {
+    for (
+  } 
+}
+#endif
+
+static void peer_spawn(Peer *peer) {
+  int child_pid = fork();
+  if (-1 == child_pid) {
+    exit(errno); // TODO: better.
+  }
+
+  if (child_pid > 0) { // Parent.
+    return;
+  }
+
+  // Child.
+  {
+    Error err = peer_connect_if_needed(peer);
+    if (err) {
+      exit(1);
+    }
+  }
+  {
+    Error err = peer_send_handshake(peer);
+    if (err) {
+      exit(1);
+    }
+  }
+  {
+    Error err = peer_receive_handshake(peer);
+    if (err) {
+      exit(1);
+    }
+  }
+
+  sleep(10000);
 }

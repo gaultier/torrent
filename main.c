@@ -53,6 +53,16 @@ int main(int argc, char *argv[]) {
   DynIpv4Address peer_addresses = res_tracker.resp.peer_addresses;
   ASSERT(20 == req_tracker.info_hash.len);
 
+  DynPeer peers_active = {0};
+  for (u64 i = 0; i < MIN(3, peer_addresses.len); i++) {
+    Ipv4Address address = slice_at(peer_addresses, i);
+    Peer peer = peer_make(address, req_tracker.info_hash);
+    *dyn_push(&peers_active, &arena) = peer;
+    peer_spawn(&peer);
+  }
+  sleep(10000);
+
+#if 0
   u64 PEERS_ACTIVE_DESIRED_COUNT = 16;
   DynPeer peers_active = {0};
   dyn_ensure_cap(&peers_active, PEERS_ACTIVE_DESIRED_COUNT, &arena);
@@ -158,4 +168,5 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+#endif
 }

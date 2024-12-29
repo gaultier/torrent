@@ -1,4 +1,5 @@
 #include "peer.c"
+#include "tracker.c"
 
 static void test_bencode_decode_u64() {
   {

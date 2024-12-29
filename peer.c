@@ -4,6 +4,7 @@
 #include <netinet/tcp.h>
 
 #define HANDSHAKE_LENGTH 68
+#define LENGTH_LENGTH 4
 #define ERR_HANDSHAKE_INVALID 100
 
 typedef struct {
@@ -20,7 +21,8 @@ typedef struct {
 } PeerMessageCancel;
 
 typedef enum {
-  PEER_MSG_KIND_NONE = -1,
+  PEER_MSG_KIND_NONE = -2,
+  PEER_MSG_KIND_KEEP_ALIVE = -1,
   PEER_MSG_KIND_CHOKE = 0,
   PEER_MSG_KIND_UNCHOKE = 1,
   PEER_MSG_KIND_INTERESTED = 2,
@@ -38,8 +40,14 @@ typedef union {
     PeerMessagePiece piece;
     PeerMessageCancel cancel;
     PeerMessageRequest request;
+    String bitfield;
   };
 } PeerMessage;
+
+typedef struct {
+  Status status;
+  PeerMessage msg;
+} PeerMessageResult;
 
 typedef struct {
   Ipv4Address address;
@@ -220,6 +228,76 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 }
 
+[[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {
+  PeerMessageResult res = {0};
+
+  IoOperationResult io_res =
+      reader_read_exactly(&peer->reader, LENGTH_LENGTH, &peer->arena);
+  if (io_res.err) {
+    return res;
+  }
+
+  u32 length_announced = u8x4_be_to_u32(io_res.s);
+
+  if (0 == length_announced) {
+    res.status = STATUS_OK;
+    res.msg.kind = PEER_MSG_KIND_KEEP_ALIVE;
+    return res;
+  }
+
+  io_res = reader_read_exactly(&peer->reader, length_announced, &peer->arena);
+  if (io_res.err) {
+    return res;
+  }
+
+  u8 kind = slice_at(io_res.s, 0);
+
+  log(LOG_LEVEL_DEBUG, "peer message", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port),
+      L("length_announced", length_announced), L("kind", (u64)kind));
+
+  switch (kind) {
+  case PEER_MSG_KIND_CHOKE: {
+    break;
+  }
+  case PEER_MSG_KIND_UNCHOKE: {
+    break;
+  }
+  case PEER_MSG_KIND_INTERESTED: {
+    break;
+  }
+  case PEER_MSG_KIND_UNINTERESTED: {
+    break;
+  }
+  case PEER_MSG_KIND_HAVE: {
+    break;
+  }
+  case PEER_MSG_KIND_BITFIELD: {
+    res.msg.kind = PEER_MSG_KIND_BITFIELD;
+    res.msg.bitfield.data = arena_new(&peer->arena, u8, length_announced - 1);
+    res.msg.bitfield.len = length_announced - 1;
+    res.status = STATUS_OK;
+    break;
+  }
+  case PEER_MSG_KIND_REQUEST: {
+    break;
+  }
+  case PEER_MSG_KIND_PIECE: {
+    break;
+  }
+  case PEER_MSG_KIND_CANCEL: {
+    break;
+  }
+  default:
+    log(LOG_LEVEL_ERROR, "peer message unknown kind", &peer->arena,
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("kind", (u64)kind));
+    return res;
+  }
+
+  return res;
+}
+
 [[maybe_unused]]
 static void peer_spawn(Peer *peer) {
   if (peer->pid) { // Idempotency.
@@ -273,6 +351,12 @@ static void peer_spawn(Peer *peer) {
   {
     Error err = peer_receive_handshake(peer);
     if (err) {
+      exit(1);
+    }
+  }
+  {
+    PeerMessageResult res = peer_receive_any_message(peer);
+    if (STATUS_OK != res.status) {
       exit(1);
     }
   }

@@ -1,6 +1,5 @@
 #include "peer.c"
-#include "submodules/c-http/submodules/cstd/lib.c"
-#include <sys/epoll.h>
+#include <sys/wait.h>
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -54,16 +53,39 @@ int main(int argc, char *argv[]) {
   ASSERT(20 == req_tracker.info_hash.len);
 
   DynPeer peers_active = {0};
-  for (u64 i = 0; i < MIN(3, peer_addresses.len); i++) {
-    Ipv4Address address = slice_at(peer_addresses, i);
-    Peer peer = peer_make(address, req_tracker.info_hash);
-    *dyn_push(&peers_active, &arena) = peer;
-    peer_spawn(&peer);
+  u64 PEERS_ACTIVE_DESIRED_COUNT = 4;
+  dyn_ensure_cap(&peers_active, PEERS_ACTIVE_DESIRED_COUNT, &arena);
+
+  for (;;) {
+    u64 to_pick = peers_active.len < PEERS_ACTIVE_DESIRED_COUNT
+                      ? PEERS_ACTIVE_DESIRED_COUNT - peers_active.len
+                      : 0;
+    peer_pick_random(&peer_addresses, &peers_active, to_pick,
+                     req_tracker.info_hash, &arena);
+
+    for (u64 i = 0; i < peers_active.len; i++) {
+      Peer *peer = slice_at_ptr(&peers_active, i);
+      peer_spawn(peer);
+    }
+
+    siginfo_t info = {0};
+    if (-1 == waitid(P_ALL, 0, &info, 0)) {
+      continue;
+    }
+
+    int child_pid = info.si_pid;
+    u64 *peer_idx = nullptr;
+    for (u64 i = 0; i < peers_active.len; i++) {
+      if (slice_at(peers_active, i).pid == child_pid) {
+        *peer_idx = i;
+        break;
+      }
+    }
+    ASSERT(nullptr != peer_idx);
+    slice_swap_remove(&peers_active, *peer_idx);
   }
-  sleep(10000);
 
 #if 0
-  u64 PEERS_ACTIVE_DESIRED_COUNT = 16;
   DynPeer peers_active = {0};
   dyn_ensure_cap(&peers_active, PEERS_ACTIVE_DESIRED_COUNT, &arena);
   peer_pick_random(&peer_addresses, &peers_active, PEERS_ACTIVE_DESIRED_COUNT,

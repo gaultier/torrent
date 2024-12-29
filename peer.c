@@ -47,9 +47,8 @@ typedef struct {
   Writer writer;
   PeerState state;
   String info_hash;
-  // IoOperationSubscription io_subscription;
   Arena arena;
-  bool tombstone;
+  int pid;
 } Peer;
 
 DYN(Peer);
@@ -65,7 +64,7 @@ SLICE(Peer);
   return peer;
 }
 
-[[maybe_unused]] [[nodiscard]] static Error peer_connect_if_needed(Peer *peer) {
+[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer) {
   ASSERT(0 != peer->address.ip);
   ASSERT(0 != peer->address.port);
   if (PEER_STATE_NONE != peer->state) {
@@ -94,17 +93,10 @@ SLICE(Peer);
   };
 
   if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
-    if (EINPROGRESS == errno) {
-      log(LOG_LEVEL_INFO, "peer connect in progress", &peer->arena,
-          L("ipv4", peer->address.ip), L("port", peer->address.port));
-      peer->state = PEER_STATE_CONNECTING;
-      return 0;
-    } else {
-      log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
-          L("ipv4", peer->address.ip), L("port", peer->address.port),
-          L("err", errno));
-      return (Error)errno;
-    }
+    log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
+        L("ipv4", peer->address.ip), L("port", peer->address.port),
+        L("err", errno));
+    return (Error)errno;
   }
 
   log(LOG_LEVEL_INFO, "peer connected", &peer->arena,
@@ -152,7 +144,6 @@ SLICE(Peer);
 
   log(LOG_LEVEL_INFO, "peer sent handshake ok", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port));
-  peer->state = PEER_STATE_HANDSHAKE_SENT;
 
   return 0;
 }
@@ -207,7 +198,6 @@ SLICE(Peer);
 
   log(LOG_LEVEL_INFO, "peer_receive_handshake valid", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port));
-  peer->state = PEER_STATE_HANDSHAKE_RECEIVED;
 
   return 0;
 }
@@ -218,6 +208,7 @@ typedef struct {
   IoOperationSubscription io_subscription;
 } PeerTickResult;
 
+#if 0
 [[nodiscard]] [[maybe_unused]]
 // TODO: Report if progress was made?
 static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
@@ -263,8 +254,8 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
   }
   return res;
 }
+#endif
 
-#if 0
 static void peer_pick_random(DynIpv4Address *addresses_all,
                              DynPeer *peers_active, u64 count, String info_hash,
                              Arena *arena) {
@@ -282,6 +273,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 }
 
+#if 0
 static void peer_end(Peer *peer) {
   writer_close(&peer->writer);
   peer->tombstone = true;
@@ -297,18 +289,26 @@ static void peers_run(PeerSlice peers) {
 #endif
 
 static void peer_spawn(Peer *peer) {
+  if (PEER_STATE_NONE != peer->state) { // Idempotency.
+    ASSERT(0 != peer->pid);
+    return;
+  }
+
+  peer->state = PEER_STATE_SPAWNED;
+
   int child_pid = fork();
   if (-1 == child_pid) {
     exit(errno); // TODO: better.
   }
 
   if (child_pid > 0) { // Parent.
+    peer->pid = child_pid;
     return;
   }
 
   // Child.
   {
-    Error err = peer_connect_if_needed(peer);
+    Error err = peer_connect(peer);
     if (err) {
       exit(1);
     }

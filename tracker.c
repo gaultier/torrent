@@ -73,10 +73,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 
 typedef enum {
   PEER_STATE_NONE,
-  PEER_STATE_CONNECTING,
-  PEER_STATE_CONNECTED,
-  PEER_STATE_HANDSHAKE_SENT,
-  PEER_STATE_HANDSHAKE_RECEIVED,
+  PEER_STATE_SPAWNED,
   // More...
 } PeerState;
 

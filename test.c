@@ -332,6 +332,7 @@ static Reader reader_make_from_slice(MemReadContext *ctx) {
 }
 
 static void test_peer_receive_handshake() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
   String req_slice = S("\x13"
@@ -372,6 +373,7 @@ static void test_peer_receive_handshake() {
   peer.address.port = 6881;
   MemReadContext src_ctx = {.s = req_slice};
   peer.reader = reader_make_from_slice(&src_ctx);
+  peer.arena = arena;
   peer.tmp_arena = tmp_arena;
   peer.info_hash = S("abcdefghijklmnopqrst");
   ASSERT(20 == peer.info_hash.len);

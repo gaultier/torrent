@@ -1,4 +1,5 @@
 #include "peer.c"
+#include "tracker.c"
 #include <sys/poll.h>
 
 typedef struct pollfd pollfd;

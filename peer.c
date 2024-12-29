@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tracker.c"
+#include "bencode.c"
 #include <netinet/tcp.h>
 
 #define HANDSHAKE_LENGTH 68
@@ -41,6 +41,7 @@ typedef union {
     PeerMessageCancel cancel;
     PeerMessageRequest request;
     String bitfield;
+    u32 have;
   };
 } PeerMessage;
 
@@ -55,6 +56,7 @@ typedef struct {
   Writer writer;
   String info_hash;
   Arena arena;
+  Arena tmp_arena;
   int pid;
   int parent_child_liveness_pipe[2];
   u64 liveness_last_message_ns;
@@ -70,6 +72,7 @@ SLICE(Peer);
   peer.info_hash = info_hash;
   peer.address = address;
   peer.arena = arena_make_from_virtual_mem(4 * KiB);
+  peer.tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
   return peer;
 }
@@ -157,8 +160,13 @@ SLICE(Peer);
 }
 
 [[nodiscard]] static Error peer_receive_handshake(Peer *peer) {
-  IoOperationResult res_io =
-      reader_read_exactly(&peer->reader, HANDSHAKE_LENGTH, &peer->arena);
+  Arena tmp_arena = peer->tmp_arena;
+  String handshake = {
+      .data = arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
+      .len = HANDSHAKE_LENGTH,
+  };
+
+  IoOperationResult res_io = reader_read_exactly(&peer->reader, handshake);
   if (res_io.err) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -231,8 +239,13 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 [[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {
   PeerMessageResult res = {0};
 
-  IoOperationResult io_res =
-      reader_read_exactly(&peer->reader, LENGTH_LENGTH, &peer->arena);
+  Arena tmp_arena = peer->tmp_arena;
+
+  String length = {
+      .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
+      .len = LENGTH_LENGTH,
+  };
+  IoOperationResult io_res = reader_read_exactly(&peer->reader, length);
   if (io_res.err) {
     return res;
   }
@@ -245,7 +258,11 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     return res;
   }
 
-  io_res = reader_read_exactly(&peer->reader, length_announced, &peer->arena);
+  String data = {
+      .data = arena_new(&tmp_arena, u8, length_announced),
+      .len = length_announced,
+  };
+  io_res = reader_read_exactly(&peer->reader, data);
   if (io_res.err) {
     return res;
   }
@@ -258,24 +275,45 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
+    res.msg.kind = kind;
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_UNCHOKE: {
+    res.msg.kind = kind;
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_INTERESTED: {
+    res.msg.kind = kind;
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_UNINTERESTED: {
+    res.msg.kind = kind;
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_HAVE: {
+    if ((1 + 4) != length_announced) {
+      return res;
+    }
+    res.msg.kind = kind;
+    String data_msg = slice_range(io_res.s, 1, 0);
+    res.msg.have = u8x4_be_to_u32(data_msg);
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
-    res.msg.kind = PEER_MSG_KIND_BITFIELD;
-    res.msg.bitfield.data = arena_new(&peer->arena, u8, length_announced - 1);
+    res.msg.kind = kind;
+    // TODO: Length check?
     res.msg.bitfield.len = length_announced - 1;
+    res.msg.bitfield.data = arena_new(&peer->arena, u8, res.msg.bitfield.len);
+
+    String data_msg = slice_range(io_res.s, 1, 0);
+    ASSERT(data_msg.len == res.msg.bitfield.len);
+    memcpy(res.msg.bitfield.data, data_msg.data, data_msg.len);
+
     res.status = STATUS_OK;
     break;
   }

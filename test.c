@@ -263,7 +263,7 @@ static void test_tracker_compute_info_hash() {
   ASSERT(STATUS_OK == res.status);
 
   String hash = {
-      .data = arena_alloc(&arena, 1, 1, 20),
+      .data = arena_new(&arena, u8, 20),
       .len = 20,
   };
   tracker_compute_info_hash(res.metainfo, hash, &arena);

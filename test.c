@@ -279,15 +279,14 @@ static void test_peer_send_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
 
   Peer peer = {0};
-  peer.port = 6881;
+  peer.address.port = 6881;
   peer.writer = writer_make_for_buf(&arena);
   peer.arena = arena;
   peer.info_hash = S("abcdefghijklmnopqrst");
   ASSERT(20 == peer.info_hash.len);
 
-  Error err = peer_tick(&peer);
+  Error err = peer_send_handshake(&peer);
   ASSERT(0 == err);
-  ASSERT(PEER_STATE_HANDSHAKE_SENT == peer.state);
 
   WriterBufCtx *ctx = peer.writer.ctx;
   ASSERT(68 == ctx->sb.len);

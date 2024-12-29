@@ -254,6 +254,7 @@ static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
 }
 #endif
 
+[[maybe_unused]]
 static void peer_pick_random(DynIpv4Address *addresses_all,
                              DynPeer *peers_active, u64 count, String info_hash,
                              Arena *arena) {
@@ -286,6 +287,7 @@ static void peers_run(PeerSlice peers) {
 }
 #endif
 
+[[maybe_unused]]
 static void peer_spawn(Peer *peer) {
   if (PEER_STATE_NONE != peer->state) { // Idempotency.
     ASSERT(0 != peer->pid);

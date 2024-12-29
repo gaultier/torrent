@@ -160,6 +160,8 @@ SLICE(Peer);
 }
 
 [[nodiscard]] static Error peer_receive_handshake(Peer *peer) {
+  ASSERT(0 != peer->tmp_arena.start);
+
   Arena tmp_arena = peer->tmp_arena;
   String handshake = {
       .data = arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),

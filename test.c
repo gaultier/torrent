@@ -290,7 +290,97 @@ static void test_peer_send_handshake() {
   ASSERT(0 == err);
 
   WriterBufCtx *ctx = peer.writer.ctx;
-  ASSERT(68 == ctx->sb.len);
+  ASSERT(HANDSHAKE_LENGTH == ctx->sb.len);
+}
+
+typedef struct {
+  String s;
+  u64 idx;
+} MemReadContext;
+
+static IoOperationResult reader_read_from_slice(void *ctx, void *buf,
+                                                size_t buf_len) {
+  MemReadContext *mem_ctx = ctx;
+
+  ASSERT(buf != nullptr);
+  ASSERT(mem_ctx->s.data != nullptr);
+  if (mem_ctx->idx >= mem_ctx->s.len) {
+    // End.
+    return (IoOperationResult){0};
+  }
+
+  const u64 remaining = mem_ctx->s.len - mem_ctx->idx;
+  const u64 can_fill = MIN(remaining, buf_len);
+  ASSERT(can_fill <= remaining);
+
+  IoOperationResult res = {
+      .s.data = mem_ctx->s.data + mem_ctx->idx,
+      .s.len = can_fill,
+  };
+  memcpy(buf, res.s.data, res.s.len);
+
+  mem_ctx->idx += can_fill;
+  ASSERT(mem_ctx->idx <= mem_ctx->s.len);
+  return res;
+}
+
+static Reader reader_make_from_slice(MemReadContext *ctx) {
+  return (Reader){
+      .ctx = ctx,
+      .read_fn = reader_read_from_slice,
+  };
+}
+
+static void test_peer_receive_handshake() {
+  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+
+  String req_slice = S("\x13"
+                       "BitTorrent protocol"
+                       "\x01"
+                       "\x02"
+                       "\x03"
+                       "\x04"
+                       "\x05"
+                       "\x06"
+                       "\x07"
+                       "\x08"
+
+                       "abcdefghijklmnopqrst"
+
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09"
+                       "\x09");
+
+  Peer peer = {0};
+  peer.address.port = 6881;
+  MemReadContext src_ctx = {.s = req_slice};
+  peer.reader = reader_make_from_slice(&src_ctx);
+  peer.tmp_arena = tmp_arena;
+  peer.info_hash = S("abcdefghijklmnopqrst");
+  ASSERT(20 == peer.info_hash.len);
+
+  Error err = peer_receive_handshake(&peer);
+  ASSERT(0 == err);
+
+  MemReadContext *ctx = peer.reader.ctx;
+  ASSERT(HANDSHAKE_LENGTH == ctx->idx);
 }
 
 int main() {
@@ -302,4 +392,5 @@ int main() {
   test_bencode_decode_encode();
   test_tracker_compute_info_hash();
   test_peer_send_handshake();
+  test_peer_receive_handshake();
 }

@@ -48,6 +48,9 @@ typedef struct {
   String info_hash;
   Arena arena;
   int pid;
+  int parent_child_liveness_pipe[2];
+  u64 liveness_last_message_ns;
+  bool tombstone;
 } Peer;
 
 DYN(Peer);
@@ -226,23 +229,39 @@ static void peer_spawn(Peer *peer) {
   log(LOG_LEVEL_INFO, "peer spawn", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
+  if (-1 == pipe(peer->parent_child_liveness_pipe)) {
+    log(LOG_LEVEL_ERROR, "failed to pipe(2)", &peer->arena, L("err", errno));
+    exit(errno);
+  }
+
   int child_pid = fork();
   if (-1 == child_pid) {
-    exit(errno); // TODO: better.
+    log(LOG_LEVEL_ERROR, "failed to fork(2)", &peer->arena, L("err", errno));
+    exit(errno);
   }
 
   if (child_pid > 0) { // Parent.
     peer->pid = child_pid;
+    close(peer->parent_child_liveness_pipe[1]); // Close write end of the
+                                                // liveness pipe.
     return;
   }
 
   // Child.
+  close(peer->parent_child_liveness_pipe[0]); // Close read end of the
+                                              // liveness pipe.
   {
     Error err = peer_connect(peer);
     if (err) {
       exit(1);
     }
   }
+
+  {
+    u64 now_ns = monotonic_now_ns();
+    write(peer->parent_child_liveness_pipe[1], &now_ns, sizeof(now_ns));
+  }
+
   {
     Error err = peer_send_handshake(peer);
     if (err) {

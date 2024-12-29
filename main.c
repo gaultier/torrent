@@ -1,5 +1,10 @@
 #include "peer.c"
-#include <sys/wait.h>
+#include <sys/poll.h>
+
+typedef struct pollfd pollfd;
+DYN(pollfd);
+
+static const u64 liveness_seconds = 15;
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -51,41 +56,98 @@ int main(int argc, char *argv[]) {
   u64 PEERS_ACTIVE_DESIRED_COUNT = 4;
   dyn_ensure_cap(&peers_active, PEERS_ACTIVE_DESIRED_COUNT, &arena);
 
-  for (;;) {
-    u64 to_pick = peers_active.len < PEERS_ACTIVE_DESIRED_COUNT
-                      ? PEERS_ACTIVE_DESIRED_COUNT - peers_active.len
-                      : 0;
-    peer_pick_random(&peer_addresses, &peers_active, to_pick,
-                     req_tracker.info_hash, &arena);
+  Dynpollfd poll_fds = {0};
+  dyn_ensure_cap(&poll_fds, PEERS_ACTIVE_DESIRED_COUNT, &arena);
 
-    for (u64 i = 0; i < peers_active.len; i++) {
-      Peer *peer = slice_at_ptr(&peers_active, i);
-      peer_spawn(peer);
+  for (;;) {
+    // Try to reach the desired count of active peers.
+    {
+      u64 to_pick = peers_active.len < PEERS_ACTIVE_DESIRED_COUNT
+                        ? PEERS_ACTIVE_DESIRED_COUNT - peers_active.len
+                        : 0;
+      peer_pick_random(&peer_addresses, &peers_active, to_pick,
+                       req_tracker.info_hash, &arena);
     }
 
-    siginfo_t info = {0};
-    if (-1 == waitid(P_ALL, 0, &info, WEXITED)) {
-      if (ECHILD == errno) {
-        usleep(100'000);
+    // Spawn peers and register them to the poll list to be able to wait on them
+    // with timeout.
+    {
+      poll_fds.len = 0;
+      for (u64 i = 0; i < peers_active.len; i++) {
+        Peer *peer = slice_at_ptr(&peers_active, i);
+        peer_spawn(peer);
+
+        *dyn_push(&poll_fds, &arena) = (pollfd){
+            .fd = peer->parent_child_liveness_pipe[0],
+            .events = POLLIN | POLLHUP,
+        };
+      }
+    }
+    ASSERT(peers_active.len == poll_fds.len);
+
+    // Poll.
+    {
+      if (-1 ==
+          poll(poll_fds.data, poll_fds.len, (int)liveness_seconds * 1000)) {
+        log(LOG_LEVEL_ERROR, "failed to poll(2)", &arena, L("err", errno));
+        exit(errno);
+      }
+    }
+
+    //
+    {
+      for (u64 i = 0; i < poll_fds.len; i++) {
+        pollfd event = slice_at(poll_fds, i);
+        Peer *peer = slice_at_ptr(&peers_active, i);
+
+        if (event.revents & POLLIN) { // Child is live!
+          u64 live_ns = 0;
+          read(event.fd, &live_ns, sizeof(live_ns));
+          peer->liveness_last_message_ns = live_ns;
+          log(LOG_LEVEL_INFO, "peer live message", &arena,
+              L("ipv4", peer->address.ip), L("port", peer->address.port),
+              L("poll.revents", (int)event.revents),
+              L("peers_active.len", peers_active.len), L("live_ns", live_ns));
+        } else if (event.revents &
+                   (POLLHUP |
+                    POLLERR)) { // Pipe closed, or error: Kill the child.
+          peer->tombstone = true;
+          log(LOG_LEVEL_INFO, "peer child pipe closed or errored", &arena,
+              L("ipv4", peer->address.ip), L("port", peer->address.port),
+              L("poll.revents", (int)event.revents),
+              L("peers_active.len", peers_active.len));
+        } else if (event.revents == 0) { // Timeout?
+          u64 now_ns = monotonic_now_ns();
+          ASSERT(now_ns >= peer->liveness_last_message_ns);
+
+          u64 duration_ns = now_ns - peer->liveness_last_message_ns;
+          if (duration_ns > liveness_seconds * 1000'1000'1000) {
+            peer->tombstone = true;
+            log(LOG_LEVEL_INFO, "peer timed out", &arena,
+                L("ipv4", peer->address.ip), L("port", peer->address.port),
+                L("poll.revents", (int)event.revents),
+                L("peers_active.len", peers_active.len),
+                L("duration_ns", duration_ns));
+          }
+        }
+      }
+    }
+    ASSERT(peers_active.len == poll_fds.len);
+
+    // Garbage collect.
+    for (u64 i = 0; i < peers_active.len; i++) {
+      Peer peer = slice_at(peers_active, i);
+      if (!peer.tombstone) {
         continue;
       }
-      exit(errno);
-    }
 
-    int child_pid = info.si_pid;
-    u64 peer_idx = UINT64_MAX;
-    for (u64 i = 0; i < peers_active.len; i++) {
-      if (slice_at(peers_active, i).pid == child_pid) {
-        peer_idx = i;
-        break;
-      }
+      log(LOG_LEVEL_INFO, "garbage collect peer", &arena,
+          L("ipv4", peer.address.ip), L("port", peer.address.port), L("i", i),
+          L("peers_active.len", peers_active.len));
+      kill(peer.pid, SIGKILL);
+      slice_swap_remove(&peers_active, i);
+      i -= 1;
     }
-    ASSERT(UINT64_MAX != peer_idx);
-    Peer peer = slice_at(peers_active, peer_idx);
-    log(LOG_LEVEL_INFO, "peer child process finished", &arena,
-        L("ipv4", peer.address.ip), L("port", peer.address.port),
-        L("peers_active.len", peers_active.len));
-    slice_swap_remove(&peers_active, peer_idx);
   }
 
 #if 0

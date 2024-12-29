@@ -303,7 +303,13 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     res.msg.kind = kind;
     // TODO: Length check?
     res.msg.bitfield.len = length_announced - 1;
+    if (0 == res.msg.bitfield.len) {
+      return res;
+    }
+
+    ASSERT(res.msg.kind == kind);
     res.msg.bitfield.data = arena_new(&peer->arena, u8, res.msg.bitfield.len);
+    ASSERT(res.msg.kind == kind);
 
     String data_msg = slice_range(data, 1, 0);
     ASSERT(data_msg.len == res.msg.bitfield.len);

@@ -389,16 +389,16 @@ static void test_peer_receive_any_message_bitfield() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
-  String req_slice = S("\x0"
-                       "\x0"
-                       "\x0"
-                       "\x1b"
-                       "\x5"
-                       "abcdefghijklmnopqrstuvwxyz");
+  String read_slice = S("\x0"
+                        "\x0"
+                        "\x0"
+                        "\x1b"
+                        "\x5"
+                        "abcdefghijklmnopqrstuvwxyz");
 
   Peer peer = {0};
   peer.address.port = 6881;
-  MemReadContext src_ctx = {.s = req_slice};
+  MemReadContext src_ctx = {.s = read_slice};
   peer.reader = reader_make_from_slice(&src_ctx);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;

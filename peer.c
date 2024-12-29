@@ -228,6 +228,10 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 }
 
 [[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {
+  ASSERT(peer->tmp_arena.start != 0);
+  ASSERT(peer->arena.start != 0);
+  ASSERT(peer->reader.read_fn != nullptr);
+
   PeerMessageResult res = {0};
 
   Arena tmp_arena = peer->tmp_arena;

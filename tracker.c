@@ -130,6 +130,13 @@ tracker_parse_compact_peers(String s, Arena *arena) {
         .ip = ntohl(ipv4_network_order),
         .port = ntohs(port_network_order),
     };
+
+    {
+      log(LOG_LEVEL_INFO, "tracker_parse_compact_peers", arena,
+          L("res.peer_addresses.len", res.peer_addresses.len),
+          L("ip", address.ip), L("port", address.port),
+          L("address", ipv4_address_to_string(address, arena)));
+    }
     *dyn_push(&res.peer_addresses, arena) = address;
   }
 

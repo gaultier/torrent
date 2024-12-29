@@ -4,11 +4,6 @@
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
-  struct sigaction sa = {.sa_flags = SA_NOCLDWAIT};
-  if (-1 == sigaction(SIGCHLD, &sa, nullptr)) {
-    exit(errno);
-  }
-
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
 
   String torrent_file_path = cstr_to_string(argv[1]);
@@ -69,20 +64,28 @@ int main(int argc, char *argv[]) {
     }
 
     siginfo_t info = {0};
-    if (-1 == waitid(P_ALL, 0, &info, 0)) {
-      continue;
+    if (-1 == waitid(P_ALL, 0, &info, WEXITED)) {
+      if (ECHILD == errno) {
+        usleep(100'000);
+        continue;
+      }
+      exit(errno);
     }
 
     int child_pid = info.si_pid;
-    u64 *peer_idx = nullptr;
+    u64 peer_idx = UINT64_MAX;
     for (u64 i = 0; i < peers_active.len; i++) {
       if (slice_at(peers_active, i).pid == child_pid) {
-        *peer_idx = i;
+        peer_idx = i;
         break;
       }
     }
-    ASSERT(nullptr != peer_idx);
-    slice_swap_remove(&peers_active, *peer_idx);
+    ASSERT(UINT64_MAX != peer_idx);
+    Peer peer = slice_at(peers_active, peer_idx);
+    log(LOG_LEVEL_INFO, "peer child process finished", &arena,
+        L("ipv4", peer.address.ip), L("port", peer.address.port),
+        L("peers_active.len", peers_active.len));
+    slice_swap_remove(&peers_active, peer_idx);
   }
 
 #if 0

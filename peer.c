@@ -67,9 +67,7 @@ SLICE(Peer);
 [[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer) {
   ASSERT(0 != peer->address.ip);
   ASSERT(0 != peer->address.port);
-  if (PEER_STATE_NONE != peer->state) {
-    return 0;
-  }
+
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
@@ -293,6 +291,9 @@ static void peer_spawn(Peer *peer) {
     ASSERT(0 != peer->pid);
     return;
   }
+
+  log(LOG_LEVEL_INFO, "peer spawn", &peer->arena, L("ipv4", peer->address.ip),
+      L("port", peer->address.port));
 
   peer->state = PEER_STATE_SPAWNED;
 

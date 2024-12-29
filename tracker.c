@@ -71,18 +71,6 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
   memcpy(hash.data, sha1_hash, hash.len);
 }
 
-typedef enum {
-  PEER_STATE_NONE,
-  PEER_STATE_SPAWNED,
-  // More...
-} PeerState;
-
-typedef enum {
-  IO_OP_WILL_NONE = 0,
-  IO_OP_WILL_READ = 0b01,
-  IO_OP_WILL_WRITE = 0b10,
-} IoOperationSubscription;
-
 typedef struct {
   DynIpv4Address peer_addresses;
   String failure;

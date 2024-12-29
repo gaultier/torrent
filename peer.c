@@ -45,7 +45,6 @@ typedef struct {
   Ipv4Address address;
   Reader reader;
   Writer writer;
-  PeerState state;
   String info_hash;
   Arena arena;
   int pid;
@@ -220,15 +219,12 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
 [[maybe_unused]]
 static void peer_spawn(Peer *peer) {
-  if (PEER_STATE_NONE != peer->state) { // Idempotency.
-    ASSERT(0 != peer->pid);
+  if (peer->pid) { // Idempotency.
     return;
   }
 
   log(LOG_LEVEL_INFO, "peer spawn", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
-
-  peer->state = PEER_STATE_SPAWNED;
 
   int child_pid = fork();
   if (-1 == child_pid) {

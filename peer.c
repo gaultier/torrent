@@ -234,6 +234,8 @@ static void peer_spawn(Peer *peer) {
     exit(errno);
   }
 
+  peer->liveness_last_message_ns = monotonic_now_ns();
+
   int child_pid = fork();
   if (-1 == child_pid) {
     log(LOG_LEVEL_ERROR, "failed to fork(2)", &peer->arena, L("err", errno));

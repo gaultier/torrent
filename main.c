@@ -103,11 +103,14 @@ int main(int argc, char *argv[]) {
         if (event.revents & POLLIN) { // Child is live!
           u64 live_ns = 0;
           read(event.fd, &live_ns, sizeof(live_ns));
-          peer->liveness_last_message_ns = live_ns;
+
           log(LOG_LEVEL_INFO, "peer live message", &arena,
               L("ipv4", peer->address.ip), L("port", peer->address.port),
               L("poll.revents", (int)event.revents),
-              L("peers_active.len", peers_active.len), L("live_ns", live_ns));
+              L("peers_active.len", peers_active.len),
+              L("duration_since_last_live_message_ns",
+                live_ns - peer->liveness_last_message_ns));
+          peer->liveness_last_message_ns = live_ns;
         } else if (event.revents &
                    (POLLHUP |
                     POLLERR)) { // Pipe closed, or error: Kill the child.
@@ -121,7 +124,7 @@ int main(int argc, char *argv[]) {
           ASSERT(now_ns >= peer->liveness_last_message_ns);
 
           u64 duration_ns = now_ns - peer->liveness_last_message_ns;
-          if (duration_ns > liveness_seconds * 1000'1000'1000) {
+          if (duration_ns >= (liveness_seconds * 1000'000'000)) {
             peer->tombstone = true;
             log(LOG_LEVEL_INFO, "peer timed out", &arena,
                 L("ipv4", peer->address.ip), L("port", peer->address.port),

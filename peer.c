@@ -200,60 +200,6 @@ SLICE(Peer);
   return 0;
 }
 
-typedef struct {
-  Error err;
-  /* u32 next_tick_ms; */
-  IoOperationSubscription io_subscription;
-} PeerTickResult;
-
-#if 0
-[[nodiscard]] [[maybe_unused]]
-// TODO: Report if progress was made?
-static PeerTickResult peer_tick(Peer *peer, bool can_read, bool can_write) {
-  ASSERT(can_read || can_write);
-
-  log(LOG_LEVEL_INFO, "peer_tick", &peer->arena, L("ipv4", peer->address.ip),
-      L("port", peer->address.port), L("peer.state", peer->state),
-      L("can_read", (u32)can_read), L("can_write", (u32)can_write));
-
-  PeerTickResult res = {0};
-  if (PEER_STATE_CONNECTING == peer->state) {
-    peer->state = PEER_STATE_CONNECTED;
-  }
-
-  switch (peer->state) {
-  case PEER_STATE_CONNECTED: {
-    if (can_write) {
-      res.err = peer_send_handshake(peer);
-      res.io_subscription = IO_OP_WILL_READ;
-    }
-    break;
-  }
-  case PEER_STATE_HANDSHAKE_SENT: {
-    if (can_read) {
-      res.err = peer_receive_handshake(peer);
-
-      res.io_subscription = IO_OP_WILL_WRITE;
-    }
-    break;
-  }
-  case PEER_STATE_HANDSHAKE_RECEIVED: {
-
-    log(LOG_LEVEL_INFO, "peer_tick TODO", &peer->arena,
-        L("ipv4", peer->address.ip), L("port", peer->address.port),
-        L("peer.state", peer->state), L("can_read", (u32)can_read),
-        L("can_write", (u32)can_write));
-    break;
-  }
-  case PEER_STATE_NONE:
-  case PEER_STATE_CONNECTING:
-  default:
-    ASSERT(0);
-  }
-  return res;
-}
-#endif
-
 [[maybe_unused]]
 static void peer_pick_random(DynIpv4Address *addresses_all,
                              DynPeer *peers_active, u64 count, String info_hash,
@@ -271,21 +217,6 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
         L("ipv4", peer.address.ip), L("port", peer.address.port));
   }
 }
-
-#if 0
-static void peer_end(Peer *peer) {
-  writer_close(&peer->writer);
-  peer->tombstone = true;
-}
-#endif
-
-#if 0
-static void peers_run(PeerSlice peers) {
-  for (;;) {
-    for (
-  } 
-}
-#endif
 
 [[maybe_unused]]
 static void peer_spawn(Peer *peer) {

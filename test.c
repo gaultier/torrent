@@ -385,6 +385,33 @@ static void test_peer_receive_handshake() {
   ASSERT(HANDSHAKE_LENGTH == ctx->idx);
 }
 
+static void test_peer_receive_any_message_bitfield() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+
+  String req_slice = S("\x0"
+                       "\x0"
+                       "\x0"
+                       "\x1b"
+                       "\x5"
+                       "abcdefghijklmnopqrstuvwxyz");
+
+  Peer peer = {0};
+  peer.address.port = 6881;
+  MemReadContext src_ctx = {.s = req_slice};
+  peer.reader = reader_make_from_slice(&src_ctx);
+  peer.arena = arena;
+  peer.tmp_arena = tmp_arena;
+
+  PeerMessageResult res = peer_receive_any_message(&peer);
+  ASSERT(STATUS_OK == res.status);
+
+  MemReadContext *ctx = peer.reader.ctx;
+  ASSERT(4 + 1 + 26 == ctx->idx);
+
+  ASSERT(PEER_MSG_KIND_BITFIELD == res.msg.kind);
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -395,4 +422,5 @@ int main() {
   test_tracker_compute_info_hash();
   test_peer_send_handshake();
   test_peer_receive_handshake();
+  test_peer_receive_any_message_bitfield();
 }

@@ -36,13 +36,13 @@ typedef enum {
 
 typedef union {
   PeerMessageKind kind;
-  union {
-    PeerMessagePiece piece;
-    PeerMessageCancel cancel;
-    PeerMessageRequest request;
-    String bitfield;
-    u32 have;
-  };
+  /* union { */
+  PeerMessagePiece piece;
+  PeerMessageCancel cancel;
+  PeerMessageRequest request;
+  String bitfield;
+  u32 have;
+  /*  }; */
 } PeerMessage;
 
 typedef struct {
@@ -168,49 +168,38 @@ SLICE(Peer);
       .len = HANDSHAKE_LENGTH,
   };
 
-  IoOperationResult res_io = reader_read_exactly(&peer->reader, handshake);
-  if (res_io.err) {
+  Error res_io_err = reader_read_exactly(&peer->reader, handshake);
+  if (res_io_err) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
-        L("recv", res_io.s), L("err", res_io.err));
-    return res_io.err;
+        L("err", res_io_err));
+    return res_io_err;
   }
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
-      L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("recv_count", res_io.s.len));
+      L("ipv4", peer->address.ip), L("port", peer->address.port));
 
-  if (HANDSHAKE_LENGTH != res_io.s.len) {
-    log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake length",
-        &peer->arena, L("ipv4", peer->address.ip),
-        L("port", peer->address.port), L("recv", res_io.s),
-        L("err", res_io.err));
-    return ERR_HANDSHAKE_INVALID;
-  }
-
-  String prefix = slice_range(res_io.s, 0, 20);
+  String prefix = slice_range(handshake, 0, 20);
   String prefix_expected = S("\x13"
                              "BitTorrent protocol");
   if (!string_eq(prefix, prefix_expected)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
         &peer->arena, L("ipv4", peer->address.ip),
-        L("port", peer->address.port), L("recv", res_io.s),
-        L("err", res_io.err));
+        L("port", peer->address.port), L("recv", handshake));
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String reserved_bytes = slice_range(res_io.s, 20, 28);
+  String reserved_bytes = slice_range(handshake, 20, 28);
   (void)reserved_bytes; // Ignore.
 
-  String info_hash_received = slice_range(res_io.s, 28, 28 + 20);
+  String info_hash_received = slice_range(handshake, 28, 28 + 20);
   if (!string_eq(info_hash_received, peer->info_hash)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
         &peer->arena, L("ipv4", peer->address.ip),
-        L("port", peer->address.port), L("recv", res_io.s),
-        L("err", res_io.err));
+        L("port", peer->address.port), L("recv", handshake));
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String remote_peer_id = slice_range(res_io.s, 28 + 20, 0);
+  String remote_peer_id = slice_range(handshake, 28 + 20, 0);
   ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
@@ -247,12 +236,12 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
-  IoOperationResult io_res = reader_read_exactly(&peer->reader, length);
-  if (io_res.err) {
+  Error io_res = reader_read_exactly(&peer->reader, length);
+  if (io_res) {
     return res;
   }
 
-  u32 length_announced = u8x4_be_to_u32(io_res.s);
+  u32 length_announced = u8x4_be_to_u32(length);
 
   if (0 == length_announced) {
     res.status = STATUS_OK;
@@ -265,11 +254,11 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .len = length_announced,
   };
   io_res = reader_read_exactly(&peer->reader, data);
-  if (io_res.err) {
+  if (io_res) {
     return res;
   }
 
-  u8 kind = slice_at(io_res.s, 0);
+  u8 kind = slice_at(data, 0);
 
   log(LOG_LEVEL_DEBUG, "peer message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -301,7 +290,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
     res.msg.kind = kind;
-    String data_msg = slice_range(io_res.s, 1, 0);
+    String data_msg = slice_range(data, 1, 0);
     res.msg.have = u8x4_be_to_u32(data_msg);
     res.status = STATUS_OK;
     break;
@@ -312,7 +301,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     res.msg.bitfield.len = length_announced - 1;
     res.msg.bitfield.data = arena_new(&peer->arena, u8, res.msg.bitfield.len);
 
-    String data_msg = slice_range(io_res.s, 1, 0);
+    String data_msg = slice_range(data, 1, 0);
     ASSERT(data_msg.len == res.msg.bitfield.len);
     memcpy(res.msg.bitfield.data, data_msg.data, data_msg.len);
 

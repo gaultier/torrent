@@ -34,15 +34,15 @@ typedef enum {
   PEER_MSG_KIND_CANCEL = 8,
 } PeerMessageKind;
 
-typedef union {
+typedef struct {
   PeerMessageKind kind;
-  /* union { */
-  PeerMessagePiece piece;
-  PeerMessageCancel cancel;
-  PeerMessageRequest request;
-  String bitfield;
-  u32 have;
-  /*  }; */
+  union {
+    PeerMessagePiece piece;
+    PeerMessageCancel cancel;
+    PeerMessageRequest request;
+    String bitfield;
+    u32 have;
+  };
 } PeerMessage;
 
 typedef struct {
@@ -232,7 +232,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   ASSERT(peer->arena.start != 0);
   ASSERT(peer->reader.read_fn != nullptr);
 
-  PeerMessageResult res = {0};
+  PeerMessageResult res = {.msg.kind = PEER_MSG_KIND_NONE};
 
   Arena tmp_arena = peer->tmp_arena;
 
@@ -307,9 +307,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    ASSERT(res.msg.kind == kind);
     res.msg.bitfield.data = arena_new(&peer->arena, u8, res.msg.bitfield.len);
-    ASSERT(res.msg.kind == kind);
 
     String data_msg = slice_range(data, 1, 0);
     ASSERT(data_msg.len == res.msg.bitfield.len);

@@ -132,10 +132,11 @@ tracker_parse_compact_peers(String s, Arena *arena) {
     };
 
     {
+      String ipv4_addr_str = ipv4_address_to_string(address, arena);
       log(LOG_LEVEL_INFO, "tracker_parse_compact_peers", arena,
           L("res.peer_addresses.len", res.peer_addresses.len),
           L("ip", address.ip), L("port", address.port),
-          L("address", ipv4_address_to_string(address, arena)));
+          L("address", ipv4_addr_str));
     }
     *dyn_push(&res.peer_addresses, arena) = address;
   }

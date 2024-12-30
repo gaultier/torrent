@@ -62,6 +62,7 @@ typedef struct {
   u64 liveness_last_message_ns;
   bool tombstone;
   bool choked, interested;
+  String remote_bitfield;
 } Peer;
 
 DYN(Peer);
@@ -388,6 +389,42 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       L("kind", peer_message_kind_to_string(kind)));
 
   return res;
+}
+
+[[maybe_unused]] static void peer_handle_message(Peer *peer, PeerMessage msg) {
+  switch (msg.kind) {
+  case PEER_MSG_KIND_CHOKE:
+    peer->choked = true;
+    break;
+  case PEER_MSG_KIND_UNCHOKE:
+    peer->choked = false;
+    break;
+  case PEER_MSG_KIND_INTERESTED:
+    peer->interested = true;
+    break;
+  case PEER_MSG_KIND_UNINTERESTED:
+    peer->interested = false;
+    break;
+  case PEER_MSG_KIND_HAVE:
+    break;
+  case PEER_MSG_KIND_BITFIELD:
+    peer->remote_bitfield = msg.bitfield;
+    break;
+  case PEER_MSG_KIND_REQUEST:
+    // TODO
+    break;
+  case PEER_MSG_KIND_PIECE:
+    // TODO
+    break;
+  case PEER_MSG_KIND_CANCEL:
+    // TODO
+    break;
+  case PEER_MSG_KIND_KEEP_ALIVE:
+    // TODO
+    break;
+  default:
+    ASSERT(0);
+  }
 }
 
 [[maybe_unused]] [[nodiscard]] static Error peer_send_message(Peer *peer,

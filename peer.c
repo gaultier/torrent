@@ -359,6 +359,39 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   return res;
 }
 
+[[maybe_unused]] [[nodiscard]] static Error peer_send_message(Peer *peer,
+                                                              PeerMessage msg) {
+  log(LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port),
+      L("msg.kind", msg.kind));
+
+  Error err = 0;
+
+  Arena tmp_arena = peer->tmp_arena;
+  DynU8 sb = {0};
+  dyn_ensure_cap(&sb, 256, &tmp_arena);
+
+  switch (msg.kind) {
+  case PEER_MSG_KIND_KEEP_ALIVE:
+
+  case PEER_MSG_KIND_CHOKE:
+  case PEER_MSG_KIND_UNCHOKE:
+  case PEER_MSG_KIND_INTERESTED:
+  case PEER_MSG_KIND_UNINTERESTED:
+  case PEER_MSG_KIND_HAVE:
+  case PEER_MSG_KIND_BITFIELD:
+  case PEER_MSG_KIND_REQUEST:
+  case PEER_MSG_KIND_PIECE:
+  case PEER_MSG_KIND_CANCEL:
+    break;
+  case PEER_MSG_KIND_NONE:
+  default:
+    ASSERT(0);
+  }
+
+  return err;
+}
+
 [[maybe_unused]]
 static void peer_spawn(Peer *peer) {
   if (peer->pid) { // Idempotency.

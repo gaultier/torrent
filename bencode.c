@@ -292,13 +292,13 @@ static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
     *dyn_push(sb, arena) = 'i';
-    dynu8_append_u64(sb, value.num, arena);
+    dynu8_append_u64_to_string(sb, value.num, arena);
     *dyn_push(sb, arena) = 'e';
 
     break;
   }
   case BENCODE_KIND_STRING: {
-    dynu8_append_u64(sb, value.s.len, arena);
+    dynu8_append_u64_to_string(sb, value.s.len, arena);
     *dyn_push(sb, arena) = ':';
     dyn_append_slice(sb, value.s, arena);
 

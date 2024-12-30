@@ -21,9 +21,7 @@ typedef struct {
   u32 index, begin, length;
 } PeerMessageCancel;
 
-typedef enum {
-  PEER_MSG_KIND_NONE = -2,
-  PEER_MSG_KIND_KEEP_ALIVE = -1,
+typedef enum : u8 {
   PEER_MSG_KIND_CHOKE = 0,
   PEER_MSG_KIND_UNCHOKE = 1,
   PEER_MSG_KIND_INTERESTED = 2,
@@ -33,6 +31,7 @@ typedef enum {
   PEER_MSG_KIND_REQUEST = 6,
   PEER_MSG_KIND_PIECE = 7,
   PEER_MSG_KIND_CANCEL = 8,
+  PEER_MSG_KIND_KEEP_ALIVE = 9,
 } PeerMessageKind;
 
 typedef struct {
@@ -233,7 +232,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   ASSERT(peer->arena.start != 0);
   ASSERT(peer->reader.read_fn != nullptr);
 
-  PeerMessageResult res = {.msg.kind = PEER_MSG_KIND_NONE};
+  PeerMessageResult res = {0};
 
   Arena tmp_arena = peer->tmp_arena;
 
@@ -291,7 +290,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     break;
   }
   case PEER_MSG_KIND_HAVE: {
-    if ((1 + 4) != length_announced) {
+    if ((1 + sizeof(u32)) != length_announced) {
       return res;
     }
     res.msg.kind = kind;
@@ -363,9 +362,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
                                                               PeerMessage msg) {
   log(LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("msg.kind", msg.kind));
+      L("msg.kind", (u64)msg.kind));
 
-  Error err = 0;
+  Error res = 0;
 
   Arena tmp_arena = peer->tmp_arena;
   DynU8 sb = {0};
@@ -373,23 +372,60 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   switch (msg.kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
+    dynu8_append_u32(&sb, 0, &tmp_arena);
+    break;
 
   case PEER_MSG_KIND_CHOKE:
   case PEER_MSG_KIND_UNCHOKE:
   case PEER_MSG_KIND_INTERESTED:
   case PEER_MSG_KIND_UNINTERESTED:
-  case PEER_MSG_KIND_HAVE:
-  case PEER_MSG_KIND_BITFIELD:
-  case PEER_MSG_KIND_REQUEST:
-  case PEER_MSG_KIND_PIECE:
-  case PEER_MSG_KIND_CANCEL:
+    dynu8_append_u32(&sb, 1, &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
     break;
-  case PEER_MSG_KIND_NONE:
+
+  case PEER_MSG_KIND_HAVE:
+    dynu8_append_u32(&sb, 1 + sizeof(u32), &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    dynu8_append_u32(&sb, msg.have, &tmp_arena);
+    break;
+
+  case PEER_MSG_KIND_BITFIELD:
+    dynu8_append_u32(&sb, 1 + (u32)msg.bitfield.len, &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    dyn_append_slice(&sb, msg.bitfield, &tmp_arena);
+    break;
+
+  case PEER_MSG_KIND_REQUEST:
+    dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    dynu8_append_u32(&sb, msg.request.index, &tmp_arena);
+    dynu8_append_u32(&sb, msg.request.begin, &tmp_arena);
+    dynu8_append_u32(&sb, msg.request.length, &tmp_arena);
+    break;
+
+  case PEER_MSG_KIND_PIECE:
+    dynu8_append_u32(&sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len,
+                     &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    dynu8_append_u32(&sb, msg.piece.index, &tmp_arena);
+    dynu8_append_u32(&sb, msg.piece.begin, &tmp_arena);
+    dyn_append_slice(&sb, msg.piece.data, &tmp_arena);
+    break;
+
+  case PEER_MSG_KIND_CANCEL:
+    dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
+    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    dynu8_append_u32(&sb, msg.cancel.index, &tmp_arena);
+    dynu8_append_u32(&sb, msg.cancel.begin, &tmp_arena);
+    dynu8_append_u32(&sb, msg.cancel.length, &tmp_arena);
+    break;
   default:
     ASSERT(0);
   }
 
-  return err;
+  ASSERT(sb.len >= sizeof(u32));
+
+  return res;
 }
 
 [[maybe_unused]]

@@ -66,6 +66,35 @@ typedef struct {
 DYN(Peer);
 SLICE(Peer);
 
+[[nodiscard]] [[maybe_unused]] static String
+peer_message_kind_to_string(PeerMessageKind kind) {
+
+  switch (kind) {
+  case PEER_MSG_KIND_CHOKE:
+    return S("PEER_MSG_KIND_CHOKE");
+  case PEER_MSG_KIND_UNCHOKE:
+    return S("PEER_MSG_KIND_UNCHOKE");
+  case PEER_MSG_KIND_INTERESTED:
+    return S("PEER_MSG_KIND_INTERESTED");
+  case PEER_MSG_KIND_UNINTERESTED:
+    return S("PEER_MSG_KIND_UNINTERESTED");
+  case PEER_MSG_KIND_HAVE:
+    return S("PEER_MSG_KIND_HAVE");
+  case PEER_MSG_KIND_BITFIELD:
+    return S("PEER_MSG_KIND_BITFIELD");
+  case PEER_MSG_KIND_REQUEST:
+    return S("PEER_MSG_KIND_REQUEST");
+  case PEER_MSG_KIND_PIECE:
+    return S("PEER_MSG_KIND_PIECE");
+  case PEER_MSG_KIND_CANCEL:
+    return S("PEER_MSG_KIND_CANCEL");
+  case PEER_MSG_KIND_KEEP_ALIVE:
+    return S("PEER_MSG_KIND_KEEP_ALIVE");
+  default:
+    ASSERT(0);
+  }
+}
+
 [[maybe_unused]] [[nodiscard]] static Peer peer_make(Ipv4Address address,
                                                      String info_hash) {
   Peer peer = {0};
@@ -264,10 +293,6 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   u8 kind = slice_at(data, 0);
 
-  log(LOG_LEVEL_DEBUG, "peer message", &peer->arena,
-      L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("length_announced", length_announced), L("kind", (u64)kind));
-
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
     res.msg.kind = kind;
@@ -351,9 +376,13 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   default:
     log(LOG_LEVEL_ERROR, "peer message unknown kind", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
-        L("kind", (u64)kind));
+        L("kind", peer_message_kind_to_string(kind)));
     return res;
   }
+  log(LOG_LEVEL_DEBUG, "peer received message", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port),
+      L("length_announced", length_announced),
+      L("kind", peer_message_kind_to_string(kind)));
 
   return res;
 }
@@ -362,7 +391,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
                                                               PeerMessage msg) {
   log(LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("msg.kind", (u64)msg.kind));
+      L("msg.kind", peer_message_kind_to_string(msg.kind)));
 
   Error res = 0;
 
@@ -430,7 +459,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   log(res ? LOG_LEVEL_ERROR : LOG_LEVEL_INFO, "peer sent message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
-      L("msg.kind", (u64)msg.kind), L("s.len", s.len), L("err", res));
+      L("msg.kind", peer_message_kind_to_string(msg.kind)), L("s.len", s.len),
+      L("err", res));
 
   return res;
 }
@@ -488,6 +518,27 @@ static void peer_spawn(Peer *peer) {
   {
     Error err = peer_receive_handshake(peer);
     if (err) {
+      exit(1);
+    }
+  }
+  {
+    PeerMessageResult res = peer_receive_any_message(peer);
+    if (STATUS_OK != res.status) {
+      exit(1);
+    }
+  }
+  {
+    PeerMessage msg = {
+        .kind = PEER_MSG_KIND_REQUEST,
+        .request =
+            {
+                .index = 2,
+                .begin = 17 * BLOCK_LENGTH,
+                .length = BLOCK_LENGTH,
+            },
+    };
+    Error res_send_msg = peer_send_message(peer, msg);
+    if (res_send_msg) {
       exit(1);
     }
   }

@@ -412,6 +412,63 @@ static void test_peer_receive_any_message_bitfield() {
   ASSERT(PEER_MSG_KIND_BITFIELD == res.msg.kind);
 }
 
+static void test_peer_send_message() {
+  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena writer_arena = arena_make_from_virtual_mem(4 * KiB);
+
+  Peer peer = {0};
+  peer.address.port = 6881;
+  peer.writer = writer_make_for_buf(&writer_arena);
+  peer.arena = arena;
+  peer.tmp_arena = tmp_arena;
+  peer.info_hash = S("abcdefghijklmnopqrst");
+  ASSERT(20 == peer.info_hash.len);
+
+  PeerMessage msg = {
+      .kind = PEER_MSG_KIND_REQUEST,
+      .request =
+          {
+              .index = 2,
+              .begin = 17 * BLOCK_LENGTH,
+              .length = BLOCK_LENGTH,
+          },
+  };
+  Error err = peer_send_message(&peer, msg);
+  ASSERT(0 == err);
+
+  WriterBufCtx *ctx = peer.writer.ctx;
+  ASSERT(sizeof(u32) + 1 + 3 * sizeof(u32) == ctx->sb.len);
+
+  String expected = S(
+      // Length.
+      "\x0"
+      "\x0"
+      "\x0"
+      "\x0d"
+      // Tag.
+      "\x06"
+      // Request Index.
+      "\x0"
+      "\x0"
+      "\x0"
+      "\x02"
+
+      // Request Begin.
+      "\x0"
+      "\x04"
+      "\x40"
+      "\x00"
+
+      // Request Length.
+      "\x0"
+      "\x00"
+      "\x40"
+      "\x00");
+  String got = dyn_slice(String, ctx->sb);
+  ASSERT(string_eq(expected, got));
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -423,4 +480,5 @@ int main() {
   test_peer_send_handshake();
   test_peer_receive_handshake();
   test_peer_receive_any_message_bitfield();
+  test_peer_send_message();
 }

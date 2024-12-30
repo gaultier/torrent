@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
         peer_spawn(peer);
 
         *dyn_push(&poll_fds, &arena) = (pollfd){
-            .fd = peer->parent_child_liveness_pipe[0],
+            .fd = peer->pipe_child_to_parent[0],
             .events = POLLIN | POLLHUP,
         };
       }

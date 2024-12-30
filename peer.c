@@ -58,7 +58,7 @@ typedef struct {
   Arena arena;
   Arena tmp_arena;
   int pid;
-  int parent_child_liveness_pipe[2];
+  int pipe_child_to_parent[2];
   u64 liveness_last_message_ns;
   bool tombstone;
   bool choked, interested;
@@ -116,7 +116,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM /*| SOCK_NONBLOCK*/, IPPROTO_TCP);
+  int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (-1 == sock_fd) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -477,7 +477,7 @@ static void peer_spawn(Peer *peer) {
   log(LOG_LEVEL_INFO, "peer spawn", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  if (-1 == pipe(peer->parent_child_liveness_pipe)) {
+  if (-1 == pipe(peer->pipe_child_to_parent)) {
     log(LOG_LEVEL_ERROR, "failed to pipe(2)", &peer->arena, L("err", errno));
     exit(errno);
   }
@@ -492,14 +492,14 @@ static void peer_spawn(Peer *peer) {
 
   if (child_pid > 0) { // Parent.
     peer->pid = child_pid;
-    close(peer->parent_child_liveness_pipe[1]); // Close write end of the
-                                                // liveness pipe.
+    close(peer->pipe_child_to_parent[1]); // Close write end of the
+                                          // liveness pipe.
     return;
   }
 
   // Child.
-  close(peer->parent_child_liveness_pipe[0]); // Close read end of the
-                                              // liveness pipe.
+  close(peer->pipe_child_to_parent[0]); // Close read end of the
+                                        // liveness pipe.
   {
     Error err = peer_connect(peer);
     if (err) {
@@ -509,7 +509,7 @@ static void peer_spawn(Peer *peer) {
 
   {
     u64 now_ns = monotonic_now_ns();
-    write(peer->parent_child_liveness_pipe[1], &now_ns, sizeof(now_ns));
+    write(peer->pipe_child_to_parent[1], &now_ns, sizeof(now_ns));
   }
 
   {

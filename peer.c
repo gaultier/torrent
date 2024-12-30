@@ -61,6 +61,7 @@ typedef struct {
   int parent_child_liveness_pipe[2];
   u64 liveness_last_message_ns;
   bool tombstone;
+  bool choked, interested;
 } Peer;
 
 DYN(Peer);
@@ -102,6 +103,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.address = address;
   peer.arena = arena_make_from_virtual_mem(4 * KiB);
   peer.tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+  peer.choked = true;
+  peer.interested = false;
 
   return peer;
 }

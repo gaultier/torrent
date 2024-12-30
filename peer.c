@@ -425,6 +425,13 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   ASSERT(sb.len >= sizeof(u32));
 
+  String s = dyn_slice(String, sb);
+  res = writer_write_all(peer->writer, s);
+
+  log(res ? LOG_LEVEL_ERROR : LOG_LEVEL_INFO, "peer sent message", &peer->arena,
+      L("ipv4", peer->address.ip), L("port", peer->address.port),
+      L("msg.kind", (u64)msg.kind), L("s.len", s.len), L("err", res));
+
   return res;
 }
 

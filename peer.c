@@ -6,6 +6,7 @@
 #define HANDSHAKE_LENGTH 68
 #define LENGTH_LENGTH 4
 #define ERR_HANDSHAKE_INVALID 100
+#define BLOCK_LENGTH (1UL << 14)
 
 typedef struct {
   u32 index, begin, length;
@@ -307,22 +308,45 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    res.msg.bitfield.data = arena_new(&peer->arena, u8, res.msg.bitfield.len);
-
-    String data_msg = slice_range(data, 1, 0);
-    ASSERT(data_msg.len == res.msg.bitfield.len);
-    memcpy(res.msg.bitfield.data, data_msg.data, data_msg.len);
+    res.msg.bitfield = string_dup(slice_range(data, 1, 0), &peer->arena);
 
     res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_REQUEST: {
+    res.msg.kind = kind;
+    if (1 + 3 * sizeof(u32) != length_announced) {
+      return res;
+    }
+    res.msg.request.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.msg.request.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.msg.request.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_PIECE: {
+    res.msg.kind = kind;
+    if (1 + 2 * sizeof(u32) + BLOCK_LENGTH != length_announced) {
+      return res;
+    }
+    res.msg.piece.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.msg.piece.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.msg.piece.data = string_dup(slice_range(data, 9, 0), &peer->arena);
+
+    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_CANCEL: {
+    res.msg.kind = kind;
+    if (1 + 3 * sizeof(u32) != length_announced) {
+      return res;
+    }
+    res.msg.cancel.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.msg.cancel.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.msg.cancel.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+
+    res.status = STATUS_OK;
     break;
   }
   default:

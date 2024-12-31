@@ -77,10 +77,7 @@ typedef struct {
   u64 interval_secs;
 } TrackerResponse;
 
-typedef struct {
-  Status status;
-  TrackerResponse resp;
-} TrackerResponseResult;
+RESULT(TrackerResponse) TrackerResponseResult;
 
 typedef struct {
   Status status;
@@ -158,12 +155,12 @@ tracker_parse_response(String s, Arena *arena) {
         return res;
       }
 
-      res.resp.failure = value.s;
+      res.res.failure = value.s;
     } else if (string_eq(key, S("interval"))) {
       if (BENCODE_KIND_NUMBER != value.kind) {
         return res;
       }
-      res.resp.interval_secs = value.num;
+      res.res.interval_secs = value.num;
     } else if (string_eq(key, S("peers"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
@@ -174,11 +171,10 @@ tracker_parse_response(String s, Arena *arena) {
       if (STATUS_OK != res_parse_compact_peers.status) {
         return res;
       }
-      res.resp.peer_addresses = res_parse_compact_peers.peer_addresses;
+      res.res.peer_addresses = res_parse_compact_peers.peer_addresses;
     }
   }
 
-  res.status = STATUS_OK;
   return res;
 }
 
@@ -218,8 +214,17 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
       .value = tracker_request_event_to_string(req_tracker.event),
   };
 
-  HttpResponse resp = http_client_request(
-      req_tracker.announce.host, req_tracker.announce.port, req_http, arena);
+  DnsResolveIpv4AddressSocketResult res_resolve = net_dns_resolve_ipv4_tcp(
+      req_tracker.announce.host, req_tracker.announce.port, *arena);
+  if (res_resolve.err) {
+    log(LOG_LEVEL_ERROR, "tracker announce request failed to dns resolve",
+        arena, L("host", req_tracker.announce.host),
+        L("port", req_tracker.announce.port), L("err", res.err));
+    res.err = res_resolve.err;
+    return res;
+  }
+
+  HttpResponse resp = http_client_request(res_resolve.res, req_http, arena);
   if (resp.err) {
     log(LOG_LEVEL_ERROR, "tracker announce request", arena,
         L("host", req_tracker.announce.host),

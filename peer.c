@@ -1,7 +1,6 @@
 #pragma once
 
 #include "bencode.c"
-#include <netinet/tcp.h>
 
 #define HANDSHAKE_LENGTH 68
 #define LENGTH_LENGTH 4
@@ -117,30 +116,34 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (-1 == sock_fd) {
+  CreateSocketResult res_create_socket = net_create_tcp_socket();
+  if (res_create_socket.err) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
-        L("err", errno));
+        L("err", res_create_socket.err));
     return (Error)errno;
   }
-  int opt = 1;
-  setsockopt(sock_fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
 
-  peer->reader = reader_make_from_socket(sock_fd);
-  peer->writer = writer_make_from_socket(sock_fd);
+  {
+    Error err_set_nodelay = net_set_nodelay(res_create_socket.result, true);
+    if (err_set_nodelay) {
+      log(LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
+          L("ipv4", peer->address.ip), L("port", peer->address.port),
+          L("err", err_set_nodelay));
+    }
+  }
 
-  struct sockaddr_in addr = {
-      .sin_family = AF_INET,
-      .sin_port = htons(peer->address.port),
-      .sin_addr = {htonl(peer->address.ip)},
-  };
+  peer->reader = reader_make_from_socket(res_create_socket.result);
+  peer->writer = writer_make_from_socket(res_create_socket.result);
 
-  if (-1 == connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr))) {
-    log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
-        L("ipv4", peer->address.ip), L("port", peer->address.port),
-        L("err", errno));
-    return (Error)errno;
+  {
+    Error err = net_connect_ipv4(res_create_socket.result, peer->address);
+    if (err) {
+      log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
+          L("ipv4", peer->address.ip), L("port", peer->address.port),
+          L("err", err));
+      return (Error)err;
+    }
   }
 
   log(LOG_LEVEL_INFO, "peer connected", &peer->arena,

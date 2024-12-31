@@ -23,34 +23,33 @@ int main(int argc, char *argv[]) {
 
   DecodeMetaInfoResult res_decode_metainfo =
       decode_metainfo(res_torrent_file_read.content, &arena);
-  if (STATUS_OK != res_decode_metainfo.status) {
+  if (res_decode_metainfo.err) {
     log(LOG_LEVEL_ERROR, "decode metainfo", &arena,
-        L("err", res_decode_metainfo.status));
+        L("err", res_decode_metainfo.err));
     return 1;
   }
 
   u16 port_ours_torrent = 6881;
   TrackerRequest req_tracker = {
       .port = port_ours_torrent,
-      .left = res_decode_metainfo.metainfo.length,
+      .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
-      .announce = res_decode_metainfo.metainfo.announce,
+      .announce = res_decode_metainfo.res.announce,
       .info_hash = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
       .peer_id = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
   };
-  tracker_compute_info_hash(res_decode_metainfo.metainfo, req_tracker.info_hash,
+  tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
                             &arena);
 
   TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);
-  if (STATUS_OK != res_tracker.status) {
-    log(LOG_LEVEL_ERROR, "tracker response", &arena,
-        L("err", res_tracker.status));
+  if (res_tracker.err) {
+    log(LOG_LEVEL_ERROR, "tracker response", &arena, L("err", res_tracker.err));
     return 1;
   }
   log(LOG_LEVEL_INFO, "tracker response", &arena,
-      L("addresses count", res_tracker.resp.peer_addresses.len));
+      L("addresses count", res_tracker.res.peer_addresses.len));
 
-  DynIpv4Address peer_addresses = res_tracker.resp.peer_addresses;
+  DynIpv4Address peer_addresses = res_tracker.res.peer_addresses;
   ASSERT(20 == req_tracker.info_hash.len);
 
   DynPeer peers_active = {0};

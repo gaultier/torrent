@@ -44,10 +44,7 @@ typedef struct {
   };
 } PeerMessage;
 
-typedef struct {
-  Status status;
-  PeerMessage msg;
-} PeerMessageResult;
+RESULT(PeerMessage) PeerMessageResult;
 
 typedef struct {
   Ipv4Address address;
@@ -125,7 +122,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 
   {
-    Error err_set_nodelay = net_set_nodelay(res_create_socket.result, true);
+    Error err_set_nodelay = net_set_nodelay(res_create_socket.res, true);
     if (err_set_nodelay) {
       log(LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -133,11 +130,11 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     }
   }
 
-  peer->reader = reader_make_from_socket(res_create_socket.result);
-  peer->writer = writer_make_from_socket(res_create_socket.result);
+  peer->reader = reader_make_from_socket(res_create_socket.res);
+  peer->writer = writer_make_from_socket(res_create_socket.res);
 
   {
-    Error err = net_connect_ipv4(res_create_socket.result, peer->address);
+    Error err = net_connect_ipv4(res_create_socket.res, peer->address);
     if (err) {
       log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -276,16 +273,16 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
-  Error io_res = reader_read_exactly(&peer->reader, length);
-  if (io_res) {
+  Error err_io = reader_read_exactly(&peer->reader, length);
+  if (err_io) {
+    res.err = err_io;
     return res;
   }
 
   u32 length_announced = u8x4_be_to_u32(length);
 
   if (0 == length_announced) {
-    res.status = STATUS_OK;
-    res.msg.kind = PEER_MSG_KIND_KEEP_ALIVE;
+    res.res.kind = PEER_MSG_KIND_KEEP_ALIVE;
     return res;
   }
 
@@ -293,8 +290,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = arena_new(&tmp_arena, u8, length_announced),
       .len = length_announced,
   };
-  io_res = reader_read_exactly(&peer->reader, data);
-  if (io_res) {
+  err_io = reader_read_exactly(&peer->reader, data);
+  if (err_io) {
+    res.err = err_io;
     return res;
   }
 
@@ -302,88 +300,85 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
-    res.msg.kind = kind;
-    res.status = STATUS_OK;
+    res.res.kind = kind;
     break;
   }
   case PEER_MSG_KIND_UNCHOKE: {
-    res.msg.kind = kind;
-    res.status = STATUS_OK;
+    res.res.kind = kind;
     break;
   }
   case PEER_MSG_KIND_INTERESTED: {
-    res.msg.kind = kind;
-    res.status = STATUS_OK;
+    res.res.kind = kind;
     break;
   }
   case PEER_MSG_KIND_UNINTERESTED: {
-    res.msg.kind = kind;
-    res.status = STATUS_OK;
+    res.res.kind = kind;
     break;
   }
   case PEER_MSG_KIND_HAVE: {
     if ((1 + sizeof(u32)) != length_announced) {
+      res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.msg.kind = kind;
+    res.res.kind = kind;
     String data_msg = slice_range(data, 1, 0);
-    res.msg.have = u8x4_be_to_u32(data_msg);
-    res.status = STATUS_OK;
+    res.res.have = u8x4_be_to_u32(data_msg);
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
-    res.msg.kind = kind;
+    res.res.kind = kind;
     // TODO: Length check?
-    res.msg.bitfield.len = length_announced - 1;
-    if (0 == res.msg.bitfield.len) {
+    res.res.bitfield.len = length_announced - 1;
+    if (0 == res.res.bitfield.len) {
+      res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
 
-    res.msg.bitfield = string_dup(slice_range(data, 1, 0), &peer->arena);
+    res.res.bitfield = string_dup(slice_range(data, 1, 0), &peer->arena);
 
-    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_REQUEST: {
-    res.msg.kind = kind;
+    res.res.kind = kind;
     if (1 + 3 * sizeof(u32) != length_announced) {
+      res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.msg.request.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.msg.request.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.msg.request.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+    res.res.request.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.res.request.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.res.request.length = u8x4_be_to_u32(slice_range(data, 9, 13));
 
-    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_PIECE: {
-    res.msg.kind = kind;
+    res.res.kind = kind;
     if (1 + 2 * sizeof(u32) + BLOCK_LENGTH != length_announced) {
+      res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.msg.piece.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.msg.piece.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.msg.piece.data = string_dup(slice_range(data, 9, 0), &peer->arena);
+    res.res.piece.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.res.piece.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.res.piece.data = string_dup(slice_range(data, 9, 0), &peer->arena);
 
-    res.status = STATUS_OK;
     break;
   }
   case PEER_MSG_KIND_CANCEL: {
-    res.msg.kind = kind;
+    res.res.kind = kind;
     if (1 + 3 * sizeof(u32) != length_announced) {
+      res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.msg.cancel.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.msg.cancel.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.msg.cancel.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+    res.res.cancel.index = u8x4_be_to_u32(slice_range(data, 1, 5));
+    res.res.cancel.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
+    res.res.cancel.length = u8x4_be_to_u32(slice_range(data, 9, 13));
 
-    res.status = STATUS_OK;
     break;
   }
   default:
     log(LOG_LEVEL_ERROR, "peer message unknown kind", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
         L("kind", peer_message_kind_to_string(kind)));
+    res.err = TORR_ERR_PEER_MESSAGE_INVALID;
     return res;
   }
   log(LOG_LEVEL_DEBUG, "peer received message", &peer->arena,
@@ -566,7 +561,7 @@ static void peer_spawn(Peer *peer) {
   }
   {
     PeerMessageResult res = peer_receive_any_message(peer);
-    if (STATUS_OK != res.status) {
+    if (res.err) {
       exit(1);
     }
   }
@@ -587,7 +582,7 @@ static void peer_spawn(Peer *peer) {
   }
   {
     PeerMessageResult res = peer_receive_any_message(peer);
-    if (STATUS_OK != res.status) {
+    if (res.err) {
       exit(1);
     }
   }

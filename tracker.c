@@ -80,14 +80,16 @@ typedef struct {
 RESULT(TrackerResponse) TrackerResponseResult;
 
 typedef struct {
-  Status status;
+  Error err;
   DynIpv4Address peer_addresses;
 } ParseCompactPeersResult;
+
 [[nodiscard]] static ParseCompactPeersResult
 tracker_parse_compact_peers(String s, Arena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
+    res.err = TORR_ERR_COMPACT_PEERS_INVALID;
     return res;
   }
 
@@ -123,7 +125,6 @@ tracker_parse_compact_peers(String s, Arena *arena) {
     *dyn_push(&res.peer_addresses, arena) = address;
   }
 
-  res.status = STATUS_OK;
   return res;
 }
 
@@ -133,14 +134,17 @@ tracker_parse_response(String s, Arena *arena) {
 
   BencodeValueDecodeResult tracker_response_bencode_res =
       bencode_decode_value(s, arena);
-  if (STATUS_OK != tracker_response_bencode_res.status) {
+  if (tracker_response_bencode_res.err) {
+    res.err = tracker_response_bencode_res.err;
     return res;
   }
   if (tracker_response_bencode_res.remaining.len != 0) {
+    res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
   if (BENCODE_KIND_DICTIONARY != tracker_response_bencode_res.value.kind) {
+    res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
@@ -152,23 +156,27 @@ tracker_parse_response(String s, Arena *arena) {
 
     if (string_eq(key, S("failure reason"))) {
       if (BENCODE_KIND_STRING != value.kind) {
+        res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
       res.res.failure = value.s;
     } else if (string_eq(key, S("interval"))) {
       if (BENCODE_KIND_NUMBER != value.kind) {
+        res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
       res.res.interval_secs = value.num;
     } else if (string_eq(key, S("peers"))) {
       if (BENCODE_KIND_STRING != value.kind) {
+        res.err = TORR_ERR_BENCODE_INVALID;
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
       ParseCompactPeersResult res_parse_compact_peers =
           tracker_parse_compact_peers(value.s, arena);
 
-      if (STATUS_OK != res_parse_compact_peers.status) {
+      if (res_parse_compact_peers.err) {
+        res.err = res_parse_compact_peers.err;
         return res;
       }
       res.res.peer_addresses = res_parse_compact_peers.peer_addresses;

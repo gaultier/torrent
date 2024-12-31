@@ -1,5 +1,5 @@
 #pragma once
-#include "submodules/c-http/submodules/cstd/lib.c"
+#include "peer.c"
 
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
@@ -32,4 +32,15 @@ bitfield_pick_random_piece(String bitfield_remote_pieces, u32 pieces_count) {
     }
   }
   return -1;
+}
+
+// TODO: use.
+[[maybe_unused]] [[nodiscard]] static bool
+piece_verify_hash(String data, String hash_expected) {
+  ASSERT(20 == hash_expected.len);
+  ASSERT(0 == data.len % BLOCK_LENGTH);
+
+  u8 hash_got[20] = {0};
+  sha1(data, hash_got);
+  return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
 }

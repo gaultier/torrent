@@ -294,44 +294,6 @@ static void test_peer_send_handshake() {
   ASSERT(HANDSHAKE_LENGTH == ctx->sb.len);
 }
 
-typedef struct {
-  String s;
-  u64 idx;
-} MemReadContext;
-
-static IoOperationResult reader_read_from_slice(void *ctx, void *buf,
-                                                size_t buf_len) {
-  MemReadContext *mem_ctx = ctx;
-
-  ASSERT(buf != nullptr);
-  ASSERT(mem_ctx->s.data != nullptr);
-  if (mem_ctx->idx >= mem_ctx->s.len) {
-    // End.
-    return (IoOperationResult){0};
-  }
-
-  const u64 remaining = mem_ctx->s.len - mem_ctx->idx;
-  const u64 can_fill = MIN(remaining, buf_len);
-  ASSERT(can_fill <= remaining);
-
-  IoOperationResult res = {
-      .s.data = mem_ctx->s.data + mem_ctx->idx,
-      .s.len = can_fill,
-  };
-  memcpy(buf, res.s.data, res.s.len);
-
-  mem_ctx->idx += can_fill;
-  ASSERT(mem_ctx->idx <= mem_ctx->s.len);
-  return res;
-}
-
-static Reader reader_make_from_slice(MemReadContext *ctx) {
-  return (Reader){
-      .ctx = ctx,
-      .read_fn = reader_read_from_slice,
-  };
-}
-
 static void test_peer_receive_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);

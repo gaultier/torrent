@@ -51,7 +51,7 @@ typedef struct {
 [[nodiscard]] static BencodeNumberDecodeResult bencode_decode_number(String s) {
   BencodeNumberDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume(s, 'i');
+  StringConsumeResult prefix = string_consume_byte(s, 'i');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -65,7 +65,7 @@ typedef struct {
 
   res.num = num_res.n;
 
-  StringConsumeResult suffix = string_consume(num_res.remaining, 'e');
+  StringConsumeResult suffix = string_consume_byte(num_res.remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -94,7 +94,7 @@ typedef struct {
     return res;
   }
 
-  StringConsumeResult prefix = string_consume(num_res.remaining, ':');
+  StringConsumeResult prefix = string_consume_byte(num_res.remaining, ':');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -122,7 +122,7 @@ typedef struct {
 bencode_decode_dictionary(String s, Arena *arena) {
   BencodeDictionaryDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume(s, 'd');
+  StringConsumeResult prefix = string_consume_byte(s, 'd');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -169,7 +169,7 @@ bencode_decode_dictionary(String s, Arena *arena) {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = string_consume(remaining, 'e');
+  StringConsumeResult suffix = string_consume_byte(remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -191,7 +191,7 @@ typedef struct {
                                                                  Arena *arena) {
   BencodeListDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume(s, 'l');
+  StringConsumeResult prefix = string_consume_byte(s, 'l');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -219,7 +219,7 @@ typedef struct {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = string_consume(remaining, 'e');
+  StringConsumeResult suffix = string_consume_byte(remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;

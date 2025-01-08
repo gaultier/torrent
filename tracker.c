@@ -191,7 +191,7 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   TrackerResponseResult res = {0};
 
   HttpRequest req_http = {0};
-  req_http.method = HM_GET;
+  req_http.method = HTTP_METHOD_GET;
   req_http.path_components = req_tracker.announce.path_components;
   *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
       .key = S("info_hash"),

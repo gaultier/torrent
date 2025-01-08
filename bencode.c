@@ -1,7 +1,7 @@
 #pragma once
 
 #include "error.h"
-#include "submodules/c-http/http.c"
+#include "submodules/cstd/lib.c"
 
 typedef enum {
   BENCODE_KIND_NONE,
@@ -386,12 +386,12 @@ RESULT(Metainfo) DecodeMetaInfoResult;
       }
 
       ParseUrlResult url_parse_res = url_parse(value->s, arena);
-      if (!url_parse_res.ok) {
+      if (url_parse_res.err) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
-      res.res.announce = url_parse_res.url;
+      res.res.announce = url_parse_res.res;
     } else if (string_eq(key, S("info"))) {
       if (BENCODE_KIND_DICTIONARY != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;

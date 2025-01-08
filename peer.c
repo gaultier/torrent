@@ -48,7 +48,7 @@ RESULT(PeerMessage) PeerMessageResult;
 
 typedef struct {
   Ipv4Address address;
-  Reader reader;
+  BufferedReader reader;
   Writer writer;
   String info_hash;
   Arena arena;

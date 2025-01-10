@@ -192,32 +192,32 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
 
   HttpRequest req_http = {0};
   req_http.method = HTTP_METHOD_GET;
-  req_http.path_components = req_tracker.announce.path_components;
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  req_http.url = req_tracker.announce;
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("info_hash"),
       .value = req_tracker.info_hash,
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("peer_id"),
       .value = req_tracker.peer_id,
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("port"),
       .value = u64_to_string(req_tracker.port, arena),
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("uploaded"),
       .value = u64_to_string(req_tracker.uploaded, arena),
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("downloaded"),
       .value = u64_to_string(req_tracker.downloaded, arena),
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("left"),
       .value = u64_to_string(req_tracker.left, arena),
   };
-  *dyn_push(&req_http.url_parameters, arena) = (KeyValue){
+  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
       .key = S("event"),
       .value = tracker_request_event_to_string(req_tracker.event),
   };

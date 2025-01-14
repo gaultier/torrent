@@ -337,12 +337,12 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
     }
     logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
                arena_tmp, L("http.status", res_http.res.status));
+    tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 
     *dyn_push(events_change, events_arena) = (AioEvent){
         .socket = tracker->socket,
         .action = AIO_EVENT_ACTION_KIND_DEL,
     };
-    tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
   } break;
   case TRACKER_STATE_RECEIVED_RESPONSE: {
 

@@ -5,7 +5,7 @@ typedef enum {
   TRACKER_EVENT_STARTED,
   TRACKER_EVENT_STOPPED,
   TRACKER_EVENT_COMPLETED,
-} TrackerRequestEvent;
+} TrackerMetadataEvent;
 
 typedef struct {
   String info_hash;
@@ -13,12 +13,12 @@ typedef struct {
   u32 ip;
   u16 port;
   u64 downloaded, uploaded, left;
-  TrackerRequestEvent event;
+  TrackerMetadataEvent event;
   Url announce;
-} TrackerRequest;
+} TrackerMetadata;
 
 [[maybe_unused]] [[nodiscard]] static String
-tracker_request_event_to_string(TrackerRequestEvent event) {
+tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
     return S("started");
@@ -187,7 +187,7 @@ tracker_parse_response(String s, Logger *logger, Arena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static HttpRequest
-tracker_make_request(TrackerRequest req_tracker, Arena *arena) {
+tracker_make_http_request(TrackerMetadata req_tracker, Arena *arena) {
   HttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
@@ -217,8 +217,110 @@ tracker_make_request(TrackerRequest req_tracker, Arena *arena) {
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("event"),
-      .value = tracker_request_event_to_string(req_tracker.event),
+      .value = tracker_metadata_event_to_string(req_tracker.event),
   };
 
   return res;
+}
+
+typedef enum {
+  TRACKER_STATE_NONE,
+  TRACKER_STATE_SENT_REQUEST,
+} TrackerState;
+
+typedef struct {
+  Logger *logger;
+  TrackerState state;
+  Socket socket;
+  String host;
+  u16 port;
+  Arena arena;
+  RingBuffer rg;
+  Reader reader;
+  Writer writer;
+  TrackerMetadata metadata;
+} Tracker;
+
+[[nodiscard]]
+static Tracker tracker_make(Logger *logger, String host, u16 port,
+                            TrackerMetadata metadata) {
+  Tracker tracker = {0};
+  tracker.logger = logger;
+  tracker.host = host;
+  tracker.port = port;
+  tracker.metadata = metadata;
+
+  tracker.arena = arena_make_from_virtual_mem(4 * KiB);
+  tracker.rg = (RingBuffer){.data = string_make(2048, &tracker.arena)};
+
+  return tracker;
+}
+
+[[nodiscard]]
+static Error tracker_connect(Tracker *tracker) {
+  {
+    DnsResolveIpv4AddressSocketResult res_dns =
+        net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
+    if (res_dns.err) {
+      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+                 "failed to dns resolve the tracker announce url",
+                 tracker->arena, L("err", res_dns.err));
+      return res_dns.err;
+    }
+    ASSERT(0 != res_dns.res.socket);
+    tracker->socket = res_dns.res.socket;
+
+    logger_log(tracker->logger, LOG_LEVEL_DEBUG,
+               "dns resolved tracker announce url", tracker->arena,
+               L("host", tracker->host), L("port", tracker->port),
+               L("ip", res_dns.res.address.ip));
+  }
+  {
+    Error err = net_socket_set_blocking(tracker->socket, false);
+    if (err) {
+      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+                 "failed to set socket to non blocking", tracker->arena,
+                 L("err", err));
+      return err;
+    }
+  }
+
+  tracker->reader = reader_make_from_socket(tracker->socket);
+  tracker->writer = writer_make_from_socket(tracker->socket);
+
+  return (Error)0;
+}
+
+[[nodiscard]]
+static Error tracker_handle_event(Tracker *tracker, AioEvent event) {
+
+  switch (tracker->state) {
+  case TRACKER_STATE_NONE: {
+    if (0 == (AIO_EVENT_KIND_OUT & event.kind)) {
+      // Failed to connect or invalid API use.
+      return (Error)EINVAL;
+    }
+
+    {
+      Arena arena_tmp = tracker->arena;
+      HttpRequest tracker_http_req =
+          tracker_make_http_request(tracker->metadata, &arena_tmp);
+      Error err = http_write_request(&tracker->rg, tracker_http_req, arena_tmp);
+      ASSERT(!err); // Ring buffer too small.
+    }
+
+    logger_log(tracker->logger, LOG_LEVEL_DEBUG,
+               "wrote http request to ring buffer", tracker->arena,
+               L("write_space", ring_buffer_write_space(tracker->rg)),
+               L("read_space", ring_buffer_read_space(tracker->rg)));
+
+    // TODO: AIO_MOD.
+  } break;
+  case TRACKER_STATE_SENT_REQUEST:
+    break;
+  default:
+    ASSERT(0);
+    break;
+  }
+  return (Error)0;
 }

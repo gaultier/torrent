@@ -45,47 +45,30 @@ int main(int argc, char *argv[]) {
              L("path", torrent_file_path));
 
   u16 port_ours_torrent = 6881;
-  TrackerRequest tracker_req = {
+  TrackerMetadata tracker_metadata = {
       .port = port_ours_torrent,
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
-      .info_hash = string_make(20, &arena),
-      .peer_id = string_make(20, &arena),
+      .info_hash =
+          string_make(20, &arena),        // FIXME: Should use tracker's arena?
+      .peer_id = string_make(20, &arena), // FIXME: Should use tracker's arena?
   };
-  tracker_compute_info_hash(res_decode_metainfo.res, tracker_req.info_hash,
+  tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
 
-  Socket tracker_socket = 0;
+  Url announce = res_decode_metainfo.res.announce;
+  Tracker tracker =
+      tracker_make(&logger, announce.host, announce.port, tracker_metadata);
   {
-    DnsResolveIpv4AddressSocketResult res_dns = net_dns_resolve_ipv4_tcp(
-        tracker_req.announce.host, tracker_req.announce.port, arena);
-    if (res_dns.err) {
-      logger_log(&logger, LOG_LEVEL_ERROR,
-                 "failed to dns resolve the tracker announce url", arena,
-                 L("err", res_dns.err));
-      return 1;
-    }
-    ASSERT(0 != res_dns.res.socket);
-    tracker_socket = res_dns.res.socket;
-
-    logger_log(&logger, LOG_LEVEL_DEBUG, "dns resolved tracker announce url",
-               arena, L("url.host", tracker_req.announce.host),
-               L("url.port", tracker_req.announce.port),
-               L("ip", res_dns.res.address.ip));
-  }
-  {
-    Error err = net_socket_set_blocking(tracker_socket, false);
+    Error err = tracker_connect(&tracker);
     if (err) {
-      logger_log(&logger, LOG_LEVEL_ERROR,
-                 "failed to set socket to non blocking", arena, L("err", err));
       return 1;
     }
   }
-
   {
     AioEvent event = {
-        .socket = tracker_socket,
+        .socket = tracker.socket,
         .kind = AIO_EVENT_KIND_OUT,
         .action = AIO_EVENT_ACTION_KIND_ADD,
     };
@@ -96,10 +79,8 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
-  RingBuffer tracker_io = {.data = string_make(4096, &arena)};
-  HttpRequest tracker_http_req = tracker_make_request(tracker_req, &arena);
-  Reader tracker_reader = reader_make_from_socket(tracker_socket);
-  Writer tracker_writer = writer_make_from_socket(tracker_socket);
+  HttpRequest tracker_http_req =
+      tracker_make_http_request(tracker_metadata, &arena);
 
   AioEventSlice events_watch = slice_make(AioEvent, 16, &arena);
   for (;;) {
@@ -119,7 +100,7 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
-      if (event_watch.socket == tracker_socket) {
+      if (event_watch.socket == tracker->socket) {
         if (AIO_EVENT_KIND_OUT & event_watch.kind) {
           {
             Error err =
@@ -148,7 +129,7 @@ int main(int argc, char *argv[]) {
           }
           {
             AioEvent event_change = {
-                .socket = tracker_socket,
+                .socket = tracker->socket,
                 .kind = AIO_EVENT_KIND_IN,
                 .action = AIO_EVENT_ACTION_KIND_MOD,
             };

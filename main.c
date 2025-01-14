@@ -12,6 +12,14 @@ int main(int argc, char *argv[]) {
 
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
 
+  AioQueueCreateResult res_queue_create = net_aio_queue_create();
+  if (res_queue_create.err) {
+    log(LOG_LEVEL_ERROR, "create aio queue", &arena,
+        L("err", res_queue_create.err));
+    return 1;
+  }
+  AioQueue queue = res_queue_create.res;
+
   String torrent_file_path = cstr_to_string(argv[1]);
   ReadFileResult res_torrent_file_read =
       file_read_full(torrent_file_path, &arena);

@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
   Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
 
-  AioQueueCreateResult res_queue_create = net_aio_queue_create();
+  AioQueueCreateResult res_queue_create = aio_queue_create();
   if (res_queue_create.err) {
     logger_log(&logger, LOG_LEVEL_ERROR, "failed to create aio queue", arena,
                L("err", res_queue_create.err));
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
         .kind = AIO_EVENT_KIND_OUT,
         .action = AIO_EVENT_ACTION_KIND_ADD,
     };
-    Error err = net_aio_queue_ctl_one(queue, event);
+    Error err = aio_queue_ctl_one(queue, event);
     if (err) {
       logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for an I/O event",
                  arena, L("err", err));
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   for (;;) {
     ASSERT(0 == events_change.len);
 
-    IoCountResult res_wait = net_aio_queue_wait(queue, events_watch, -1, arena);
+    IoCountResult res_wait = aio_queue_wait(queue, events_watch, -1, arena);
     if (res_wait.err) {
       logger_log(&logger, LOG_LEVEL_ERROR, "failed to wait for events", arena,
                  L("err", res_decode_metainfo.err));
@@ -151,8 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      Error err =
-          net_aio_queue_ctl(queue, dyn_slice(AioEventSlice, events_change));
+      Error err = aio_queue_ctl(queue, dyn_slice(AioEventSlice, events_change));
       if (err) {
         logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));

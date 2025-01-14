@@ -1,9 +1,8 @@
 #if 0
 #include "peer.c"
-#include "tracker.c"
 #endif
 
-#include "bencode.c"
+#include "tracker.c"
 
 static void test_bencode_decode_u64() {
   {
@@ -253,7 +252,6 @@ static void test_bencode_decode_encode() {
   ASSERT(string_eq(encoded, torrent_file_content));
 }
 
-#if 0
 static void test_tracker_compute_info_hash() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   String torrent_file_content = S(
@@ -267,13 +265,13 @@ static void test_tracker_compute_info_hash() {
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   DecodeMetaInfoResult res =
       bencode_decode_metainfo(torrent_file_content, &arena);
-  ASSERT(STATUS_OK == res.status);
+  ASSERT(0 == res.err);
 
   String hash = {
       .data = arena_new(&arena, u8, 20),
       .len = 20,
   };
-  tracker_compute_info_hash(res.metainfo, hash, &arena);
+  tracker_compute_info_hash(res.res, hash, &arena);
 
   u8 expected_hash[20] = {
       0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,
@@ -283,6 +281,7 @@ static void test_tracker_compute_info_hash() {
   ASSERT(0 == memcmp(hash.data, expected_hash, hash.len));
 }
 
+#if 0
 static void test_peer_send_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena writer_arena = arena_make_from_virtual_mem(4 * KiB);
@@ -447,8 +446,8 @@ int main() {
   test_bencode_decode_list();
   test_decode_metainfo();
   test_bencode_decode_encode();
-#if 0
   test_tracker_compute_info_hash();
+#if 0
   test_peer_send_handshake();
   test_peer_receive_handshake();
   test_peer_receive_any_message_bitfield();

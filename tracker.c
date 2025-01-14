@@ -85,7 +85,7 @@ typedef struct {
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(String s, Arena *arena) {
+tracker_parse_compact_peers(String s, Logger *logger, Arena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
@@ -117,10 +117,10 @@ tracker_parse_compact_peers(String s, Arena *arena) {
 
     {
       String ipv4_addr_str = ipv4_address_to_string(address, arena);
-      log(LOG_LEVEL_INFO, "tracker_parse_compact_peers", arena,
-          L("res.peer_addresses.len", res.peer_addresses.len),
-          L("ip", address.ip), L("port", address.port),
-          L("address", ipv4_addr_str));
+      logger_log(logger, LOG_LEVEL_INFO, "tracker_parse_compact_peers", *arena,
+                 L("res.peer_addresses.len", res.peer_addresses.len),
+                 L("ip", address.ip), L("port", address.port),
+                 L("address", ipv4_addr_str));
     }
     *dyn_push(&res.peer_addresses, arena) = address;
   }
@@ -128,8 +128,8 @@ tracker_parse_compact_peers(String s, Arena *arena) {
   return res;
 }
 
-[[nodiscard]] static TrackerResponseResult
-tracker_parse_response(String s, Arena *arena) {
+[[maybe_unused]] [[nodiscard]] static TrackerResponseResult
+tracker_parse_response(String s, Logger *logger, Arena *arena) {
   TrackerResponseResult res = {0};
 
   BencodeValueDecodeResult tracker_response_bencode_res =
@@ -173,7 +173,7 @@ tracker_parse_response(String s, Arena *arena) {
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
       ParseCompactPeersResult res_parse_compact_peers =
-          tracker_parse_compact_peers(value.s, arena);
+          tracker_parse_compact_peers(value.s, logger, arena);
 
       if (res_parse_compact_peers.err) {
         res.err = res_parse_compact_peers.err;
@@ -186,6 +186,7 @@ tracker_parse_response(String s, Arena *arena) {
   return res;
 }
 
+#if 0
 [[maybe_unused]] [[nodiscard]] static TrackerResponseResult
 tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   TrackerResponseResult res = {0};
@@ -225,9 +226,10 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
   DnsResolveIpv4AddressSocketResult res_resolve = net_dns_resolve_ipv4_tcp(
       req_tracker.announce.host, req_tracker.announce.port, *arena);
   if (res_resolve.err) {
-    log(LOG_LEVEL_ERROR, "tracker announce request failed to dns resolve",
-        arena, L("host", req_tracker.announce.host),
-        L("port", req_tracker.announce.port), L("err", res.err));
+    logger_log(logger, LOG_LEVEL_ERROR,
+               "tracker announce request failed to dns resolve", *arena,
+               L("host", req_tracker.announce.host),
+               L("port", req_tracker.announce.port), L("err", res.err));
     res.err = res_resolve.err;
     return res;
   }
@@ -248,3 +250,4 @@ tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
 
   return tracker_parse_response(resp.body, arena);
 }
+#endif

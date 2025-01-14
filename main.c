@@ -1,10 +1,9 @@
 #if 0
 #include "peer.c"
-#include "tracker.c"
  static const u64 liveness_seconds = 15;
 #endif
 
-#include "bencode.c"
+#include "tracker.c"
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -39,7 +38,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-#if 0
   u16 port_ours_torrent = 6881;
   TrackerRequest req_tracker = {
       .port = port_ours_torrent,
@@ -52,6 +50,7 @@ int main(int argc, char *argv[]) {
   tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
                             &arena);
 
+#if 0
   TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);
   if (res_tracker.err) {
     log(LOG_LEVEL_ERROR, "tracker response", &arena, L("err", res_tracker.err));

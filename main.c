@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
 
   AioQueueCreateResult res_queue_create = net_aio_queue_create();
   if (res_queue_create.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "create aio queue", arena,
+    logger_log(&logger, LOG_LEVEL_ERROR, "failed to create aio queue", arena,
                L("err", res_queue_create.err));
     return 1;
   }
@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   StringResult res_torrent_file_read =
       file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "read torrent file", arena,
+    logger_log(&logger, LOG_LEVEL_ERROR, "failed to read torrent file", arena,
                L("err", res_torrent_file_read.err),
                L("path", torrent_file_path));
     return 1;
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
   DecodeMetaInfoResult res_decode_metainfo =
       bencode_decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "decode metainfo", arena,
+    logger_log(&logger, LOG_LEVEL_ERROR, "failed to decode metainfo", arena,
                L("err", res_decode_metainfo.err));
     return 1;
   }
@@ -55,6 +55,33 @@ int main(int argc, char *argv[]) {
   };
   tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
                             arena);
+
+  Socket tracker_socket = 0;
+  {
+    DnsResolveIpv4AddressSocketResult res_dns = net_dns_resolve_ipv4_tcp(
+        req_tracker.announce.host, req_tracker.announce.port, arena);
+    if (res_dns.err) {
+      logger_log(&logger, LOG_LEVEL_ERROR,
+                 "failed to dns resolve the tracker announce url", arena,
+                 L("err", res_dns.err));
+      return 1;
+    }
+    ASSERT(0 != res_dns.res.socket);
+    tracker_socket = res_dns.res.socket;
+
+    logger_log(&logger, LOG_LEVEL_DEBUG, "dns resolved tracker announce url",
+               arena, L("url.host", req_tracker.announce.host),
+               L("url.port", req_tracker.announce.port),
+               L("ip", res_dns.res.address.ip));
+  }
+  {
+    Error err = net_socket_set_blocking(tracker_socket, false);
+    if (err) {
+      logger_log(&logger, LOG_LEVEL_ERROR,
+                 "failed to set socket to non blocking", arena, L("err", err));
+      return 1;
+    }
+  }
 
 #if 0
   TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);

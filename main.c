@@ -1,39 +1,42 @@
+#if 0
 #include "peer.c"
 #include "tracker.c"
-#include <sys/poll.h>
+ static const u64 liveness_seconds = 15;
+#endif
 
-typedef struct pollfd pollfd;
-DYN(pollfd);
-
-static const u64 liveness_seconds = 15;
+#include "./submodules/cstd/lib.c"
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
+  Logger logger = log_logger_make_stdout_json(LOG_LEVEL_INFO);
 
   AioQueueCreateResult res_queue_create = net_aio_queue_create();
   if (res_queue_create.err) {
-    log(LOG_LEVEL_ERROR, "create aio queue", &arena,
-        L("err", res_queue_create.err));
+    logger_log(&logger, LOG_LEVEL_ERROR, "create aio queue", arena,
+               L("err", res_queue_create.err));
     return 1;
   }
   AioQueue queue = res_queue_create.res;
+  (void)queue; // FIXME.
 
   String torrent_file_path = cstr_to_string(argv[1]);
-  ReadFileResult res_torrent_file_read =
+  StringResult res_torrent_file_read =
       file_read_full(torrent_file_path, &arena);
-  if (0 != res_torrent_file_read.error) {
-    log(LOG_LEVEL_ERROR, "read torrent file", &arena,
-        L("err", res_torrent_file_read.error), L("path", torrent_file_path));
-    return errno;
+  if (0 != res_torrent_file_read.err) {
+    logger_log(&logger, LOG_LEVEL_ERROR, "read torrent file", arena,
+               L("err", res_torrent_file_read.err),
+               L("path", torrent_file_path));
+    return 1;
   }
 
+#if 0
   DecodeMetaInfoResult res_decode_metainfo =
-      decode_metainfo(res_torrent_file_read.content, &arena);
+      decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
-    log(LOG_LEVEL_ERROR, "decode metainfo", &arena,
-        L("err", res_decode_metainfo.err));
+    logger_log(&logger, LOG_LEVEL_ERROR, "decode metainfo", arena,
+               L("err", res_decode_metainfo.err));
     return 1;
   }
 
@@ -160,4 +163,5 @@ int main(int argc, char *argv[]) {
       i -= 1;
     }
   }
+#endif
 }

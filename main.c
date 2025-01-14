@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
              L("path", torrent_file_path));
 
   u16 port_ours_torrent = 6881;
-  TrackerRequest req_tracker = {
+  TrackerRequest tracker_req = {
       .port = port_ours_torrent,
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
@@ -53,13 +53,13 @@ int main(int argc, char *argv[]) {
       .info_hash = string_make(20, &arena),
       .peer_id = string_make(20, &arena),
   };
-  tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
+  tracker_compute_info_hash(res_decode_metainfo.res, tracker_req.info_hash,
                             arena);
 
   Socket tracker_socket = 0;
   {
     DnsResolveIpv4AddressSocketResult res_dns = net_dns_resolve_ipv4_tcp(
-        req_tracker.announce.host, req_tracker.announce.port, arena);
+        tracker_req.announce.host, tracker_req.announce.port, arena);
     if (res_dns.err) {
       logger_log(&logger, LOG_LEVEL_ERROR,
                  "failed to dns resolve the tracker announce url", arena,
@@ -70,8 +70,8 @@ int main(int argc, char *argv[]) {
     tracker_socket = res_dns.res.socket;
 
     logger_log(&logger, LOG_LEVEL_DEBUG, "dns resolved tracker announce url",
-               arena, L("url.host", req_tracker.announce.host),
-               L("url.port", req_tracker.announce.port),
+               arena, L("url.host", tracker_req.announce.host),
+               L("url.port", tracker_req.announce.port),
                L("ip", res_dns.res.address.ip));
   }
   {
@@ -83,8 +83,126 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  {
+    AioEvent event = {
+        .socket = tracker_socket,
+        .kind = AIO_EVENT_KIND_OUT,
+        .action = AIO_EVENT_ACTION_KIND_ADD,
+    };
+    Error err = net_aio_queue_ctl_one(queue, event);
+    if (err) {
+      logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for an I/O event",
+                 arena, L("err", res_decode_metainfo.err));
+      return 1;
+    }
+  }
+  RingBuffer tracker_io = {.data = string_make(4096, &arena)};
+  HttpRequest tracker_http_req = tracker_make_request(tracker_req, &arena);
+  Reader tracker_reader = reader_make_from_socket(tracker_socket);
+  Writer tracker_writer = writer_make_from_socket(tracker_socket);
+
+  AioEventSlice events_watch = slice_make(AioEvent, 16, &arena);
+  for (;;) {
+    IoCountResult res_wait = net_aio_queue_wait(queue, events_watch, -1, arena);
+    if (res_wait.err) {
+      logger_log(&logger, LOG_LEVEL_ERROR, "failed to wait for events", arena,
+                 L("err", res_decode_metainfo.err));
+      return 1;
+    }
+
+    for (u64 i = 0; i < res_wait.res; i++) {
+      AioEvent event_watch = slice_at(events_watch, i);
+      if (AIO_EVENT_KIND_ERR & event_watch.kind) {
+        logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
+                   L("socket", (Socket)event_watch.socket));
+        (void)net_socket_close(event_watch.socket);
+        continue;
+      }
+
+      if (event_watch.socket == tracker_socket) {
+        if (AIO_EVENT_KIND_OUT & event_watch.kind) {
+          {
+            Error err =
+                http_write_request(&tracker_io, tracker_http_req, arena);
+            if (err) {
+              logger_log(&logger, LOG_LEVEL_ERROR,
+                         "failed to write http request to ring buffer", arena,
+                         L("write_space", ring_buffer_write_space(tracker_io)));
+              (void)net_socket_close(event_watch.socket);
+              continue;
+            }
+          }
+          logger_log(&logger, LOG_LEVEL_DEBUG,
+                     "wrote http request to ring buffer", arena,
+                     L("write_space", ring_buffer_write_space(tracker_io)));
+
+          {
+            Error err = writer_write(&tracker_writer, &tracker_io, arena).err;
+            if (err) {
+              logger_log(&logger, LOG_LEVEL_ERROR,
+                         "failed to write http request to socket", arena,
+                         L("err", err));
+              (void)net_socket_close(event_watch.socket);
+              continue;
+            }
+          }
+          {
+            AioEvent event_change = {
+                .socket = tracker_socket,
+                .kind = AIO_EVENT_KIND_IN,
+                .action = AIO_EVENT_ACTION_KIND_MOD,
+            };
+            Error err = net_aio_queue_ctl_one(queue, event_change);
+            if (err) {
+              logger_log(&logger, LOG_LEVEL_ERROR,
+                         "failed to watch for an I/O event", arena,
+                         L("err", res_decode_metainfo.err));
+              return 1;
+            }
+          }
+          // TODO: Reset ring buffer?
+          logger_log(&logger, LOG_LEVEL_DEBUG, "watching for tracker response",
+                     arena,
+                     L("read_space", ring_buffer_read_space(tracker_io)));
+        } else if (AIO_EVENT_KIND_IN & event_watch.kind) {
+          {
+            IoCountResult res_io =
+                reader_read(&tracker_reader, &tracker_io, arena);
+            if (res_io.err) {
+              logger_log(&logger, LOG_LEVEL_ERROR,
+                         "failed to read tracker response data", arena,
+                         L("err", res_io.err));
+              (void)net_socket_close(event_watch.socket);
+              continue;
+            }
+            logger_log(&logger, LOG_LEVEL_DEBUG, "read tracker response data",
+                       arena, L("count", res_io.res));
+          }
+          HttpResponseReadResult res_http = {0};
+          {
+            res_http = http_read_response(&tracker_io, 128, &arena);
+            if (res_http.err) {
+              logger_log(&logger, LOG_LEVEL_ERROR,
+                         "invalid tracker http response", arena,
+                         L("err", res_http.err));
+              (void)net_socket_close(event_watch.socket);
+              continue;
+            }
+          }
+          logger_log(&logger, LOG_LEVEL_DEBUG, "read http tracker response",
+                     arena, L("http.status", res_http.res.status));
+          (void)net_socket_close(event_watch.socket);
+          continue;
+
+        } else {
+          ASSERT(0);
+        }
+      }
+    }
+  }
+
 #if 0
-  TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);
+  TrackerResponseResult res_tracker = tracker_send_get_req(tracker_req, &arena);
   if (res_tracker.err) {
     log(LOG_LEVEL_ERROR, "tracker response", &arena, L("err", res_tracker.err));
     return 1;
@@ -93,7 +211,7 @@ int main(int argc, char *argv[]) {
       L("addresses count", res_tracker.res.peer_addresses.len));
 
   DynIpv4Address peer_addresses = res_tracker.res.peer_addresses;
-  ASSERT(20 == req_tracker.info_hash.len);
+  ASSERT(20 == tracker_req.info_hash.len);
 
   DynPeer peers_active = {0};
   u64 PEERS_ACTIVE_DESIRED_COUNT = 4;
@@ -109,7 +227,7 @@ int main(int argc, char *argv[]) {
                         ? PEERS_ACTIVE_DESIRED_COUNT - peers_active.len
                         : 0;
       peer_pick_random(&peer_addresses, &peers_active, to_pick,
-                       req_tracker.info_hash, &arena);
+                       tracker_req.info_hash, &arena);
     }
 
     // Spawn peers and register them to the poll list to be able to wait on them

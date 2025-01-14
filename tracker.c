@@ -186,68 +186,39 @@ tracker_parse_response(String s, Logger *logger, Arena *arena) {
   return res;
 }
 
-#if 0
-[[maybe_unused]] [[nodiscard]] static TrackerResponseResult
-tracker_send_get_req(TrackerRequest req_tracker, Arena *arena) {
-  TrackerResponseResult res = {0};
-
-  HttpRequest req_http = {0};
-  req_http.method = HTTP_METHOD_GET;
-  req_http.url = req_tracker.announce;
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+[[maybe_unused]] [[nodiscard]] static HttpRequest
+tracker_make_request(TrackerRequest req_tracker, Arena *arena) {
+  HttpRequest res = {0};
+  res.method = HTTP_METHOD_GET;
+  res.url = req_tracker.announce;
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("info_hash"),
       .value = req_tracker.info_hash,
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("peer_id"),
       .value = req_tracker.peer_id,
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("port"),
       .value = u64_to_string(req_tracker.port, arena),
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("uploaded"),
       .value = u64_to_string(req_tracker.uploaded, arena),
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("downloaded"),
       .value = u64_to_string(req_tracker.downloaded, arena),
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("left"),
       .value = u64_to_string(req_tracker.left, arena),
   };
-  *dyn_push(&req_http.url.query_parameters, arena) = (KeyValue){
+  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
       .key = S("event"),
       .value = tracker_request_event_to_string(req_tracker.event),
   };
 
-  DnsResolveIpv4AddressSocketResult res_resolve = net_dns_resolve_ipv4_tcp(
-      req_tracker.announce.host, req_tracker.announce.port, *arena);
-  if (res_resolve.err) {
-    logger_log(logger, LOG_LEVEL_ERROR,
-               "tracker announce request failed to dns resolve", *arena,
-               L("host", req_tracker.announce.host),
-               L("port", req_tracker.announce.port), L("err", res.err));
-    res.err = res_resolve.err;
-    return res;
-  }
-
-  HttpResponse resp = http_client_request(res_resolve.res, req_http, arena);
-  if (resp.err) {
-    log(LOG_LEVEL_ERROR, "tracker announce request", arena,
-        L("host", req_tracker.announce.host),
-        L("port", req_tracker.announce.port), L("err", resp.err));
-    return res;
-  }
-  if (200 != resp.status) {
-    log(LOG_LEVEL_ERROR, "tracker announce request non 200 status", arena,
-        L("host", req_tracker.announce.host),
-        L("port", req_tracker.announce.port), L("status", resp.status));
-    return res;
-  }
-
-  return tracker_parse_response(resp.body, arena);
+  return res;
 }
-#endif

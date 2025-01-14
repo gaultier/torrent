@@ -19,7 +19,7 @@ typedef struct {
 } DynBencodeValues;
 
 typedef struct {
-  DynString keys;
+  StringDyn keys;
   DynBencodeValues values;
 } BencodeDictionary;
 
@@ -298,7 +298,7 @@ bencode_decode_value(String s, Arena *arena) {
 }
 
 [[maybe_unused]]
-static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
+static void bencode_encode(BencodeValue value, u8Dyn *sb, Arena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
     *dyn_push(sb, arena) = 'i';

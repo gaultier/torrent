@@ -246,7 +246,7 @@ static void test_bencode_decode_encode() {
       bencode_decode_value(torrent_file_content, &arena);
   ASSERT(0 == res.err);
 
-  DynU8 sb = {0};
+  u8Dyn sb = {0};
   bencode_encode(res.value, &sb, &arena);
   String encoded = dyn_slice(String, sb);
   ASSERT(string_eq(encoded, torrent_file_content));

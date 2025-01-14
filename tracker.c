@@ -62,7 +62,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 
   // TODO: Add unknown keys in `info`?
 
-  DynU8 sb = {0};
+  u8Dyn sb = {0};
   bencode_encode(value, &sb, &arena);
   String encoded = dyn_slice(String, sb);
 
@@ -73,7 +73,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 }
 
 typedef struct {
-  DynIpv4Address peer_addresses;
+  Ipv4AddressDyn peer_addresses;
   String failure;
   u64 interval_secs;
 } TrackerResponse;
@@ -82,7 +82,7 @@ RESULT(TrackerResponse) TrackerResponseResult;
 
 typedef struct {
   Error err;
-  DynIpv4Address peer_addresses;
+  Ipv4AddressDyn peer_addresses;
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
@@ -295,7 +295,7 @@ static Error tracker_connect(Tracker *tracker) {
 
 [[maybe_unused]] [[nodiscard]]
 static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
-                                  DynAioEvent *events_change,
+                                  AioEventDyn *events_change,
                                   Arena *events_arena) {
 
   switch (tracker->state) {

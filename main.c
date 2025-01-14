@@ -8,7 +8,7 @@
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
-  Arena arena = arena_make_from_virtual_mem(128 * KiB);
+  Arena arena = arena_make_from_virtual_mem(128 * PG_KiB);
   Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
 
   AioQueueCreateResult res_queue_create = aio_queue_create();

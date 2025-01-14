@@ -31,6 +31,7 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   }
 }
 
+[[maybe_unused]]
 static void tracker_compute_info_hash(Metainfo metainfo, String hash,
                                       Arena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
@@ -242,7 +243,7 @@ typedef struct {
   TrackerMetadata metadata;
 } Tracker;
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(Logger *logger, String host, u16 port,
                             TrackerMetadata metadata) {
   Tracker tracker = {0};
@@ -251,13 +252,13 @@ static Tracker tracker_make(Logger *logger, String host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
 
-  tracker.arena = arena_make_from_virtual_mem(4 * KiB);
+  tracker.arena = arena_make_from_virtual_mem(4 * PG_KiB);
   tracker.rg = (RingBuffer){.data = string_make(2048, &tracker.arena)};
 
   return tracker;
 }
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static Error tracker_connect(Tracker *tracker) {
   {
     DnsResolveIpv4AddressSocketResult res_dns =
@@ -292,7 +293,7 @@ static Error tracker_connect(Tracker *tracker) {
   return (Error)0;
 }
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
                                   DynAioEvent *events_change,
                                   Arena *events_arena) {

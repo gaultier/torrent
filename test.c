@@ -79,7 +79,7 @@ static void test_bencode_decode_string() {
 }
 
 static void test_bencode_decode_list() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   {
     BencodeListDecodeResult res = bencode_decode_list(S(""), &arena);
     ASSERT(0 != res.err);
@@ -144,7 +144,7 @@ static void test_bencode_decode_list() {
 }
 
 static void test_bencode_decode() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   {
     BencodeValueDecodeResult res =
         bencode_decode_value(S("i123ei456e"), &arena);
@@ -204,7 +204,7 @@ static void test_bencode_decode() {
 }
 
 static void test_decode_metainfo() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   String torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -232,7 +232,7 @@ static void test_decode_metainfo() {
 }
 
 static void test_bencode_decode_encode() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   String torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -253,7 +253,7 @@ static void test_bencode_decode_encode() {
 }
 
 static void test_tracker_compute_info_hash() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
+  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   String torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "

@@ -9,7 +9,7 @@ int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
 
   Arena arena = arena_make_from_virtual_mem(128 * KiB);
-  Logger logger = log_logger_make_stdout_json(LOG_LEVEL_INFO);
+  Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
 
   AioQueueCreateResult res_queue_create = net_aio_queue_create();
   if (res_queue_create.err) {
@@ -29,6 +29,9 @@ int main(int argc, char *argv[]) {
                L("path", torrent_file_path));
     return 1;
   }
+  logger_log(&logger, LOG_LEVEL_DEBUG, "read torrent file", arena,
+             L("path", torrent_file_path),
+             L("len", res_torrent_file_read.res.len));
 
   DecodeMetaInfoResult res_decode_metainfo =
       bencode_decode_metainfo(res_torrent_file_read.res, &arena);
@@ -37,6 +40,9 @@ int main(int argc, char *argv[]) {
                L("err", res_decode_metainfo.err));
     return 1;
   }
+
+  logger_log(&logger, LOG_LEVEL_DEBUG, "decoded torrent file", arena,
+             L("path", torrent_file_path));
 
   u16 port_ours_torrent = 6881;
   TrackerRequest req_tracker = {

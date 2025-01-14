@@ -232,7 +232,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String remote_peer_id = slice_range(handshake, 28 + 20, 0);
+  String remote_peer_id = slice_range_start(handshake, 28 + 20);
   ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
@@ -321,7 +321,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
     res.res.kind = kind;
-    String data_msg = slice_range(data, 1, 0);
+    String data_msg = slice_range_start(data, 1);
     res.res.have = u8x4_be_to_u32(data_msg);
     break;
   }
@@ -334,7 +334,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    res.res.bitfield = string_dup(slice_range(data, 1, 0), &peer->arena);
+    res.res.bitfield = string_dup(slice_range_start(data, 1), &peer->arena);
 
     break;
   }
@@ -358,7 +358,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     }
     res.res.piece.index = u8x4_be_to_u32(slice_range(data, 1, 5));
     res.res.piece.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.res.piece.data = string_dup(slice_range(data, 9, 0), &peer->arena);
+    res.res.piece.data = string_dup(slice_range_start(data, 9), &peer->arena);
 
     break;
   }

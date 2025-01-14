@@ -102,7 +102,7 @@ tracker_parse_compact_peers(String s, Arena *arena) {
     String ipv4_str = slice_range(remaining, 0, 4);
     String port_str = slice_range(remaining, 4, 6);
 
-    remaining = slice_range(remaining, 6, 0);
+    remaining = slice_range_start(remaining, 6);
 
     u32 ipv4_network_order = 0;
     memcpy(&ipv4_network_order, ipv4_str.data, ipv4_str.len);

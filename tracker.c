@@ -226,6 +226,7 @@ tracker_make_http_request(TrackerMetadata req_tracker, Arena *arena) {
 typedef enum {
   TRACKER_STATE_NONE,
   TRACKER_STATE_SENT_REQUEST,
+  TRACKER_STATE_RECEIVED_RESPONSE,
 } TrackerState;
 
 typedef struct {
@@ -316,6 +317,8 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
                L("write_space", ring_buffer_write_space(tracker->rg)),
                L("read_space", ring_buffer_read_space(tracker->rg)));
 
+    tracker->state = TRACKER_STATE_SENT_REQUEST;
+
     *dyn_push(events_change, events_arena) = (AioEvent){
         .kind = AIO_EVENT_KIND_IN,
         .socket = tracker->socket,
@@ -323,24 +326,27 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
     };
   } break;
   case TRACKER_STATE_SENT_REQUEST: {
-    {
-      Arena arena_tmp = tracker->arena;
-      HttpResponseReadResult res_http =
-          http_read_response(&tracker->rg, 128, &arena_tmp);
-      if (res_http.err) {
-        logger_log(tracker->logger, LOG_LEVEL_ERROR,
-                   "invalid tracker http response", arena_tmp,
-                   L("err", res_http.err));
-        return res_http.err;
-      }
-      logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
-                 arena_tmp, L("http.status", res_http.res.status));
-
-      *dyn_push(events_change, events_arena) = (AioEvent){
-          .socket = tracker->socket,
-          .action = AIO_EVENT_ACTION_KIND_DEL,
-      };
+    Arena arena_tmp = tracker->arena;
+    HttpResponseReadResult res_http =
+        http_read_response(&tracker->rg, 128, &arena_tmp);
+    if (res_http.err) {
+      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+                 "invalid tracker http response", arena_tmp,
+                 L("err", res_http.err));
+      return res_http.err;
     }
+    logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
+               arena_tmp, L("http.status", res_http.res.status));
+
+    *dyn_push(events_change, events_arena) = (AioEvent){
+        .socket = tracker->socket,
+        .action = AIO_EVENT_ACTION_KIND_DEL,
+    };
+    tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
+  } break;
+  case TRACKER_STATE_RECEIVED_RESPONSE: {
+
+    // TODO: timer of ~1m to retrigger the state machine from the start.
   } break;
   default:
     ASSERT(0);

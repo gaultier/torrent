@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
               (void)net_socket_close(event_watch.socket);
               continue;
             }
-            logger_log(&logger, LOG_LEVEL_ERROR, "written", arena,
+            logger_log(&logger, LOG_LEVEL_DEBUG, "written", arena,
                        L("len", res_write.res),
                        L("socket", (Socket)event_watch.socket));
           }

@@ -271,7 +271,7 @@ static void test_tracker_compute_info_hash() {
       .data = arena_new(&arena, u8, 20),
       .len = 20,
   };
-  tracker_compute_info_hash(res.res, hash, &arena);
+  tracker_compute_info_hash(res.res, hash, arena);
 
   u8 expected_hash[20] = {
       0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,

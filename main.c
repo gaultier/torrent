@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
       .peer_id = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
   };
   tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
-                            &arena);
+                            arena);
 
 #if 0
   TrackerResponseResult res_tracker = tracker_send_get_req(req_tracker, &arena);

@@ -32,29 +32,29 @@ tracker_request_event_to_string(TrackerRequestEvent event) {
 }
 
 static void tracker_compute_info_hash(Metainfo metainfo, String hash,
-                                      Arena *arena) {
+                                      Arena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
-  *dyn_push(&value.dict.keys, arena) = S("length");
-  *dyn_push(&value.dict.values, arena) = (BencodeValue){
+  *dyn_push(&value.dict.keys, &arena) = S("length");
+  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.length,
   };
 
-  *dyn_push(&value.dict.keys, arena) = S("name");
-  *dyn_push(&value.dict.values, arena) = (BencodeValue){
+  *dyn_push(&value.dict.keys, &arena) = S("name");
+  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.name,
   };
 
-  *dyn_push(&value.dict.keys, arena) = S("piece length");
-  *dyn_push(&value.dict.values, arena) = (BencodeValue){
+  *dyn_push(&value.dict.keys, &arena) = S("piece length");
+  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.piece_length,
   };
 
-  *dyn_push(&value.dict.keys, arena) = S("pieces");
-  *dyn_push(&value.dict.values, arena) = (BencodeValue){
+  *dyn_push(&value.dict.keys, &arena) = S("pieces");
+  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.pieces,
   };
@@ -62,7 +62,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
   // TODO: Add unknown keys in `info`?
 
   DynU8 sb = {0};
-  bencode_encode(value, &sb, arena);
+  bencode_encode(value, &sb, &arena);
   String encoded = dyn_slice(String, sb);
 
   u8 sha1_hash[20] = {0};

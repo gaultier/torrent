@@ -292,11 +292,13 @@ static Error tracker_connect(Tracker *tracker) {
 }
 
 [[nodiscard]]
-static Error tracker_handle_event(Tracker *tracker, AioEvent event) {
+static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
+                                  DynAioEvent *events_change,
+                                  Arena *events_arena) {
 
   switch (tracker->state) {
   case TRACKER_STATE_NONE: {
-    if (0 == (AIO_EVENT_KIND_OUT & event.kind)) {
+    if (0 == (AIO_EVENT_KIND_OUT & event_watch.kind)) {
       // Failed to connect or invalid API use.
       return (Error)EINVAL;
     }
@@ -314,10 +316,32 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event) {
                L("write_space", ring_buffer_write_space(tracker->rg)),
                L("read_space", ring_buffer_read_space(tracker->rg)));
 
-    // TODO: AIO_MOD.
+    *dyn_push(events_change, events_arena) = (AioEvent){
+        .kind = AIO_EVENT_KIND_IN,
+        .socket = tracker->socket,
+        .action = AIO_EVENT_ACTION_KIND_MOD,
+    };
   } break;
-  case TRACKER_STATE_SENT_REQUEST:
-    break;
+  case TRACKER_STATE_SENT_REQUEST: {
+    {
+      Arena arena_tmp = tracker->arena;
+      HttpResponseReadResult res_http =
+          http_read_response(&tracker->rg, 128, &arena_tmp);
+      if (res_http.err) {
+        logger_log(tracker->logger, LOG_LEVEL_ERROR,
+                   "invalid tracker http response", arena_tmp,
+                   L("err", res_http.err));
+        return res_http.err;
+      }
+      logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
+                 arena_tmp, L("http.status", res_http.res.status));
+
+      *dyn_push(events_change, events_arena) = (AioEvent){
+          .socket = tracker->socket,
+          .action = AIO_EVENT_ACTION_KIND_DEL,
+      };
+    }
+  } break;
   default:
     ASSERT(0);
     break;

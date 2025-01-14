@@ -105,9 +105,8 @@ typedef struct {
     return res;
   }
 
-  res.remaining = prefix.remaining;
   res.s = slice_range(prefix.remaining, 0, num_res.n);
-  res.remaining = slice_range(prefix.remaining, num_res.n, 0);
+  res.remaining = slice_range_start(prefix.remaining, num_res.n);
 
   return res;
 }
@@ -298,6 +297,7 @@ bencode_decode_value(String s, Arena *arena) {
   }
 }
 
+[[maybe_unused]]
 static void bencode_encode(BencodeValue value, DynU8 *sb, Arena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
@@ -361,8 +361,8 @@ typedef struct {
 
 RESULT(Metainfo) DecodeMetaInfoResult;
 
-[[nodiscard]] static DecodeMetaInfoResult decode_metainfo(String s,
-                                                          Arena *arena) {
+[[nodiscard]] static DecodeMetaInfoResult
+bencode_decode_metainfo(String s, Arena *arena) {
   DecodeMetaInfoResult res = {0};
 
   BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);

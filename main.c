@@ -4,7 +4,7 @@
  static const u64 liveness_seconds = 15;
 #endif
 
-#include "./submodules/cstd/lib.c"
+#include "bencode.c"
 
 int main(int argc, char *argv[]) {
   ASSERT(argc == 2);
@@ -31,15 +31,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-#if 0
   DecodeMetaInfoResult res_decode_metainfo =
-      decode_metainfo(res_torrent_file_read.res, &arena);
+      bencode_decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
     logger_log(&logger, LOG_LEVEL_ERROR, "decode metainfo", arena,
                L("err", res_decode_metainfo.err));
     return 1;
   }
 
+#if 0
   u16 port_ours_torrent = 6881;
   TrackerRequest req_tracker = {
       .port = port_ours_torrent,

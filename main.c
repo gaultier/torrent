@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
-      .info_hash = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
-      .peer_id = (String){.data = arena_alloc(&arena, 1, 1, 20), .len = 20},
+      .info_hash = string_make(20, &arena),
+      .peer_id = string_make(20, &arena),
   };
   tracker_compute_info_hash(res_decode_metainfo.res, req_tracker.info_hash,
                             arena);

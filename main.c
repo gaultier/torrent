@@ -18,7 +18,7 @@ int main(int argc, char *argv[]) {
 
   PgString torrent_file_path = cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
-      file_read_full(torrent_file_path, &arena);
+      pg_file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file", arena,
            PG_L("err", res_torrent_file_read.err),

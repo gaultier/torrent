@@ -1,7 +1,5 @@
-#if 0
-#include "peer.c"
-#endif
 
+#include "peer.c"
 #include "tracker.c"
 
 static void test_bencode_decode_u64() {
@@ -195,7 +193,8 @@ static void test_bencode_decode() {
     }
   }
   {
-    BencodeValueDecodeResult res = bencode_decode_value(PG_S("2:abfoo"), &arena);
+    BencodeValueDecodeResult res =
+        bencode_decode_value(PG_S("2:abfoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_STRING == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("ab"), res.value.s));
@@ -219,14 +218,16 @@ static void test_decode_metainfo() {
   PG_ASSERT(0 == res.err);
 
   PG_ASSERT(pg_string_eq(PG_S("http"), res.res.announce.scheme));
-  PG_ASSERT(pg_string_eq(PG_S("OpenBSD.somedomain.net"), res.res.announce.host));
+  PG_ASSERT(
+      pg_string_eq(PG_S("OpenBSD.somedomain.net"), res.res.announce.host));
   PG_ASSERT(6969 == res.res.announce.port);
   PG_ASSERT(1 == res.res.announce.path_components.len);
   PgString path_component0 = PG_SLICE_AT(res.res.announce.path_components, 0);
   PG_ASSERT(pg_string_eq(PG_S("announce"), path_component0));
 
   PG_ASSERT(234883072 == res.res.length);
-  PG_ASSERT(pg_string_eq(res.res.name, PG_S("OpenBSD_7.4_alpha_install74.iso")));
+  PG_ASSERT(
+      pg_string_eq(res.res.name, PG_S("OpenBSD_7.4_alpha_install74.iso")));
   PG_ASSERT(262144 == res.res.piece_length);
   PG_ASSERT(pg_string_eq(res.res.pieces, PG_S("abcdefgh")));
 }

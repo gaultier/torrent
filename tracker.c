@@ -237,7 +237,7 @@ typedef struct {
   PgString host;
   u16 port;
   PgArena arena;
-  RingBuffer rg;
+  PgRing rg;
   PgReader reader;
   PgWriter writer;
   TrackerMetadata metadata;
@@ -253,7 +253,7 @@ static Tracker tracker_make(Logger *logger, PgString host, u16 port,
   tracker.metadata = metadata;
 
   tracker.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
-  tracker.rg = (RingBuffer){.data = pg_string_make(2048, &tracker.arena)};
+  tracker.rg = (PgRing){.data = pg_string_make(2048, &tracker.arena)};
 
   return tracker;
 }

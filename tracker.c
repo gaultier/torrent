@@ -187,9 +187,9 @@ tracker_parse_response(PgString s, Logger *logger, PgArena *arena) {
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static HttpRequest
+[[maybe_unused]] [[nodiscard]] static PgHttpRequest
 tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
-  HttpRequest res = {0};
+  PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
@@ -307,9 +307,9 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
 
     {
       PgArena pg_arena_tmp = tracker->arena;
-      HttpRequest tracker_http_req =
+      PgHttpRequest tracker_http_req =
           tracker_make_http_request(tracker->metadata, &pg_arena_tmp);
-      PgError err = http_write_request(&tracker->rg, tracker_http_req, pg_arena_tmp);
+      PgError err = pg_http_write_request(&tracker->rg, tracker_http_req, pg_arena_tmp);
       PG_ASSERT(!err); // Ring buffer too small.
     }
 
@@ -328,8 +328,8 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
   } break;
   case TRACKER_STATE_SENT_REQUEST: {
     PgArena pg_arena_tmp = tracker->arena;
-    HttpResponseReadResult res_http =
-        http_read_response(&tracker->rg, 128, &pg_arena_tmp);
+    PgHttpResponseReadResult res_http =
+        pg_http_read_response(&tracker->rg, 128, &pg_arena_tmp);
     if (res_http.err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
                  "invalid tracker http response", pg_arena_tmp,

@@ -86,7 +86,7 @@ typedef struct {
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(PgString s, Logger *logger, PgArena *arena) {
+tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
@@ -118,7 +118,7 @@ tracker_parse_compact_peers(PgString s, Logger *logger, PgArena *arena) {
 
     {
       PgString pg_net_ipv4_addr_str = pg_net_ipv4_address_to_string(address, arena);
-      logger_log(logger, LOG_LEVEL_INFO, "tracker_parse_compact_peers", *arena,
+      pg_log(logger, PG_LOG_LEVEL_INFO, "tracker_parse_compact_peers", *arena,
                  L("res.peer_addresses.len", res.peer_addresses.len),
                  L("ip", address.ip), L("port", address.port),
                  L("address", pg_net_ipv4_addr_str));
@@ -130,7 +130,7 @@ tracker_parse_compact_peers(PgString s, Logger *logger, PgArena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static TrackerResponseResult
-tracker_parse_response(PgString s, Logger *logger, PgArena *arena) {
+tracker_parse_response(PgString s, PgLogger *logger, PgArena *arena) {
   TrackerResponseResult res = {0};
 
   BencodeValueDecodeResult tracker_response_bencode_res =
@@ -231,7 +231,7 @@ typedef enum {
 } TrackerState;
 
 typedef struct {
-  Logger *logger;
+  PgLogger *logger;
   TrackerState state;
   PgSocket socket;
   PgString host;
@@ -244,7 +244,7 @@ typedef struct {
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
-static Tracker tracker_make(Logger *logger, PgString host, u16 port,
+static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata) {
   Tracker tracker = {0};
   tracker.logger = logger;
@@ -264,7 +264,7 @@ static PgError tracker_connect(Tracker *tracker) {
     PgDnsResolveIpv4AddressSocketResult res_dns =
         pg_net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
     if (res_dns.err) {
-      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "failed to dns resolve the tracker announce url",
                  tracker->arena, L("err", res_dns.err));
       return res_dns.err;
@@ -272,7 +272,7 @@ static PgError tracker_connect(Tracker *tracker) {
     PG_ASSERT(0 != res_dns.res.socket);
     tracker->socket = res_dns.res.socket;
 
-    logger_log(tracker->logger, LOG_LEVEL_DEBUG,
+    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
                "dns resolved tracker announce url", tracker->arena,
                L("host", tracker->host), L("port", tracker->port),
                L("ip", res_dns.res.address.ip));
@@ -280,7 +280,7 @@ static PgError tracker_connect(Tracker *tracker) {
   {
     PgError err = pg_net_socket_set_blocking(tracker->socket, false);
     if (err) {
-      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "failed to set socket to non blocking", tracker->arena,
                  L("err", err));
       return err;
@@ -313,7 +313,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
       PG_ASSERT(!err); // Ring buffer too small.
     }
 
-    logger_log(tracker->logger, LOG_LEVEL_DEBUG,
+    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
                "wrote http request to ring buffer", tracker->arena,
                L("write_space", pg_ring_write_space(tracker->rg)),
                L("read_space", pg_ring_read_space(tracker->rg)));
@@ -331,12 +331,12 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
     PgHttpResponseReadResult res_http =
         pg_http_read_response(&tracker->rg, 128, &pg_arena_tmp);
     if (res_http.err) {
-      logger_log(tracker->logger, LOG_LEVEL_ERROR,
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "invalid tracker http response", pg_arena_tmp,
                  L("err", res_http.err));
       return res_http.err;
     }
-    logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
+    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "read http tracker response",
                pg_arena_tmp, L("http.status", res_http.res.status));
     tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 

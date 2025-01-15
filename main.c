@@ -9,11 +9,11 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
-  Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
+  PgLogger logger = pg_log_logger_make_stdout_json(PG_LOG_LEVEL_DEBUG);
 
   PgAioQueueCreateResult res_queue_create = pg_aio_queue_create();
   if (res_queue_create.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "failed to create aio queue", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create aio queue", arena,
                L("err", res_queue_create.err));
     return 1;
   }
@@ -24,24 +24,24 @@ int main(int argc, char *argv[]) {
   PgStringResult res_torrent_file_read =
       file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "failed to read torrent file", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file", arena,
                L("err", res_torrent_file_read.err),
                L("path", torrent_file_path));
     return 1;
   }
-  logger_log(&logger, LOG_LEVEL_DEBUG, "read torrent file", arena,
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file", arena,
              L("path", torrent_file_path),
              L("len", res_torrent_file_read.res.len));
 
   DecodeMetaInfoResult res_decode_metainfo =
       bencode_decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
-    logger_log(&logger, LOG_LEVEL_ERROR, "failed to decode metainfo", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo", arena,
                L("err", res_decode_metainfo.err));
     return 1;
   }
 
-  logger_log(&logger, LOG_LEVEL_DEBUG, "decoded torrent file", arena,
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file", arena,
              L("path", torrent_file_path));
 
   u16 port_ours_torrent = 6881;
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     };
     PgError err = pg_aio_queue_ctl_one(queue, event);
     if (err) {
-      logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for an I/O event",
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to watch for an I/O event",
                  arena, L("err", err));
       return 1;
     }
@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
 
     IoCountResult res_wait = pg_aio_queue_wait(queue, events_watch, -1, arena);
     if (res_wait.err) {
-      logger_log(&logger, LOG_LEVEL_ERROR, "failed to wait for events", arena,
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to wait for events", arena,
                  L("err", res_decode_metainfo.err));
       return 1;
     }
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     for (u64 i = 0; i < res_wait.res; i++) {
       PgAioEvent event_watch = PG_SLICE_AT(events_watch, i);
       if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
-        logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
+        pg_log(&logger, PG_LOG_LEVEL_ERROR, "event error", arena,
                    L("socket", (PgSocket)event_watch.socket));
         (void)pg_net_socket_close(event_watch.socket);
         continue;
@@ -110,13 +110,13 @@ int main(int argc, char *argv[]) {
             IoCountResult res_read =
                 pg_reader_read(&tracker.reader, &tracker.rg, arena);
             if (res_read.err) {
-              logger_log(&logger, LOG_LEVEL_ERROR, "failed to read", arena,
+              pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read", arena,
                          L("err", res_read.err),
                          L("socket", (PgSocket)event_watch.socket));
               (void)pg_net_socket_close(event_watch.socket);
               continue;
             }
-            logger_log(&logger, LOG_LEVEL_DEBUG, "read", arena,
+            pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read", arena,
                        L("count", res_read.res),
                        L("socket", (PgSocket)event_watch.socket));
           }
@@ -136,13 +136,13 @@ int main(int argc, char *argv[]) {
             IoCountResult res_write =
                 pg_writer_write(&tracker.writer, &tracker.rg, arena);
             if (res_write.err) {
-              logger_log(&logger, LOG_LEVEL_ERROR, "failed to write", arena,
+              pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to write", arena,
                          L("err", res_write.err),
                          L("socket", (PgSocket)event_watch.socket));
               (void)pg_net_socket_close(event_watch.socket);
               continue;
             }
-            logger_log(&logger, LOG_LEVEL_DEBUG, "written", arena,
+            pg_log(&logger, PG_LOG_LEVEL_DEBUG, "written", arena,
                        L("len", res_write.res),
                        L("socket", (PgSocket)event_watch.socket));
           }
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
     {
       PgError err = pg_aio_queue_ctl(queue, PG_DYN_SLICE(PgAioEventSlice, events_change));
       if (err) {
-        logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
+        pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));
         return 1;
       }

@@ -238,8 +238,8 @@ typedef struct {
   u16 port;
   PgArena arena;
   RingBuffer rg;
-  Reader reader;
-  Writer writer;
+  PgReader reader;
+  PgWriter writer;
   TrackerMetadata metadata;
 } Tracker;
 

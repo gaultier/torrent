@@ -49,7 +49,7 @@ RESULT(PeerMessage) PeerMessageResult;
 typedef struct {
   PgIpv4Address address;
   BufferedReader reader;
-  Writer writer;
+  PgWriter writer;
   PgString info_hash;
   PgArena arena;
   PgArena tmp_arena;

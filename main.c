@@ -7,7 +7,7 @@ int main(int argc, char *argv[]) {
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
   PgLogger logger = pg_log_make_logger_stdout_json(PG_LOG_LEVEL_DEBUG);
 
-  PgAioQueueCreateResult res_queue_create = pg_aio_queue_create();
+  PgAioQueueResult res_queue_create = pg_aio_queue_create();
   if (res_queue_create.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create aio queue", arena,
            PG_L("err", res_queue_create.err));

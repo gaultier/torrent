@@ -202,19 +202,19 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   };
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("port"),
-      .value = u64_to_string(req_tracker.port, arena),
+      .value = pg_u64_to_string(req_tracker.port, arena),
   };
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("uploaded"),
-      .value = u64_to_string(req_tracker.uploaded, arena),
+      .value = pg_u64_to_string(req_tracker.uploaded, arena),
   };
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("downloaded"),
-      .value = u64_to_string(req_tracker.downloaded, arena),
+      .value = pg_u64_to_string(req_tracker.downloaded, arena),
   };
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("left"),
-      .value = u64_to_string(req_tracker.left, arena),
+      .value = pg_u64_to_string(req_tracker.left, arena),
   };
   *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("event"),

@@ -100,10 +100,10 @@ tracker_parse_compact_peers(PgString s, Logger *logger, Arena *arena) {
       break;
     }
 
-    PgString ipv4_str = slice_range(remaining, 0, 4);
-    PgString port_str = slice_range(remaining, 4, 6);
+    PgString ipv4_str = PG_SLICE_RANGE(remaining, 0, 4);
+    PgString port_str = PG_SLICE_RANGE(remaining, 4, 6);
 
-    remaining = slice_range_start(remaining, 6);
+    remaining = PG_SLICE_RANGE_START(remaining, 6);
 
     u32 ipv4_network_order = 0;
     memcpy(&ipv4_network_order, ipv4_str.data, ipv4_str.len);

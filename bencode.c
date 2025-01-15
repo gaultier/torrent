@@ -107,8 +107,8 @@ bencode_decode_string(PgString s) {
     return res;
   }
 
-  res.s = slice_range(prefix.remaining, 0, num_res.n);
-  res.remaining = slice_range_start(prefix.remaining, num_res.n);
+  res.s = PG_SLICE_RANGE(prefix.remaining, 0, num_res.n);
+  res.remaining = PG_SLICE_RANGE_START(prefix.remaining, num_res.n);
 
   return res;
 }

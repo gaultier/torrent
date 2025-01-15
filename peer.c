@@ -211,7 +211,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port));
 
-  PgString prefix = slice_range(handshake, 0, 20);
+  PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
   PgString prefix_expected = S("\x13"
                              "BitTorrent protocol");
   if (!string_eq(prefix, prefix_expected)) {
@@ -221,10 +221,10 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     return ERR_HANDSHAKE_INVALID;
   }
 
-  PgString reserved_bytes = slice_range(handshake, 20, 28);
+  PgString reserved_bytes = PG_SLICE_RANGE(handshake, 20, 28);
   (void)reserved_bytes; // Ignore.
 
-  PgString info_hash_received = slice_range(handshake, 28, 28 + 20);
+  PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
   if (!string_eq(info_hash_received, peer->info_hash)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
         &peer->arena, L("ipv4", peer->address.ip),
@@ -232,7 +232,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     return ERR_HANDSHAKE_INVALID;
   }
 
-  PgString remote_peer_id = slice_range_start(handshake, 28 + 20);
+  PgString remote_peer_id = PG_SLICE_RANGE_START(handshake, 28 + 20);
   PG_ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
@@ -321,7 +321,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
     res.res.kind = kind;
-    PgString data_msg = slice_range_start(data, 1);
+    PgString data_msg = PG_SLICE_RANGE_START(data, 1);
     res.res.have = u8x4_be_to_u32(data_msg);
     break;
   }
@@ -334,7 +334,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    res.res.bitfield = string_dup(slice_range_start(data, 1), &peer->arena);
+    res.res.bitfield = string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
 
     break;
   }
@@ -344,9 +344,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.request.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.res.request.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.res.request.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+    res.res.request.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.request.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.request.length = u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
     break;
   }
@@ -356,9 +356,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.piece.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.res.piece.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.res.piece.data = string_dup(slice_range_start(data, 9), &peer->arena);
+    res.res.piece.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.piece.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.piece.data = string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 
     break;
   }
@@ -368,9 +368,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.cancel.index = u8x4_be_to_u32(slice_range(data, 1, 5));
-    res.res.cancel.begin = u8x4_be_to_u32(slice_range(data, 5, 9));
-    res.res.cancel.length = u8x4_be_to_u32(slice_range(data, 9, 13));
+    res.res.cancel.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.cancel.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.cancel.length = u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
     break;
   }

@@ -13,7 +13,7 @@ typedef struct {
 
 typedef struct {
   u32 index, begin;
-  String data;
+  PgString data;
 } PeerMessagePiece;
 
 typedef struct {
@@ -39,7 +39,7 @@ typedef struct {
     PeerMessagePiece piece;
     PeerMessageCancel cancel;
     PeerMessageRequest request;
-    String bitfield;
+    PgString bitfield;
     u32 have;
   };
 } PeerMessage;
@@ -50,7 +50,7 @@ typedef struct {
   Ipv4Address address;
   BufferedReader reader;
   Writer writer;
-  String info_hash;
+  PgString info_hash;
   Arena arena;
   Arena tmp_arena;
   int pid;
@@ -58,13 +58,13 @@ typedef struct {
   u64 liveness_last_message_ns;
   bool tombstone;
   bool choked, interested;
-  String remote_bitfield;
+  PgString remote_bitfield;
 } Peer;
 
 DYN(Peer);
 SLICE(Peer);
 
-[[nodiscard]] [[maybe_unused]] static String
+[[nodiscard]] [[maybe_unused]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
 
   switch (kind) {
@@ -94,7 +94,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[maybe_unused]] [[nodiscard]] static Peer peer_make(Ipv4Address address,
-                                                     String info_hash) {
+                                                     PgString info_hash) {
   Peer peer = {0};
   peer.info_hash = info_hash;
   peer.address = address;
@@ -113,7 +113,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  CreateSocketResult res_create_socket = net_create_tcp_socket();
+  PgCreateSocketResult res_create_socket = net_create_tcp_socket();
   if (res_create_socket.err) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -148,7 +148,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return 0;
 }
 
-[[nodiscard]] static String peer_make_handshake(String info_hash,
+[[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
                                                 Arena *arena) {
   DynU8 sb = {0};
   dyn_append_slice(&sb,
@@ -168,16 +168,16 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   ASSERT(20 == info_hash.len);
   dyn_append_slice(&sb, info_hash, arena);
 
-  String peer_id = S("00000000000000000000");
+  PgString peer_id = S("00000000000000000000");
   ASSERT(20 == peer_id.len);
   dyn_append_slice(&sb, peer_id, arena);
 
   ASSERT(HANDSHAKE_LENGTH == sb.len);
-  return dyn_slice(String, sb);
+  return dyn_slice(PgString, sb);
 }
 
 [[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
-  String handshake = peer_make_handshake(peer->info_hash, &peer->arena);
+  PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
   PgError err = writer_write_all(peer->writer, handshake);
   if (err) {
     log(LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
@@ -196,7 +196,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   ASSERT(0 != peer->tmp_arena.start);
 
   Arena tmp_arena = peer->tmp_arena;
-  String handshake = {
+  PgString handshake = {
       .data = arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
       .len = HANDSHAKE_LENGTH,
   };
@@ -211,8 +211,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port));
 
-  String prefix = slice_range(handshake, 0, 20);
-  String prefix_expected = S("\x13"
+  PgString prefix = slice_range(handshake, 0, 20);
+  PgString prefix_expected = S("\x13"
                              "BitTorrent protocol");
   if (!string_eq(prefix, prefix_expected)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
@@ -221,10 +221,10 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String reserved_bytes = slice_range(handshake, 20, 28);
+  PgString reserved_bytes = slice_range(handshake, 20, 28);
   (void)reserved_bytes; // Ignore.
 
-  String info_hash_received = slice_range(handshake, 28, 28 + 20);
+  PgString info_hash_received = slice_range(handshake, 28, 28 + 20);
   if (!string_eq(info_hash_received, peer->info_hash)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
         &peer->arena, L("ipv4", peer->address.ip),
@@ -232,7 +232,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     return ERR_HANDSHAKE_INVALID;
   }
 
-  String remote_peer_id = slice_range_start(handshake, 28 + 20);
+  PgString remote_peer_id = slice_range_start(handshake, 28 + 20);
   ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
@@ -244,7 +244,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]]
 static void peer_pick_random(DynIpv4Address *addresses_all,
-                             DynPeer *peers_active, u64 count, String info_hash,
+                             DynPeer *peers_active, u64 count, PgString info_hash,
                              Arena *arena) {
   u64 real_count = MIN(addresses_all->len, count);
 
@@ -269,7 +269,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   Arena tmp_arena = peer->tmp_arena;
 
-  String length = {
+  PgString length = {
       .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
@@ -286,7 +286,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     return res;
   }
 
-  String data = {
+  PgString data = {
       .data = arena_new(&tmp_arena, u8, length_announced),
       .len = length_announced,
   };
@@ -321,7 +321,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
     res.res.kind = kind;
-    String data_msg = slice_range_start(data, 1);
+    PgString data_msg = slice_range_start(data, 1);
     res.res.have = u8x4_be_to_u32(data_msg);
     break;
   }
@@ -492,7 +492,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   ASSERT(sb.len >= sizeof(u32));
 
-  String s = dyn_slice(String, sb);
+  PgString s = dyn_slice(PgString, sb);
   res = writer_write_all(peer->writer, s);
 
   log(res ? LOG_LEVEL_ERROR : LOG_LEVEL_INFO, "peer sent message", &peer->arena,

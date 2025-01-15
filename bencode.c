@@ -19,7 +19,7 @@ typedef struct {
 } DynBencodeValues;
 
 typedef struct {
-  StringDyn keys;
+  PgStringDyn keys;
   DynBencodeValues values;
 } BencodeDictionary;
 
@@ -27,7 +27,7 @@ struct BencodeValue {
   BencodeValueKind kind;
   union {
     u64 num;
-    String s;
+    PgString s;
     DynBencodeValues list;
     BencodeDictionary dict;
   };
@@ -36,19 +36,20 @@ struct BencodeValue {
 typedef struct {
   PgError err;
   BencodeValue value;
-  String remaining;
+  PgString remaining;
 } BencodeValueDecodeResult;
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(String s, Arena *arena);
+bencode_decode_value(PgString s, Arena *arena);
 
 typedef struct {
   PgError err;
   u64 num;
-  String remaining;
+  PgString remaining;
 } BencodeNumberDecodeResult;
 
-[[nodiscard]] static BencodeNumberDecodeResult bencode_decode_number(String s) {
+[[nodiscard]] static BencodeNumberDecodeResult
+bencode_decode_number(PgString s) {
   BencodeNumberDecodeResult res = {0};
 
   StringConsumeResult prefix = string_consume_byte(s, 'i');
@@ -76,11 +77,12 @@ typedef struct {
 
 typedef struct {
   PgError err;
-  String s;
-  String remaining;
+  PgString s;
+  PgString remaining;
 } BencodeStringDecodeResult;
 
-[[nodiscard]] static BencodeStringDecodeResult bencode_decode_string(String s) {
+[[nodiscard]] static BencodeStringDecodeResult
+bencode_decode_string(PgString s) {
   BencodeStringDecodeResult res = {0};
 
   ParseNumberResult num_res = string_parse_u64(s);
@@ -114,11 +116,11 @@ typedef struct {
 typedef struct {
   PgError err;
   BencodeDictionary dict;
-  String remaining;
+  PgString remaining;
 } BencodeDictionaryDecodeResult;
 
 [[nodiscard]] static BencodeDictionaryDecodeResult
-bencode_decode_dictionary(String s, Arena *arena) {
+bencode_decode_dictionary(PgString s, Arena *arena) {
   BencodeDictionaryDecodeResult res = {0};
 
   StringConsumeResult prefix = string_consume_byte(s, 'd');
@@ -127,7 +129,7 @@ bencode_decode_dictionary(String s, Arena *arena) {
     return res;
   }
 
-  String remaining = prefix.remaining;
+  PgString remaining = prefix.remaining;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
       res.err = TORR_ERR_BENCODE_INVALID;
@@ -146,7 +148,7 @@ bencode_decode_dictionary(String s, Arena *arena) {
 
     // Ensure ordering.
     if (res.dict.keys.len > 0) {
-      String last_key = dyn_last(res.dict.keys);
+      PgString last_key = dyn_last(res.dict.keys);
       StringCompare cmp = string_cmp(last_key, res_key.s);
       if (STRING_CMP_LESS != cmp) {
         res.err = TORR_ERR_BENCODE_INVALID;
@@ -183,10 +185,10 @@ bencode_decode_dictionary(String s, Arena *arena) {
 typedef struct {
   PgError err;
   DynBencodeValues values;
-  String remaining;
+  PgString remaining;
 } BencodeListDecodeResult;
 
-[[nodiscard]] static BencodeListDecodeResult bencode_decode_list(String s,
+[[nodiscard]] static BencodeListDecodeResult bencode_decode_list(PgString s,
                                                                  Arena *arena) {
   BencodeListDecodeResult res = {0};
 
@@ -196,7 +198,7 @@ typedef struct {
     return res;
   }
 
-  String remaining = prefix.remaining;
+  PgString remaining = prefix.remaining;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
       res.err = TORR_ERR_BENCODE_INVALID;
@@ -229,7 +231,7 @@ typedef struct {
 }
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(String s, Arena *arena) {
+bencode_decode_value(PgString s, Arena *arena) {
   BencodeValueDecodeResult res = {0};
 
   if (0 == s.len) {
@@ -298,7 +300,7 @@ bencode_decode_value(String s, Arena *arena) {
 }
 
 [[maybe_unused]]
-static void bencode_encode(BencodeValue value, u8Dyn *sb, Arena *arena) {
+static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
     *dyn_push(sb, arena) = 'i';
@@ -327,7 +329,7 @@ static void bencode_encode(BencodeValue value, u8Dyn *sb, Arena *arena) {
   case BENCODE_KIND_DICTIONARY: {
     *dyn_push(sb, arena) = 'd';
     for (u64 i = 0; i < value.dict.keys.len; i++) {
-      String k = slice_at(value.dict.keys, i);
+      PgString k = slice_at(value.dict.keys, i);
       BencodeValue v = slice_at(value.dict.values, i);
       bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k}, sb,
                      arena);
@@ -335,7 +337,7 @@ static void bencode_encode(BencodeValue value, u8Dyn *sb, Arena *arena) {
 
       // Ensure ordering.
       if (i > 0) {
-        String previous_key = slice_at(value.dict.keys, i - 1);
+        PgString previous_key = slice_at(value.dict.keys, i - 1);
         StringCompare cmp = string_cmp(previous_key, k);
         ASSERT(STRING_CMP_LESS == cmp);
       }
@@ -352,9 +354,9 @@ static void bencode_encode(BencodeValue value, u8Dyn *sb, Arena *arena) {
 
 typedef struct {
   Url announce;
-  String name;
+  PgString name;
   u64 piece_length;
-  String pieces;
+  PgString pieces;
   u64 length;
   BencodeDictionary files; // TODO.
 } Metainfo;
@@ -362,7 +364,7 @@ typedef struct {
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
 [[nodiscard]] static DecodeMetaInfoResult
-bencode_decode_metainfo(String s, Arena *arena) {
+bencode_decode_metainfo(PgString s, Arena *arena) {
   DecodeMetaInfoResult res = {0};
 
   BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);
@@ -376,7 +378,7 @@ bencode_decode_metainfo(String s, Arena *arena) {
   }
 
   for (u64 i = 0; i < res_dict.dict.keys.len; i++) {
-    String key = dyn_at(res_dict.dict.keys, i);
+    PgString key = dyn_at(res_dict.dict.keys, i);
     BencodeValue *value = dyn_at_ptr(&res_dict.dict.values, i);
 
     if (string_eq(key, S("announce"))) {
@@ -385,7 +387,7 @@ bencode_decode_metainfo(String s, Arena *arena) {
         return res;
       }
 
-      ParseUrlResult url_parse_res = url_parse(value->s, arena);
+      PgUrlResult url_parse_res = url_parse(value->s, arena);
       if (url_parse_res.err) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -400,7 +402,7 @@ bencode_decode_metainfo(String s, Arena *arena) {
       BencodeDictionary *info = &value->dict;
 
       for (u64 j = 0; j < info->keys.len; j++) {
-        String info_key = dyn_at(info->keys, j);
+        PgString info_key = dyn_at(info->keys, j);
         BencodeValue *info_value = dyn_at_ptr(&info->values, j);
 
         if (string_eq(info_key, S("name"))) {

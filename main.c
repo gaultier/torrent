@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
   Arena arena = arena_make_from_virtual_mem(128 * PG_KiB);
   Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
 
-  AioQueueCreateResult res_queue_create = aio_queue_create();
+  PgAioQueueCreateResult res_queue_create = aio_queue_create();
   if (res_queue_create.err) {
     logger_log(&logger, LOG_LEVEL_ERROR, "failed to create aio queue", arena,
                L("err", res_queue_create.err));
@@ -20,8 +20,8 @@ int main(int argc, char *argv[]) {
   AioQueue queue = res_queue_create.res;
   (void)queue; // FIXME.
 
-  String torrent_file_path = cstr_to_string(argv[1]);
-  StringResult res_torrent_file_read =
+  PgString torrent_file_path = cstr_to_string(argv[1]);
+  PgStringResult res_torrent_file_read =
       file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
     logger_log(&logger, LOG_LEVEL_ERROR, "failed to read torrent file", arena,
@@ -67,10 +67,10 @@ int main(int argc, char *argv[]) {
     }
   }
   {
-    AioEvent event = {
+    PgAioEvent event = {
         .socket = tracker.socket,
-        .kind = AIO_EVENT_KIND_OUT,
-        .action = AIO_EVENT_ACTION_KIND_ADD,
+        .kind = PG_AIO_EVENT_KIND_OUT,
+        .action = PG_AIO_EVENT_ACTION_ADD,
     };
     PgError err = aio_queue_ctl_one(queue, event);
     if (err) {
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  AioEventSlice events_watch = slice_make(AioEvent, 16, &arena);
+  PgAioEventSlice events_watch = slice_make(PgAioEvent, 16, &arena);
   DynAioEvent events_change = {0};
   dyn_ensure_cap(&events_change, 128, &arena);
 
@@ -95,8 +95,8 @@ int main(int argc, char *argv[]) {
     }
 
     for (u64 i = 0; i < res_wait.res; i++) {
-      AioEvent event_watch = slice_at(events_watch, i);
-      if (AIO_EVENT_KIND_ERR & event_watch.kind) {
+      PgAioEvent event_watch = slice_at(events_watch, i);
+      if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
         logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
                    L("socket", (Socket)event_watch.socket));
         (void)net_socket_close(event_watch.socket);
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
       }
 
       if (event_watch.socket == tracker.socket) {
-        if ((AIO_EVENT_KIND_IN & event_watch.kind) &&
+        if ((PG_AIO_EVENT_KIND_IN & event_watch.kind) &&
             ring_buffer_write_space(tracker.rg) > 0) {
           {
             IoCountResult res_read =
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        if ((AIO_EVENT_KIND_OUT & event_watch.kind) &&
+        if ((PG_AIO_EVENT_KIND_OUT & event_watch.kind) &&
             ring_buffer_read_space(tracker.rg) > 0) {
           {
             IoCountResult res_write =
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      PgError err = aio_queue_ctl(queue, dyn_slice(AioEventSlice, events_change));
+      PgError err = aio_queue_ctl(queue, dyn_slice(PgAioEventSlice, events_change));
       if (err) {
         logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));

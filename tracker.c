@@ -8,8 +8,8 @@ typedef enum {
 } TrackerMetadataEvent;
 
 typedef struct {
-  String info_hash;
-  String peer_id;
+  PgString info_hash;
+  PgString peer_id;
   u32 ip;
   u16 port;
   u64 downloaded, uploaded, left;
@@ -17,7 +17,7 @@ typedef struct {
   Url announce;
 } TrackerMetadata;
 
-[[maybe_unused]] [[nodiscard]] static String
+[[maybe_unused]] [[nodiscard]] static PgString
 tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
@@ -32,7 +32,7 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
 }
 
 [[maybe_unused]]
-static void tracker_compute_info_hash(Metainfo metainfo, String hash,
+static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       Arena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
@@ -62,9 +62,9 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 
   // TODO: Add unknown keys in `info`?
 
-  u8Dyn sb = {0};
+  Pgu8Dyn sb = {0};
   bencode_encode(value, &sb, &arena);
-  String encoded = dyn_slice(String, sb);
+  PgString encoded = dyn_slice(PgString, sb);
 
   u8 sha1_hash[20] = {0};
   sha1(encoded, sha1_hash);
@@ -73,8 +73,8 @@ static void tracker_compute_info_hash(Metainfo metainfo, String hash,
 }
 
 typedef struct {
-  Ipv4AddressDyn peer_addresses;
-  String failure;
+  PgIpv4AddressDyn peer_addresses;
+  PgString failure;
   u64 interval_secs;
 } TrackerResponse;
 
@@ -82,11 +82,11 @@ PG_RESULT(TrackerResponse) TrackerResponseResult;
 
 typedef struct {
   PgError err;
-  Ipv4AddressDyn peer_addresses;
+  PgIpv4AddressDyn peer_addresses;
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(String s, Logger *logger, Arena *arena) {
+tracker_parse_compact_peers(PgString s, Logger *logger, Arena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
@@ -94,14 +94,14 @@ tracker_parse_compact_peers(String s, Logger *logger, Arena *arena) {
     return res;
   }
 
-  String remaining = s;
+  PgString remaining = s;
   for (u64 lim = 0; lim < s.len; lim++) {
     if (0 == remaining.len) {
       break;
     }
 
-    String ipv4_str = slice_range(remaining, 0, 4);
-    String port_str = slice_range(remaining, 4, 6);
+    PgString ipv4_str = slice_range(remaining, 0, 4);
+    PgString port_str = slice_range(remaining, 4, 6);
 
     remaining = slice_range_start(remaining, 6);
 
@@ -117,7 +117,7 @@ tracker_parse_compact_peers(String s, Logger *logger, Arena *arena) {
     };
 
     {
-      String ipv4_addr_str = ipv4_address_to_string(address, arena);
+      PgString ipv4_addr_str = ipv4_address_to_string(address, arena);
       logger_log(logger, LOG_LEVEL_INFO, "tracker_parse_compact_peers", *arena,
                  L("res.peer_addresses.len", res.peer_addresses.len),
                  L("ip", address.ip), L("port", address.port),
@@ -130,7 +130,7 @@ tracker_parse_compact_peers(String s, Logger *logger, Arena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static TrackerResponseResult
-tracker_parse_response(String s, Logger *logger, Arena *arena) {
+tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
   TrackerResponseResult res = {0};
 
   BencodeValueDecodeResult tracker_response_bencode_res =
@@ -152,7 +152,7 @@ tracker_parse_response(String s, Logger *logger, Arena *arena) {
   BencodeDictionary dict = tracker_response_bencode_res.value.dict;
 
   for (u64 i = 0; i < dict.keys.len; i++) {
-    String key = slice_at(dict.keys, i);
+    PgString key = slice_at(dict.keys, i);
     BencodeValue value = slice_at(dict.values, i);
 
     if (string_eq(key, S("failure reason"))) {
@@ -234,7 +234,7 @@ typedef struct {
   Logger *logger;
   TrackerState state;
   Socket socket;
-  String host;
+  PgString host;
   u16 port;
   Arena arena;
   RingBuffer rg;
@@ -244,7 +244,7 @@ typedef struct {
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
-static Tracker tracker_make(Logger *logger, String host, u16 port,
+static Tracker tracker_make(Logger *logger, PgString host, u16 port,
                             TrackerMetadata metadata) {
   Tracker tracker = {0};
   tracker.logger = logger;
@@ -261,7 +261,7 @@ static Tracker tracker_make(Logger *logger, String host, u16 port,
 [[maybe_unused]] [[nodiscard]]
 static PgError tracker_connect(Tracker *tracker) {
   {
-    DnsResolveIpv4AddressSocketResult res_dns =
+    PgDnsResolveIpv4AddressSocketResult res_dns =
         net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
     if (res_dns.err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
@@ -294,13 +294,13 @@ static PgError tracker_connect(Tracker *tracker) {
 }
 
 [[maybe_unused]] [[nodiscard]]
-static PgError tracker_handle_event(Tracker *tracker, AioEvent event_watch,
-                                  AioEventDyn *events_change,
+static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
+                                  PgAioEventDyn *events_change,
                                   Arena *events_arena) {
 
   switch (tracker->state) {
   case TRACKER_STATE_NONE: {
-    if (0 == (AIO_EVENT_KIND_OUT & event_watch.kind)) {
+    if (0 == (PG_AIO_EVENT_KIND_OUT & event_watch.kind)) {
       // Failed to connect or invalid API use.
       return (PgError)EINVAL;
     }
@@ -320,10 +320,10 @@ static PgError tracker_handle_event(Tracker *tracker, AioEvent event_watch,
 
     tracker->state = TRACKER_STATE_SENT_REQUEST;
 
-    *dyn_push(events_change, events_arena) = (AioEvent){
-        .kind = AIO_EVENT_KIND_IN,
+    *dyn_push(events_change, events_arena) = (PgAioEvent){
+        .kind = PG_AIO_EVENT_KIND_IN,
         .socket = tracker->socket,
-        .action = AIO_EVENT_ACTION_KIND_MOD,
+        .action = PG_AIO_EVENT_ACTION_MOD,
     };
   } break;
   case TRACKER_STATE_SENT_REQUEST: {
@@ -340,9 +340,9 @@ static PgError tracker_handle_event(Tracker *tracker, AioEvent event_watch,
                arena_tmp, L("http.status", res_http.res.status));
     tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 
-    *dyn_push(events_change, events_arena) = (AioEvent){
+    *dyn_push(events_change, events_arena) = (PgAioEvent){
         .socket = tracker->socket,
-        .action = AIO_EVENT_ACTION_KIND_DEL,
+        .action = PG_AIO_EVENT_ACTION_DEL,
     };
   } break;
   case TRACKER_STATE_RECEIVED_RESPONSE: {

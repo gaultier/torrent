@@ -3,7 +3,7 @@
 
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
-bitfield_has_all_blocks_for_piece(String bitfield_blocks, u32 blocks_per_piece,
+bitfield_has_all_blocks_for_piece(PgString bitfield_blocks, u32 blocks_per_piece,
                                   u32 pieces_count, u32 piece) {
   ASSERT(piece < pieces_count);
   ASSERT(bitfield_blocks.len ==
@@ -25,7 +25,7 @@ bitfield_has_all_blocks_for_piece(String bitfield_blocks, u32 blocks_per_piece,
 // Pick a random piece that the remote claimed they have.
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static i64
-bitfield_pick_random_piece(String bitfield_remote_pieces, u32 pieces_count) {
+bitfield_pick_random_piece(PgString bitfield_remote_pieces, u32 pieces_count) {
   for (u64 i = 0; i < pieces_count; i++) {
     if (bitfield_get(bitfield_remote_pieces, i)) {
       return (i64)i;
@@ -36,7 +36,7 @@ bitfield_pick_random_piece(String bitfield_remote_pieces, u32 pieces_count) {
 
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
-piece_verify_hash(String data, String hash_expected) {
+piece_verify_hash(PgString data, PgString hash_expected) {
   ASSERT(20 == hash_expected.len);
   ASSERT(0 == data.len % BLOCK_LENGTH);
 

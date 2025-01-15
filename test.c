@@ -173,12 +173,12 @@ static void test_bencode_decode() {
     ASSERT(2 == dict.values.len);
 
     {
-      String k1 = dyn_at(dict.keys, 0);
+      PgString k1 = dyn_at(dict.keys, 0);
       ASSERT(string_eq(S("ab"), k1));
     }
 
     {
-      String k2 = dyn_at(dict.keys, 1);
+      PgString k2 = dyn_at(dict.keys, 1);
       ASSERT(string_eq(S("xyz"), k2));
     }
 
@@ -205,7 +205,7 @@ static void test_bencode_decode() {
 
 static void test_decode_metainfo() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  String torrent_file_content = S(
+  PgString torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -222,7 +222,7 @@ static void test_decode_metainfo() {
   ASSERT(string_eq(S("OpenBSD.somedomain.net"), res.res.announce.host));
   ASSERT(6969 == res.res.announce.port);
   ASSERT(1 == res.res.announce.path_components.len);
-  String path_component0 = slice_at(res.res.announce.path_components, 0);
+  PgString path_component0 = slice_at(res.res.announce.path_components, 0);
   ASSERT(string_eq(S("announce"), path_component0));
 
   ASSERT(234883072 == res.res.length);
@@ -233,7 +233,7 @@ static void test_decode_metainfo() {
 
 static void test_bencode_decode_encode() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  String torrent_file_content = S(
+  PgString torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -246,15 +246,15 @@ static void test_bencode_decode_encode() {
       bencode_decode_value(torrent_file_content, &arena);
   ASSERT(0 == res.err);
 
-  u8Dyn sb = {0};
+  Pgu8Dyn sb = {0};
   bencode_encode(res.value, &sb, &arena);
-  String encoded = dyn_slice(String, sb);
+  PgString encoded = dyn_slice(PgString, sb);
   ASSERT(string_eq(encoded, torrent_file_content));
 }
 
 static void test_tracker_compute_info_hash() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  String torrent_file_content = S(
+  PgString torrent_file_content = S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -267,7 +267,7 @@ static void test_tracker_compute_info_hash() {
       bencode_decode_metainfo(torrent_file_content, &arena);
   ASSERT(0 == res.err);
 
-  String hash = {
+  PgString hash = {
       .data = arena_new(&arena, u8, 20),
       .len = 20,
   };
@@ -304,7 +304,7 @@ static void test_peer_receive_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
-  String req_slice = S("\x13"
+  PgString req_slice = S("\x13"
                        "BitTorrent protocol"
                        "\x01"
                        "\x02"
@@ -358,7 +358,7 @@ static void test_peer_receive_any_message_bitfield() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
-  String read_slice = S("\x0"
+  PgString read_slice = S("\x0"
                         "\x0"
                         "\x0"
                         "\x1b"
@@ -409,7 +409,7 @@ static void test_peer_send_message() {
   WriterBufCtx *ctx = peer.writer.ctx;
   ASSERT(sizeof(u32) + 1 + 3 * sizeof(u32) == ctx->sb.len);
 
-  String expected = S(
+  PgString expected = S(
       // Length.
       "\x0"
       "\x0"
@@ -434,7 +434,7 @@ static void test_peer_send_message() {
       "\x00"
       "\x40"
       "\x00");
-  String got = dyn_slice(String, ctx->sb);
+  PgString got = dyn_slice(PgString, ctx->sb);
   ASSERT(string_eq(expected, got));
 }
 #endif

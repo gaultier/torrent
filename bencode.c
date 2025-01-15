@@ -58,7 +58,7 @@ bencode_decode_number(PgString s) {
     return res;
   }
 
-  ParseNumberResult num_res = pg_string_parse_u64(prefix.res);
+  PgParseNumberResult num_res = pg_string_parse_u64(prefix.res);
   if (!num_res.present) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -85,7 +85,7 @@ typedef struct {
 bencode_decode_string(PgString s) {
   BencodeStringDecodeResult res = {0};
 
-  ParseNumberResult num_res = pg_string_parse_u64(s);
+  PgParseNumberResult num_res = pg_string_parse_u64(s);
   if (!num_res.present) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;

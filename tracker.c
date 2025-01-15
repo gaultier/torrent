@@ -36,26 +36,26 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       PgArena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
-  *dyn_push(&value.dict.keys, &arena) = PG_S("length");
-  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("length");
+  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.length,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = PG_S("name");
-  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("name");
+  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.name,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = PG_S("piece length");
-  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("piece length");
+  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.piece_length,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = PG_S("pieces");
-  *dyn_push(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("pieces");
+  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.pieces,
   };
@@ -64,7 +64,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
 
   Pgu8Dyn sb = {0};
   bencode_encode(value, &sb, &arena);
-  PgString encoded = dyn_slice(PgString, sb);
+  PgString encoded = PG_DYN_SLICE(PgString, sb);
 
   u8 sha1_hash[20] = {0};
   sha1(encoded, sha1_hash);
@@ -123,7 +123,7 @@ tracker_parse_compact_peers(PgString s, Logger *logger, PgArena *arena) {
                  L("ip", address.ip), L("port", address.port),
                  L("address", ipv4_addr_str));
     }
-    *dyn_push(&res.peer_addresses, arena) = address;
+    *PG_DYN_PUSH(&res.peer_addresses, arena) = address;
   }
 
   return res;
@@ -192,31 +192,31 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   HttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("info_hash"),
       .value = req_tracker.info_hash,
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("peer_id"),
       .value = req_tracker.peer_id,
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("port"),
       .value = u64_to_string(req_tracker.port, arena),
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("uploaded"),
       .value = u64_to_string(req_tracker.uploaded, arena),
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("downloaded"),
       .value = u64_to_string(req_tracker.downloaded, arena),
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("left"),
       .value = u64_to_string(req_tracker.left, arena),
   };
-  *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
       .key = PG_S("event"),
       .value = tracker_metadata_event_to_string(req_tracker.event),
   };
@@ -320,7 +320,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
 
     tracker->state = TRACKER_STATE_SENT_REQUEST;
 
-    *dyn_push(events_change, events_arena) = (PgAioEvent){
+    *PG_DYN_PUSH(events_change, events_arena) = (PgAioEvent){
         .kind = PG_AIO_EVENT_KIND_IN,
         .socket = tracker->socket,
         .action = PG_AIO_EVENT_ACTION_MOD,
@@ -340,7 +340,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
                pg_arena_tmp, L("http.status", res_http.res.status));
     tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 
-    *dyn_push(events_change, events_arena) = (PgAioEvent){
+    *PG_DYN_PUSH(events_change, events_arena) = (PgAioEvent){
         .socket = tracker->socket,
         .action = PG_AIO_EVENT_ACTION_DEL,
     };

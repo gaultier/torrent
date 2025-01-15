@@ -108,13 +108,13 @@ static void test_bencode_decode_list() {
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
 
     {
-      BencodeValue v1 = dyn_at(res.values, 0);
+      BencodeValue v1 = PG_DYN_AT(res.values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
       PG_ASSERT(pg_string_eq(PG_S("ab"), v1.s));
     }
 
     {
-      BencodeValue v2 = dyn_at(res.values, 1);
+      BencodeValue v2 = PG_DYN_AT(res.values, 1);
       PG_ASSERT(BENCODE_KIND_NUMBER == v2.kind);
       PG_ASSERT(123 == v2.num);
     }
@@ -130,13 +130,13 @@ static void test_bencode_decode_list() {
     PG_ASSERT(2 == values.len);
 
     {
-      BencodeValue v1 = dyn_at(values, 0);
+      BencodeValue v1 = PG_DYN_AT(values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
       PG_ASSERT(pg_string_eq(PG_S("ab"), v1.s));
     }
 
     {
-      BencodeValue v2 = dyn_at(values, 1);
+      BencodeValue v2 = PG_DYN_AT(values, 1);
       PG_ASSERT(BENCODE_KIND_NUMBER == v2.kind);
       PG_ASSERT(123 == v2.num);
     }
@@ -173,23 +173,23 @@ static void test_bencode_decode() {
     PG_ASSERT(2 == dict.values.len);
 
     {
-      PgString k1 = dyn_at(dict.keys, 0);
+      PgString k1 = PG_DYN_AT(dict.keys, 0);
       PG_ASSERT(pg_string_eq(PG_S("ab"), k1));
     }
 
     {
-      PgString k2 = dyn_at(dict.keys, 1);
+      PgString k2 = PG_DYN_AT(dict.keys, 1);
       PG_ASSERT(pg_string_eq(PG_S("xyz"), k2));
     }
 
     {
-      BencodeValue v1 = dyn_at(dict.values, 0);
+      BencodeValue v1 = PG_DYN_AT(dict.values, 0);
       PG_ASSERT(BENCODE_KIND_NUMBER == v1.kind);
       PG_ASSERT(123 == v1.num);
     }
 
     {
-      BencodeValue v2 = dyn_at(dict.values, 1);
+      BencodeValue v2 = PG_DYN_AT(dict.values, 1);
       PG_ASSERT(BENCODE_KIND_STRING == v2.kind);
       PG_ASSERT(pg_string_eq(PG_S("hello"), v2.s));
     }
@@ -248,7 +248,7 @@ static void test_bencode_decode_encode() {
 
   Pgu8Dyn sb = {0};
   bencode_encode(res.value, &sb, &arena);
-  PgString encoded = dyn_slice(PgString, sb);
+  PgString encoded = PG_DYN_SLICE(PgString, sb);
   PG_ASSERT(pg_string_eq(encoded, torrent_file_content));
 }
 
@@ -434,7 +434,7 @@ static void test_peer_send_message() {
       "\x00"
       "\x40"
       "\x00");
-  PgString got = dyn_slice(PgString, ctx->sb);
+  PgString got = PG_DYN_SLICE(PgString, ctx->sb);
   PG_ASSERT(pg_string_eq(expected, got));
 }
 #endif

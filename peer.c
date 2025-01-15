@@ -151,7 +151,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 [[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
                                                 PgArena *arena) {
   DynU8 sb = {0};
-  dyn_append_slice(&sb,
+  PG_DYN_APPEND_SLICE(&sb,
                    PG_S("\x13"
                      "BitTorrent protocol"
                      "\x00"
@@ -166,14 +166,14 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   PG_ASSERT(1 + 19 + 8 == sb.len);
 
   PG_ASSERT(20 == info_hash.len);
-  dyn_append_slice(&sb, info_hash, arena);
+  PG_DYN_APPEND_SLICE(&sb, info_hash, arena);
 
   PgString peer_id = PG_S("00000000000000000000");
   PG_ASSERT(20 == peer_id.len);
-  dyn_append_slice(&sb, peer_id, arena);
+  PG_DYN_APPEND_SLICE(&sb, peer_id, arena);
 
   PG_ASSERT(HANDSHAKE_LENGTH == sb.len);
-  return dyn_slice(PgString, sb);
+  return PG_DYN_SLICE(PgString, sb);
 }
 
 [[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
@@ -252,7 +252,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
     Ipv4Address address = PG_SLICE_AT(*addresses_all, idx);
     Peer peer = peer_make(address, info_hash);
-    *dyn_push(peers_active, arena) = peer;
+    *PG_DYN_PUSH(peers_active, arena) = peer;
     PG_slice_swap_remove(addresses_all, idx);
 
     log(LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
@@ -435,7 +435,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   PgArena tmp_arena = peer->tmp_arena;
   DynU8 sb = {0};
-  dyn_ensure_cap(&sb, 256, &tmp_arena);
+  PG_DYN_ENSURE_CAP(&sb, 256, &tmp_arena);
 
   switch (msg.kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
@@ -447,24 +447,24 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   case PEER_MSG_KIND_INTERESTED:
   case PEER_MSG_KIND_UNINTERESTED:
     dynu8_append_u32(&sb, 1, &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     break;
 
   case PEER_MSG_KIND_HAVE:
     dynu8_append_u32(&sb, 1 + sizeof(u32), &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     dynu8_append_u32(&sb, msg.have, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_BITFIELD:
     dynu8_append_u32(&sb, 1 + (u32)msg.bitfield.len, &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
-    dyn_append_slice(&sb, msg.bitfield, &tmp_arena);
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
+    PG_DYN_APPEND_SLICE(&sb, msg.bitfield, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_REQUEST:
     dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     dynu8_append_u32(&sb, msg.request.index, &tmp_arena);
     dynu8_append_u32(&sb, msg.request.begin, &tmp_arena);
     dynu8_append_u32(&sb, msg.request.length, &tmp_arena);
@@ -473,15 +473,15 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   case PEER_MSG_KIND_PIECE:
     dynu8_append_u32(&sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len,
                      &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     dynu8_append_u32(&sb, msg.piece.index, &tmp_arena);
     dynu8_append_u32(&sb, msg.piece.begin, &tmp_arena);
-    dyn_append_slice(&sb, msg.piece.data, &tmp_arena);
+    PG_DYN_APPEND_SLICE(&sb, msg.piece.data, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_CANCEL:
     dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
-    *dyn_push(&sb, &tmp_arena) = msg.kind;
+    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     dynu8_append_u32(&sb, msg.cancel.index, &tmp_arena);
     dynu8_append_u32(&sb, msg.cancel.begin, &tmp_arena);
     dynu8_append_u32(&sb, msg.cancel.length, &tmp_arena);
@@ -492,7 +492,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   PG_ASSERT(sb.len >= sizeof(u32));
 
-  PgString s = dyn_slice(PgString, sb);
+  PgString s = PG_DYN_SLICE(PgString, sb);
   res = writer_write_all(peer->writer, s);
 
   log(res ? LOG_LEVEL_ERROR : LOG_LEVEL_INFO, "peer sent message", &peer->arena,

@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
 
   PgAioEventSlice events_watch = PG_SLICE_MAKE(PgAioEvent, 16, &arena);
   DynAioEvent events_change = {0};
-  dyn_ensure_cap(&events_change, 128, &arena);
+  PG_DYN_ENSURE_CAP(&events_change, 128, &arena);
 
   for (;;) {
     PG_ASSERT(0 == events_change.len);
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      PgError err = aio_queue_ctl(queue, dyn_slice(PgAioEventSlice, events_change));
+      PgError err = aio_queue_ctl(queue, PG_DYN_SLICE(PgAioEventSlice, events_change));
       if (err) {
         logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));

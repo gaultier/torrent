@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
       if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
         logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
                    L("socket", (PgSocket)event_watch.socket));
-        (void)net_socket_close(event_watch.socket);
+        (void)pg_net_socket_close(event_watch.socket);
         continue;
       }
 
@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to read", arena,
                          L("err", res_read.err),
                          L("socket", (PgSocket)event_watch.socket));
-              (void)net_socket_close(event_watch.socket);
+              (void)pg_net_socket_close(event_watch.socket);
               continue;
             }
             logger_log(&logger, LOG_LEVEL_DEBUG, "read", arena,
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
           PgError err = tracker_handle_event(&tracker, event_watch,
                                            &events_change, &arena);
           if (err) {
-            (void)net_socket_close(event_watch.socket);
+            (void)pg_net_socket_close(event_watch.socket);
             continue;
           }
         }
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to write", arena,
                          L("err", res_write.err),
                          L("socket", (PgSocket)event_watch.socket));
-              (void)net_socket_close(event_watch.socket);
+              (void)pg_net_socket_close(event_watch.socket);
               continue;
             }
             logger_log(&logger, LOG_LEVEL_DEBUG, "written", arena,

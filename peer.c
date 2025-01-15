@@ -113,7 +113,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
 
-  PgCreateSocketResult res_create_socket = net_create_tcp_socket();
+  PgCreateSocketResult res_create_socket = pg_net_create_tcp_socket();
   if (res_create_socket.err) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -122,7 +122,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 
   {
-    PgError err_set_nodelay = net_set_nodelay(res_create_socket.res, true);
+    PgError err_set_nodelay = pg_net_set_nodelay(res_create_socket.res, true);
     if (err_set_nodelay) {
       log(LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -134,7 +134,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer->writer = writer_make_from_socket(res_create_socket.res);
 
   {
-    PgError err = net_connect_ipv4(res_create_socket.res, peer->address);
+    PgError err = pg_net_connect_ipv4(res_create_socket.res, peer->address);
     if (err) {
       log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),

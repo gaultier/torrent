@@ -262,7 +262,7 @@ static Tracker tracker_make(Logger *logger, PgString host, u16 port,
 static PgError tracker_connect(Tracker *tracker) {
   {
     PgDnsResolveIpv4AddressSocketResult res_dns =
-        net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
+        pg_net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
     if (res_dns.err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
                  "failed to dns resolve the tracker announce url",
@@ -278,7 +278,7 @@ static PgError tracker_connect(Tracker *tracker) {
                L("ip", res_dns.res.address.ip));
   }
   {
-    PgError err = net_socket_set_blocking(tracker->socket, false);
+    PgError err = pg_net_socket_set_blocking(tracker->socket, false);
     if (err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
                  "failed to set socket to non blocking", tracker->arena,

@@ -34,7 +34,7 @@ struct BencodeValue {
 };
 
 typedef struct {
-  Error err;
+  PgError err;
   BencodeValue value;
   String remaining;
 } BencodeValueDecodeResult;
@@ -43,7 +43,7 @@ typedef struct {
 bencode_decode_value(String s, Arena *arena);
 
 typedef struct {
-  Error err;
+  PgError err;
   u64 num;
   String remaining;
 } BencodeNumberDecodeResult;
@@ -75,7 +75,7 @@ typedef struct {
 }
 
 typedef struct {
-  Error err;
+  PgError err;
   String s;
   String remaining;
 } BencodeStringDecodeResult;
@@ -112,7 +112,7 @@ typedef struct {
 }
 
 typedef struct {
-  Error err;
+  PgError err;
   BencodeDictionary dict;
   String remaining;
 } BencodeDictionaryDecodeResult;
@@ -181,7 +181,7 @@ bencode_decode_dictionary(String s, Arena *arena) {
 }
 
 typedef struct {
-  Error err;
+  PgError err;
   DynBencodeValues values;
   String remaining;
 } BencodeListDecodeResult;
@@ -359,7 +359,7 @@ typedef struct {
   BencodeDictionary files; // TODO.
 } Metainfo;
 
-RESULT(Metainfo) DecodeMetaInfoResult;
+PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
 [[nodiscard]] static DecodeMetaInfoResult
 bencode_decode_metainfo(String s, Arena *arena) {

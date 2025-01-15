@@ -78,10 +78,10 @@ typedef struct {
   u64 interval_secs;
 } TrackerResponse;
 
-RESULT(TrackerResponse) TrackerResponseResult;
+PG_RESULT(TrackerResponse) TrackerResponseResult;
 
 typedef struct {
-  Error err;
+  PgError err;
   Ipv4AddressDyn peer_addresses;
 } ParseCompactPeersResult;
 
@@ -259,7 +259,7 @@ static Tracker tracker_make(Logger *logger, String host, u16 port,
 }
 
 [[maybe_unused]] [[nodiscard]]
-static Error tracker_connect(Tracker *tracker) {
+static PgError tracker_connect(Tracker *tracker) {
   {
     DnsResolveIpv4AddressSocketResult res_dns =
         net_dns_resolve_ipv4_tcp(tracker->host, tracker->port, tracker->arena);
@@ -278,7 +278,7 @@ static Error tracker_connect(Tracker *tracker) {
                L("ip", res_dns.res.address.ip));
   }
   {
-    Error err = net_socket_set_blocking(tracker->socket, false);
+    PgError err = net_socket_set_blocking(tracker->socket, false);
     if (err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
                  "failed to set socket to non blocking", tracker->arena,
@@ -290,11 +290,11 @@ static Error tracker_connect(Tracker *tracker) {
   tracker->reader = reader_make_from_socket(tracker->socket);
   tracker->writer = writer_make_from_socket(tracker->socket);
 
-  return (Error)0;
+  return (PgError)0;
 }
 
 [[maybe_unused]] [[nodiscard]]
-static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
+static PgError tracker_handle_event(Tracker *tracker, AioEvent event_watch,
                                   AioEventDyn *events_change,
                                   Arena *events_arena) {
 
@@ -302,14 +302,14 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
   case TRACKER_STATE_NONE: {
     if (0 == (AIO_EVENT_KIND_OUT & event_watch.kind)) {
       // Failed to connect or invalid API use.
-      return (Error)EINVAL;
+      return (PgError)EINVAL;
     }
 
     {
       Arena arena_tmp = tracker->arena;
       HttpRequest tracker_http_req =
           tracker_make_http_request(tracker->metadata, &arena_tmp);
-      Error err = http_write_request(&tracker->rg, tracker_http_req, arena_tmp);
+      PgError err = http_write_request(&tracker->rg, tracker_http_req, arena_tmp);
       ASSERT(!err); // Ring buffer too small.
     }
 
@@ -353,5 +353,5 @@ static Error tracker_handle_event(Tracker *tracker, AioEvent event_watch,
     ASSERT(0);
     break;
   }
-  return (Error)0;
+  return (PgError)0;
 }

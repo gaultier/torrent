@@ -106,7 +106,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return peer;
 }
 
-[[maybe_unused]] [[nodiscard]] static Error peer_connect(Peer *peer) {
+[[maybe_unused]] [[nodiscard]] static PgError peer_connect(Peer *peer) {
   ASSERT(0 != peer->address.ip);
   ASSERT(0 != peer->address.port);
 
@@ -118,11 +118,11 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     log(LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
         L("err", res_create_socket.err));
-    return (Error)errno;
+    return (PgError)errno;
   }
 
   {
-    Error err_set_nodelay = net_set_nodelay(res_create_socket.res, true);
+    PgError err_set_nodelay = net_set_nodelay(res_create_socket.res, true);
     if (err_set_nodelay) {
       log(LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -134,12 +134,12 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer->writer = writer_make_from_socket(res_create_socket.res);
 
   {
-    Error err = net_connect_ipv4(res_create_socket.res, peer->address);
+    PgError err = net_connect_ipv4(res_create_socket.res, peer->address);
     if (err) {
       log(LOG_LEVEL_ERROR, "peer connect", &peer->arena,
           L("ipv4", peer->address.ip), L("port", peer->address.port),
           L("err", err));
-      return (Error)err;
+      return (PgError)err;
     }
   }
 
@@ -176,9 +176,9 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return dyn_slice(String, sb);
 }
 
-[[nodiscard]] static Error peer_send_handshake(Peer *peer) {
+[[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
   String handshake = peer_make_handshake(peer->info_hash, &peer->arena);
-  Error err = writer_write_all(peer->writer, handshake);
+  PgError err = writer_write_all(peer->writer, handshake);
   if (err) {
     log(LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -192,7 +192,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return 0;
 }
 
-[[nodiscard]] static Error peer_receive_handshake(Peer *peer) {
+[[nodiscard]] static PgError peer_receive_handshake(Peer *peer) {
   ASSERT(0 != peer->tmp_arena.start);
 
   Arena tmp_arena = peer->tmp_arena;
@@ -201,7 +201,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
       .len = HANDSHAKE_LENGTH,
   };
 
-  Error res_io_err = reader_read_exactly(&peer->reader, handshake);
+  PgError res_io_err = reader_read_exactly(&peer->reader, handshake);
   if (res_io_err) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -273,7 +273,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
-  Error err_io = reader_read_exactly(&peer->reader, length);
+  PgError err_io = reader_read_exactly(&peer->reader, length);
   if (err_io) {
     res.err = err_io;
     return res;
@@ -425,13 +425,13 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Error peer_send_message(Peer *peer,
+[[maybe_unused]] [[nodiscard]] static PgError peer_send_message(Peer *peer,
                                                               PeerMessage msg) {
   log(LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),
       L("msg.kind", peer_message_kind_to_string(msg.kind)));
 
-  Error res = 0;
+  PgError res = 0;
 
   Arena tmp_arena = peer->tmp_arena;
   DynU8 sb = {0};
@@ -536,7 +536,7 @@ static void peer_spawn(Peer *peer) {
   close(peer->pipe_child_to_parent[0]); // Close read end of the
                                         // liveness pipe.
   {
-    Error err = peer_connect(peer);
+    PgError err = peer_connect(peer);
     if (err) {
       exit(1);
     }
@@ -548,13 +548,13 @@ static void peer_spawn(Peer *peer) {
   }
 
   {
-    Error err = peer_send_handshake(peer);
+    PgError err = peer_send_handshake(peer);
     if (err) {
       exit(1);
     }
   }
   {
-    Error err = peer_receive_handshake(peer);
+    PgError err = peer_receive_handshake(peer);
     if (err) {
       exit(1);
     }
@@ -575,7 +575,7 @@ static void peer_spawn(Peer *peer) {
                 .length = BLOCK_LENGTH,
             },
     };
-    Error res_send_msg = peer_send_message(peer, msg);
+    PgError res_send_msg = peer_send_message(peer, msg);
     if (res_send_msg) {
       exit(1);
     }

@@ -293,7 +293,7 @@ static void test_peer_send_handshake() {
   peer.info_hash = S("abcdefghijklmnopqrst");
   ASSERT(20 == peer.info_hash.len);
 
-  Error err = peer_send_handshake(&peer);
+  PgError err = peer_send_handshake(&peer);
   ASSERT(0 == err);
 
   WriterBufCtx *ctx = peer.writer.ctx;
@@ -347,7 +347,7 @@ static void test_peer_receive_handshake() {
   peer.info_hash = S("abcdefghijklmnopqrst");
   ASSERT(20 == peer.info_hash.len);
 
-  Error err = peer_receive_handshake(&peer);
+  PgError err = peer_receive_handshake(&peer);
   ASSERT(0 == err);
 
   MemReadContext *ctx = peer.reader.ctx;
@@ -403,7 +403,7 @@ static void test_peer_send_message() {
               .length = BLOCK_LENGTH,
           },
   };
-  Error err = peer_send_message(&peer, msg);
+  PgError err = peer_send_message(&peer, msg);
   ASSERT(0 == err);
 
   WriterBufCtx *ctx = peer.writer.ctx;

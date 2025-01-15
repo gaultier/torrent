@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
   Tracker tracker =
       tracker_make(&logger, announce.host, announce.port, tracker_metadata);
   {
-    Error err = tracker_connect(&tracker);
+    PgError err = tracker_connect(&tracker);
     if (err) {
       return 1;
     }
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
         .kind = AIO_EVENT_KIND_OUT,
         .action = AIO_EVENT_ACTION_KIND_ADD,
     };
-    Error err = aio_queue_ctl_one(queue, event);
+    PgError err = aio_queue_ctl_one(queue, event);
     if (err) {
       logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for an I/O event",
                  arena, L("err", err));
@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
           }
         }
         {
-          Error err = tracker_handle_event(&tracker, event_watch,
+          PgError err = tracker_handle_event(&tracker, event_watch,
                                            &events_change, &arena);
           if (err) {
             (void)net_socket_close(event_watch.socket);
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      Error err = aio_queue_ctl(queue, dyn_slice(AioEventSlice, events_change));
+      PgError err = aio_queue_ctl(queue, dyn_slice(AioEventSlice, events_change));
       if (err) {
         logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));

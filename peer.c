@@ -279,7 +279,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     return res;
   }
 
-  u32 length_announced = u8x4_be_to_u32(length);
+  u32 length_announced = pg_u8x4_be_to_u32(length);
 
   if (0 == length_announced) {
     res.res.kind = PEER_MSG_KIND_KEEP_ALIVE;
@@ -322,7 +322,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     }
     res.res.kind = kind;
     PgString data_msg = PG_SLICE_RANGE_START(data, 1);
-    res.res.have = u8x4_be_to_u32(data_msg);
+    res.res.have = pg_u8x4_be_to_u32(data_msg);
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
@@ -344,9 +344,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.request.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    res.res.request.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    res.res.request.length = u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
+    res.res.request.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.request.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.request.length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
     break;
   }
@@ -356,8 +356,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.piece.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    res.res.piece.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.piece.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.piece.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
     res.res.piece.data = pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 
     break;
@@ -368,9 +368,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       res.err = TORR_ERR_PEER_MESSAGE_INVALID;
       return res;
     }
-    res.res.cancel.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    res.res.cancel.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    res.res.cancel.length = u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
+    res.res.cancel.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
+    res.res.cancel.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    res.res.cancel.length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
     break;
   }

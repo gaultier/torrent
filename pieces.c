@@ -3,10 +3,10 @@
 
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
-bitfield_has_all_blocks_for_piece(PgString bitfield_blocks, u32 blocks_per_piece,
+pg_bitfield_has_all_blocks_for_piece(PgString pg_bitfield_blocks, u32 blocks_per_piece,
                                   u32 pieces_count, u32 piece) {
   PG_ASSERT(piece < pieces_count);
-  PG_ASSERT(bitfield_blocks.len ==
+  PG_ASSERT(pg_bitfield_blocks.len ==
          pieces_count * blocks_per_piece); // TODO: round up?
 
   u32 idx_first_block = piece * blocks_per_piece;
@@ -15,7 +15,7 @@ bitfield_has_all_blocks_for_piece(PgString bitfield_blocks, u32 blocks_per_piece
   bool res = true;
 
   for (u64 i = idx_first_block; i < idx_last_block; i++) {
-    res &= bitfield_get(bitfield_blocks, i);
+    res &= pg_bitfield_get(pg_bitfield_blocks, i);
   }
 
   return res;
@@ -25,9 +25,9 @@ bitfield_has_all_blocks_for_piece(PgString bitfield_blocks, u32 blocks_per_piece
 // Pick a random piece that the remote claimed they have.
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static i64
-bitfield_pick_random_piece(PgString bitfield_remote_pieces, u32 pieces_count) {
+pg_bitfield_pick_random_piece(PgString pg_bitfield_remote_pieces, u32 pieces_count) {
   for (u64 i = 0; i < pieces_count; i++) {
-    if (bitfield_get(bitfield_remote_pieces, i)) {
+    if (pg_bitfield_get(pg_bitfield_remote_pieces, i)) {
       return (i64)i;
     }
   }

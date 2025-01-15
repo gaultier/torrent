@@ -66,10 +66,10 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
   bencode_encode(value, &sb, &arena);
   PgString encoded = PG_DYN_SLICE(PgString, sb);
 
-  u8 sha1_hash[20] = {0};
-  sha1(encoded, sha1_hash);
-  PG_ASSERT(sizeof(sha1_hash) == hash.len);
-  memcpy(hash.data, sha1_hash, hash.len);
+  u8 pg_sha1_hash[20] = {0};
+  pg_sha1(encoded, pg_sha1_hash);
+  PG_ASSERT(sizeof(pg_sha1_hash) == hash.len);
+  memcpy(hash.data, pg_sha1_hash, hash.len);
 }
 
 typedef struct {

@@ -135,7 +135,7 @@ bencode_decode_dictionary(PgString s, Arena *arena) {
       res.err = TORR_ERR_BENCODE_INVALID;
       return res;
     }
-    if ('e' == slice_at(remaining, 0)) {
+    if ('e' == PG_SLICE_AT(remaining, 0)) {
       break;
     }
 
@@ -204,7 +204,7 @@ typedef struct {
       res.err = TORR_ERR_BENCODE_INVALID;
       return res;
     }
-    if ('e' == slice_at(remaining, 0)) {
+    if ('e' == PG_SLICE_AT(remaining, 0)) {
       break;
     }
 
@@ -238,7 +238,7 @@ bencode_decode_value(PgString s, Arena *arena) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
-  switch (slice_at(s, 0)) {
+  switch (PG_SLICE_AT(s, 0)) {
   case 'd': {
     BencodeDictionaryDecodeResult res_dict =
         bencode_decode_dictionary(s, arena);
@@ -319,7 +319,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
   case BENCODE_KIND_LIST: {
     *dyn_push(sb, arena) = 'l';
     for (u64 i = 0; i < value.list.len; i++) {
-      BencodeValue v = slice_at(value.list, i);
+      BencodeValue v = PG_SLICE_AT(value.list, i);
       bencode_encode(v, sb, arena);
     }
     *dyn_push(sb, arena) = 'e';
@@ -329,15 +329,15 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
   case BENCODE_KIND_DICTIONARY: {
     *dyn_push(sb, arena) = 'd';
     for (u64 i = 0; i < value.dict.keys.len; i++) {
-      PgString k = slice_at(value.dict.keys, i);
-      BencodeValue v = slice_at(value.dict.values, i);
+      PgString k = PG_SLICE_AT(value.dict.keys, i);
+      BencodeValue v = PG_SLICE_AT(value.dict.values, i);
       bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k}, sb,
                      arena);
       bencode_encode(v, sb, arena);
 
       // Ensure ordering.
       if (i > 0) {
-        PgString previous_key = slice_at(value.dict.keys, i - 1);
+        PgString previous_key = PG_SLICE_AT(value.dict.keys, i - 1);
         StringCompare cmp = string_cmp(previous_key, k);
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }

@@ -152,8 +152,8 @@ tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
   BencodeDictionary dict = tracker_response_bencode_res.value.dict;
 
   for (u64 i = 0; i < dict.keys.len; i++) {
-    PgString key = slice_at(dict.keys, i);
-    BencodeValue value = slice_at(dict.values, i);
+    PgString key = PG_SLICE_AT(dict.keys, i);
+    BencodeValue value = PG_SLICE_AT(dict.values, i);
 
     if (string_eq(key, S("failure reason"))) {
       if (BENCODE_KIND_STRING != value.kind) {

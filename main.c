@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  PgAioEventSlice events_watch = slice_make(PgAioEvent, 16, &arena);
+  PgAioEventSlice events_watch = PG_SLICE_MAKE(PgAioEvent, 16, &arena);
   DynAioEvent events_change = {0};
   dyn_ensure_cap(&events_change, 128, &arena);
 
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
     }
 
     for (u64 i = 0; i < res_wait.res; i++) {
-      PgAioEvent event_watch = slice_at(events_watch, i);
+      PgAioEvent event_watch = PG_SLICE_AT(events_watch, i);
       if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
         logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
                    L("socket", (Socket)event_watch.socket));

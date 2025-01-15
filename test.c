@@ -222,7 +222,7 @@ static void test_decode_metainfo() {
   PG_ASSERT(string_eq(S("OpenBSD.somedomain.net"), res.res.announce.host));
   PG_ASSERT(6969 == res.res.announce.port);
   PG_ASSERT(1 == res.res.announce.path_components.len);
-  PgString path_component0 = slice_at(res.res.announce.path_components, 0);
+  PgString path_component0 = PG_SLICE_AT(res.res.announce.path_components, 0);
   PG_ASSERT(string_eq(S("announce"), path_component0));
 
   PG_ASSERT(234883072 == res.res.length);

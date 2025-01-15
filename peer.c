@@ -250,10 +250,10 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   for (u64 i = 0; i < real_count; i++) {
     u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
-    Ipv4Address address = slice_at(*addresses_all, idx);
+    Ipv4Address address = PG_SLICE_AT(*addresses_all, idx);
     Peer peer = peer_make(address, info_hash);
     *dyn_push(peers_active, arena) = peer;
-    slice_swap_remove(addresses_all, idx);
+    PG_slice_swap_remove(addresses_all, idx);
 
     log(LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
         L("ipv4", peer.address.ip), L("port", peer.address.port));
@@ -296,7 +296,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     return res;
   }
 
-  u8 kind = slice_at(data, 0);
+  u8 kind = PG_SLICE_AT(data, 0);
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {

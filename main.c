@@ -63,99 +63,38 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
+  PgEventLoopResult res_loop =
+      pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
+  if (res_loop.err) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create event loop", arena,
+           PG_L("err", res_loop.err));
+    return 1;
+  }
+  PgEventLoop loop = res_loop.res;
   {
-    PgAioEvent event = {
-        .socket = tracker.socket,
-        .kind = PG_AIO_EVENT_KIND_OUT,
-        .action = PG_AIO_EVENT_ACTION_ADD,
-    };
-    PgError err = pg_aio_queue_ctl_one(queue, event);
-    if (err) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to watch for an I/O event",
-             arena, PG_L("err", err));
+    Pgu64Result res_tracker = pg_event_loop_tcp_init(&loop, &tracker);
+    if (res_tracker.err) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR,
+             "failed to create an event loop tcp handle for the tracker", arena,
+             PG_L("err", res_tracker.err));
+      return 1;
+    }
+    u64 tracker_handle = res_tracker.res;
+    PgIpv4Address addr = {0}; // FIXME: DNS.
+    PgError err_connect = pg_event_loop_tcp_connect(&loop, tracker_handle, addr,
+                                                    tracker_on_tcp_connect);
+    if (err_connect) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR,
+             "failed to tcp connect to the tracker", arena,
+             PG_L("err", err_connect));
       return 1;
     }
   }
 
-  PgAioEventSlice events_watch = PG_SLICE_MAKE(PgAioEvent, 16, &arena);
-  PgAioEventDyn events_change = {0};
-  PG_DYN_ENSURE_CAP(&events_change, 128, &arena);
-
-  for (;;) {
-    PG_ASSERT(0 == events_change.len);
-
-    Pgu64Result res_wait = pg_aio_queue_wait(queue, events_watch, -1, arena);
-    if (res_wait.err) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to wait for events", arena,
-             PG_L("err", res_decode_metainfo.err));
-      return 1;
-    }
-
-    for (u64 i = 0; i < res_wait.res; i++) {
-      PgAioEvent event_watch = PG_SLICE_AT(events_watch, i);
-      if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
-        pg_log(&logger, PG_LOG_LEVEL_ERROR, "event error", arena,
-               PG_L("socket", (PgSocket)event_watch.socket));
-        (void)pg_net_socket_close(event_watch.socket);
-        continue;
-      }
-
-      if (event_watch.socket == tracker.socket) {
-        if ((PG_AIO_EVENT_KIND_IN & event_watch.kind) &&
-            pg_ring_write_space(tracker.rg) > 0) {
-          {
-            Pgu64Result res_read =
-                pg_reader_read(&tracker.reader, &tracker.rg, arena);
-            if (res_read.err) {
-              pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read", arena,
-                     PG_L("err", res_read.err),
-                     PG_L("socket", (PgSocket)event_watch.socket));
-              (void)pg_net_socket_close(event_watch.socket);
-              continue;
-            }
-            pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read", arena,
-                   PG_L("count", res_read.res),
-                   PG_L("socket", (PgSocket)event_watch.socket));
-          }
-        }
-        {
-          PgError err = tracker_handle_event(&tracker, event_watch,
-                                             &events_change, &arena);
-          if (err) {
-            (void)pg_net_socket_close(event_watch.socket);
-            continue;
-          }
-        }
-
-        if ((PG_AIO_EVENT_KIND_OUT & event_watch.kind) &&
-            pg_ring_read_space(tracker.rg) > 0) {
-          {
-            Pgu64Result res_write =
-                pg_writer_write(&tracker.writer, &tracker.rg, arena);
-            if (res_write.err) {
-              pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to write", arena,
-                     PG_L("err", res_write.err),
-                     PG_L("socket", (PgSocket)event_watch.socket));
-              (void)pg_net_socket_close(event_watch.socket);
-              continue;
-            }
-            pg_log(&logger, PG_LOG_LEVEL_DEBUG, "written", arena,
-                   PG_L("len", res_write.res),
-                   PG_L("socket", (PgSocket)event_watch.socket));
-          }
-        }
-      }
-    }
-
-    {
-      PgError err =
-          pg_aio_queue_ctl(queue, PG_DYN_SLICE(PgAioEventSlice, events_change));
-      if (err) {
-        pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to watch for I/O events",
-               arena, PG_L("err", err));
-        return 1;
-      }
-      events_change.len = 0;
-    }
+  PgError err_loop = pg_event_loop_run(&loop, -1);
+  if (err_loop) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to run the event loop", arena,
+           PG_L("err", err_loop));
+    return 1;
   }
 }

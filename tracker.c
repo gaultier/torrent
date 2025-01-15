@@ -260,6 +260,31 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   return tracker;
 }
 
+[[maybe_unused]]
+static void tracker_on_tcp_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
+                                   PgError err) {
+  PG_ASSERT(nullptr != loop);
+  PG_ASSERT(0 != os_handle);
+  PG_ASSERT(nullptr != ctx);
+  Tracker *tracker = ctx;
+
+  if (err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "failed to tcp connect to the tracker", tracker->arena,
+           PG_L("err", err));
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker tcp connect",
+         tracker->arena, PG_L("os_handle", os_handle));
+
+  tracker->reader = pg_reader_make_from_socket(tracker->socket);
+  tracker->writer = pg_writer_make_from_socket(tracker->socket);
+
+  // TODO: read start.
+}
+
 [[maybe_unused]] [[nodiscard]]
 static PgError tracker_connect(Tracker *tracker) {
   {

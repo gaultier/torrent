@@ -11,13 +11,13 @@ int main(int argc, char *argv[]) {
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
   Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
 
-  PgAioQueueCreateResult res_queue_create = aio_queue_create();
+  PgAioQueueCreateResult res_queue_create = pg_aio_queue_create();
   if (res_queue_create.err) {
     logger_log(&logger, LOG_LEVEL_ERROR, "failed to create aio queue", arena,
                L("err", res_queue_create.err));
     return 1;
   }
-  AioQueue queue = res_queue_create.res;
+  PgAioQueue queue = res_queue_create.res;
   (void)queue; // FIXME.
 
   PgString torrent_file_path = cstr_to_string(argv[1]);
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
         .kind = PG_AIO_EVENT_KIND_OUT,
         .action = PG_AIO_EVENT_ACTION_ADD,
     };
-    PgError err = aio_queue_ctl_one(queue, event);
+    PgError err = pg_aio_queue_ctl_one(queue, event);
     if (err) {
       logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for an I/O event",
                  arena, L("err", err));
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   for (;;) {
     PG_ASSERT(0 == events_change.len);
 
-    IoCountResult res_wait = aio_queue_wait(queue, events_watch, -1, arena);
+    IoCountResult res_wait = pg_aio_queue_wait(queue, events_watch, -1, arena);
     if (res_wait.err) {
       logger_log(&logger, LOG_LEVEL_ERROR, "failed to wait for events", arena,
                  L("err", res_decode_metainfo.err));
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      PgError err = aio_queue_ctl(queue, PG_DYN_SLICE(PgAioEventSlice, events_change));
+      PgError err = pg_aio_queue_ctl(queue, PG_DYN_SLICE(PgAioEventSlice, events_change));
       if (err) {
         logger_log(&logger, LOG_LEVEL_ERROR, "failed to watch for I/O events",
                    arena, L("err", err));

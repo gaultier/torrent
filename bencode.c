@@ -353,7 +353,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
 }
 
 typedef struct {
-  Url announce;
+  PgUrl announce;
   PgString name;
   u64 piece_length;
   PgString pieces;

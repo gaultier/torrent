@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
 
-  Url announce = res_decode_metainfo.res.announce;
+  PgUrl announce = res_decode_metainfo.res.announce;
   Tracker tracker =
       tracker_make(&logger, announce.host, announce.port, tracker_metadata);
   {

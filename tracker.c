@@ -14,7 +14,7 @@ typedef struct {
   u16 port;
   u64 downloaded, uploaded, left;
   TrackerMetadataEvent event;
-  Url announce;
+  PgUrl announce;
 } TrackerMetadata;
 
 [[maybe_unused]] [[nodiscard]] static PgString

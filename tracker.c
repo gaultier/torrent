@@ -33,7 +33,7 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
 
 [[maybe_unused]]
 static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
-                                      Arena arena) {
+                                      PgArena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
   *dyn_push(&value.dict.keys, &arena) = PG_S("length");
@@ -86,7 +86,7 @@ typedef struct {
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(PgString s, Logger *logger, Arena *arena) {
+tracker_parse_compact_peers(PgString s, Logger *logger, PgArena *arena) {
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
@@ -130,7 +130,7 @@ tracker_parse_compact_peers(PgString s, Logger *logger, Arena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static TrackerResponseResult
-tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
+tracker_parse_response(PgString s, Logger *logger, PgArena *arena) {
   TrackerResponseResult res = {0};
 
   BencodeValueDecodeResult tracker_response_bencode_res =
@@ -188,7 +188,7 @@ tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static HttpRequest
-tracker_make_http_request(TrackerMetadata req_tracker, Arena *arena) {
+tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   HttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
@@ -236,7 +236,7 @@ typedef struct {
   Socket socket;
   PgString host;
   u16 port;
-  Arena arena;
+  PgArena arena;
   RingBuffer rg;
   Reader reader;
   Writer writer;
@@ -252,7 +252,7 @@ static Tracker tracker_make(Logger *logger, PgString host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
 
-  tracker.arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  tracker.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   tracker.rg = (RingBuffer){.data = pg_string_make(2048, &tracker.arena)};
 
   return tracker;
@@ -296,7 +296,7 @@ static PgError tracker_connect(Tracker *tracker) {
 [[maybe_unused]] [[nodiscard]]
 static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
                                   PgAioEventDyn *events_change,
-                                  Arena *events_arena) {
+                                  PgArena *events_arena) {
 
   switch (tracker->state) {
   case TRACKER_STATE_NONE: {
@@ -306,10 +306,10 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
     }
 
     {
-      Arena arena_tmp = tracker->arena;
+      PgArena pg_arena_tmp = tracker->arena;
       HttpRequest tracker_http_req =
-          tracker_make_http_request(tracker->metadata, &arena_tmp);
-      PgError err = http_write_request(&tracker->rg, tracker_http_req, arena_tmp);
+          tracker_make_http_request(tracker->metadata, &pg_arena_tmp);
+      PgError err = http_write_request(&tracker->rg, tracker_http_req, pg_arena_tmp);
       PG_ASSERT(!err); // Ring buffer too small.
     }
 
@@ -327,17 +327,17 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
     };
   } break;
   case TRACKER_STATE_SENT_REQUEST: {
-    Arena arena_tmp = tracker->arena;
+    PgArena pg_arena_tmp = tracker->arena;
     HttpResponseReadResult res_http =
-        http_read_response(&tracker->rg, 128, &arena_tmp);
+        http_read_response(&tracker->rg, 128, &pg_arena_tmp);
     if (res_http.err) {
       logger_log(tracker->logger, LOG_LEVEL_ERROR,
-                 "invalid tracker http response", arena_tmp,
+                 "invalid tracker http response", pg_arena_tmp,
                  L("err", res_http.err));
       return res_http.err;
     }
     logger_log(tracker->logger, LOG_LEVEL_DEBUG, "read http tracker response",
-               arena_tmp, L("http.status", res_http.res.status));
+               pg_arena_tmp, L("http.status", res_http.res.status));
     tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 
     *dyn_push(events_change, events_arena) = (PgAioEvent){

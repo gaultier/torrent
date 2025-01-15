@@ -51,8 +51,8 @@ typedef struct {
   BufferedReader reader;
   Writer writer;
   PgString info_hash;
-  Arena arena;
-  Arena tmp_arena;
+  PgArena arena;
+  PgArena tmp_arena;
   int pid;
   int pipe_child_to_parent[2];
   u64 liveness_last_message_ns;
@@ -98,8 +98,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   Peer peer = {0};
   peer.info_hash = info_hash;
   peer.address = address;
-  peer.arena = arena_make_from_virtual_mem(4 * KiB);
-  peer.tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+  peer.arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
   peer.choked = true;
   peer.interested = false;
 
@@ -149,7 +149,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
-                                                Arena *arena) {
+                                                PgArena *arena) {
   DynU8 sb = {0};
   dyn_append_slice(&sb,
                    PG_S("\x13"
@@ -195,9 +195,9 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 [[nodiscard]] static PgError peer_receive_handshake(Peer *peer) {
   PG_ASSERT(0 != peer->tmp_arena.start);
 
-  Arena tmp_arena = peer->tmp_arena;
+  PgArena tmp_arena = peer->tmp_arena;
   PgString handshake = {
-      .data = arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
+      .data = pg_arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
       .len = HANDSHAKE_LENGTH,
   };
 
@@ -245,7 +245,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 [[maybe_unused]]
 static void peer_pick_random(DynIpv4Address *addresses_all,
                              DynPeer *peers_active, u64 count, PgString info_hash,
-                             Arena *arena) {
+                             PgArena *arena) {
   u64 real_count = MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
@@ -267,10 +267,10 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   PeerMessageResult res = {0};
 
-  Arena tmp_arena = peer->tmp_arena;
+  PgArena tmp_arena = peer->tmp_arena;
 
   PgString length = {
-      .data = arena_new(&tmp_arena, u8, LENGTH_LENGTH),
+      .data = pg_arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
   PgError err_io = reader_read_exactly(&peer->reader, length);
@@ -287,7 +287,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 
   PgString data = {
-      .data = arena_new(&tmp_arena, u8, length_announced),
+      .data = pg_arena_new(&tmp_arena, u8, length_announced),
       .len = length_announced,
   };
   err_io = reader_read_exactly(&peer->reader, data);
@@ -433,7 +433,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   PgError res = 0;
 
-  Arena tmp_arena = peer->tmp_arena;
+  PgArena tmp_arena = peer->tmp_arena;
   DynU8 sb = {0};
   dyn_ensure_cap(&sb, 256, &tmp_arena);
 

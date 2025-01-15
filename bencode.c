@@ -40,7 +40,7 @@ typedef struct {
 } BencodeValueDecodeResult;
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(PgString s, Arena *arena);
+bencode_decode_value(PgString s, PgArena *arena);
 
 typedef struct {
   PgError err;
@@ -120,7 +120,7 @@ typedef struct {
 } BencodeDictionaryDecodeResult;
 
 [[nodiscard]] static BencodeDictionaryDecodeResult
-bencode_decode_dictionary(PgString s, Arena *arena) {
+bencode_decode_dictionary(PgString s, PgArena *arena) {
   BencodeDictionaryDecodeResult res = {0};
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
@@ -189,7 +189,7 @@ typedef struct {
 } BencodeListDecodeResult;
 
 [[nodiscard]] static BencodeListDecodeResult bencode_decode_list(PgString s,
-                                                                 Arena *arena) {
+                                                                 PgArena *arena) {
   BencodeListDecodeResult res = {0};
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
@@ -231,7 +231,7 @@ typedef struct {
 }
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(PgString s, Arena *arena) {
+bencode_decode_value(PgString s, PgArena *arena) {
   BencodeValueDecodeResult res = {0};
 
   if (0 == s.len) {
@@ -300,7 +300,7 @@ bencode_decode_value(PgString s, Arena *arena) {
 }
 
 [[maybe_unused]]
-static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
+static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
     *dyn_push(sb, arena) = 'i';
@@ -364,7 +364,7 @@ typedef struct {
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
 [[nodiscard]] static DecodeMetaInfoResult
-bencode_decode_metainfo(PgString s, Arena *arena) {
+bencode_decode_metainfo(PgString s, PgArena *arena) {
   DecodeMetaInfoResult res = {0};
 
   BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);

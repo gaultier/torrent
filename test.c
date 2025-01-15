@@ -79,7 +79,7 @@ static void test_bencode_decode_string() {
 }
 
 static void test_bencode_decode_list() {
-  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   {
     BencodeListDecodeResult res = bencode_decode_list(PG_S(""), &arena);
     PG_ASSERT(0 != res.err);
@@ -144,7 +144,7 @@ static void test_bencode_decode_list() {
 }
 
 static void test_bencode_decode() {
-  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   {
     BencodeValueDecodeResult res =
         bencode_decode_value(PG_S("i123ei456e"), &arena);
@@ -204,7 +204,7 @@ static void test_bencode_decode() {
 }
 
 static void test_decode_metainfo() {
-  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -232,7 +232,7 @@ static void test_decode_metainfo() {
 }
 
 static void test_bencode_decode_encode() {
-  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -253,7 +253,7 @@ static void test_bencode_decode_encode() {
 }
 
 static void test_tracker_compute_info_hash() {
-  Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -268,7 +268,7 @@ static void test_tracker_compute_info_hash() {
   PG_ASSERT(0 == res.err);
 
   PgString hash = {
-      .data = arena_new(&arena, u8, 20),
+      .data = pg_arena_new(&arena, u8, 20),
       .len = 20,
   };
   tracker_compute_info_hash(res.res, hash, arena);
@@ -283,8 +283,8 @@ static void test_tracker_compute_info_hash() {
 
 #if 0
 static void test_peer_send_handshake() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
-  Arena writer_arena = arena_make_from_virtual_mem(4 * KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   Peer peer = {0};
   peer.address.port = 6881;
@@ -301,8 +301,8 @@ static void test_peer_send_handshake() {
 }
 
 static void test_peer_receive_handshake() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
-  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   PgString req_slice = PG_S("\x13"
                        "BitTorrent protocol"
@@ -355,8 +355,8 @@ static void test_peer_receive_handshake() {
 }
 
 static void test_peer_receive_any_message_bitfield() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
-  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   PgString read_slice = PG_S("\x0"
                         "\x0"
@@ -382,9 +382,9 @@ static void test_peer_receive_any_message_bitfield() {
 }
 
 static void test_peer_send_message() {
-  Arena arena = arena_make_from_virtual_mem(4 * KiB);
-  Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
-  Arena writer_arena = arena_make_from_virtual_mem(4 * KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   Peer peer = {0};
   peer.address.port = 6881;

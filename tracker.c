@@ -302,7 +302,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
   case TRACKER_STATE_NONE: {
     if (0 == (PG_AIO_EVENT_KIND_OUT & event_watch.kind)) {
       // Failed to connect or invalid API use.
-      return (PgError)EINVAL;
+      return (PgError)PG_ERR_INVALID_VALUE;
     }
 
     {

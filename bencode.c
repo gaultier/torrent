@@ -52,13 +52,13 @@ typedef struct {
 bencode_decode_number(PgString s) {
   BencodeNumberDecodeResult res = {0};
 
-  StringConsumeResult prefix = pg_string_consume_byte(s, 'i');
-  if (!prefix.consumed) {
+  PgStringOk prefix = pg_string_consume_byte(s, 'i');
+  if (!prefix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  ParseNumberResult num_res = pg_string_parse_u64(prefix.remaining);
+  ParseNumberResult num_res = pg_string_parse_u64(prefix.res);
   if (!num_res.present) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -66,12 +66,12 @@ bencode_decode_number(PgString s) {
 
   res.num = num_res.n;
 
-  StringConsumeResult suffix = pg_string_consume_byte(num_res.remaining, 'e');
-  if (!suffix.consumed) {
+  PgStringOk suffix = pg_string_consume_byte(num_res.remaining, 'e');
+  if (!suffix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
-  res.remaining = suffix.remaining;
+  res.remaining = suffix.res;
   return res;
 }
 
@@ -96,19 +96,19 @@ bencode_decode_string(PgString s) {
     return res;
   }
 
-  StringConsumeResult prefix = pg_string_consume_byte(num_res.remaining, ':');
-  if (!prefix.consumed) {
+  PgStringOk prefix = pg_string_consume_byte(num_res.remaining, ':');
+  if (!prefix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  if (prefix.remaining.len < num_res.n) {
+  if (prefix.res.len < num_res.n) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  res.s = PG_SLICE_RANGE(prefix.remaining, 0, num_res.n);
-  res.remaining = PG_SLICE_RANGE_START(prefix.remaining, num_res.n);
+  res.s = PG_SLICE_RANGE(prefix.res, 0, num_res.n);
+  res.remaining = PG_SLICE_RANGE_START(prefix.res, num_res.n);
 
   return res;
 }
@@ -123,13 +123,13 @@ typedef struct {
 bencode_decode_dictionary(PgString s, Arena *arena) {
   BencodeDictionaryDecodeResult res = {0};
 
-  StringConsumeResult prefix = pg_string_consume_byte(s, 'd');
-  if (!prefix.consumed) {
+  PgStringOk prefix = pg_string_consume_byte(s, 'd');
+  if (!prefix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  PgString remaining = prefix.remaining;
+  PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
       res.err = TORR_ERR_BENCODE_INVALID;
@@ -170,12 +170,12 @@ bencode_decode_dictionary(PgString s, Arena *arena) {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = pg_string_consume_byte(remaining, 'e');
-  if (!suffix.consumed) {
+  PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
+  if (!suffix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
-  res.remaining = suffix.remaining;
+  res.remaining = suffix.res;
 
   PG_ASSERT(res.dict.keys.len == res.dict.values.len);
 
@@ -192,13 +192,13 @@ typedef struct {
                                                                  Arena *arena) {
   BencodeListDecodeResult res = {0};
 
-  StringConsumeResult prefix = pg_string_consume_byte(s, 'l');
-  if (!prefix.consumed) {
+  PgStringOk prefix = pg_string_consume_byte(s, 'l');
+  if (!prefix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  PgString remaining = prefix.remaining;
+  PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
       res.err = TORR_ERR_BENCODE_INVALID;
@@ -220,12 +220,12 @@ typedef struct {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = pg_string_consume_byte(remaining, 'e');
-  if (!suffix.consumed) {
+  PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
+  if (!suffix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
-  res.remaining = suffix.remaining;
+  res.remaining = suffix.res;
 
   return res;
 }

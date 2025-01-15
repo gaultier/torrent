@@ -61,8 +61,8 @@ typedef struct {
   PgString remote_bitfield;
 } Peer;
 
-PG_DYN(Peer) PgPeerDyn;
-PG_SLICE(Peer) PgPeerSlice;
+PG_DYN(Peer) PeerDyn;
+PG_SLICE(Peer) PeerSlice;
 
 [[nodiscard]] [[maybe_unused]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
@@ -106,6 +106,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return peer;
 }
 
+#if 0
 [[maybe_unused]] [[nodiscard]] static PgError peer_connect(Peer *peer) {
   PG_ASSERT(0 != peer->address.ip);
   PG_ASSERT(0 != peer->address.port);
@@ -147,10 +148,11 @@ peer_message_kind_to_string(PeerMessageKind kind) {
       PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
   return 0;
 }
+#endif
 
-[[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
-                                                  PgArena *arena) {
-  DynU8 sb = {0};
+[[maybe_unused]] [[nodiscard]] static PgString
+peer_make_handshake(PgString info_hash, PgArena *arena) {
+  Pgu8Dyn sb = {0};
   PG_DYN_APPEND_SLICE(&sb,
                       PG_S("\x13"
                            "BitTorrent protocol"
@@ -176,6 +178,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return PG_DYN_SLICE(PgString, sb);
 }
 
+#if 0
 [[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
   PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
   PgError err = pg_writer_write_all(peer->writer, handshake);
@@ -241,25 +244,29 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
   return 0;
 }
+#endif
 
 [[maybe_unused]]
-static void peer_pick_random(DynIpv4Address *addresses_all,
-                             DynPeer *peers_active, u64 count,
+static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
+                             PeerDyn *peers_active, u64 count,
                              PgString info_hash, PgArena *arena) {
-  u64 real_count = MIN(addresses_all->len, count);
+  u64 real_count = PG_MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
     u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
     PgIpv4Address address = PG_SLICE_AT(*addresses_all, idx);
     Peer peer = peer_make(address, info_hash);
     *PG_DYN_PUSH(peers_active, arena) = peer;
-    PG_slice_swap_remove(addresses_all, idx);
+    PG_SLICE_SWAP_REMOVE(addresses_all, idx);
 
-    log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
-        PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
+#if 0
+    pg_log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
+           PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
+#endif
   }
 }
 
+#if 0
 [[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {
   PG_ASSERT(peer->tmp_arena.start != 0);
   PG_ASSERT(peer->arena.start != 0);
@@ -391,6 +398,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   return res;
 }
 
+#endif
+
 [[maybe_unused]] static void peer_handle_message(Peer *peer, PeerMessage msg) {
   switch (msg.kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -427,6 +436,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 }
 
+#if 0
 [[maybe_unused]] [[nodiscard]] static PgError
 peer_send_message(Peer *peer, PeerMessage msg) {
   log(PG_LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
@@ -594,3 +604,4 @@ static void peer_spawn(Peer *peer) {
 
   sleep(10000);
 }
+#endif

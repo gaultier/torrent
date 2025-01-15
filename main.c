@@ -1,8 +1,4 @@
-#if 0
 #include "peer.c"
- static const u64 liveness_seconds = 15;
-#endif
-
 #include "tracker.c"
 
 int main(int argc, char *argv[]) {

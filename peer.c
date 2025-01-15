@@ -439,52 +439,52 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   switch (msg.kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
-    dynu8_append_u32(&sb, 0, &tmp_arena);
+    pg_string_builder_append_u32(&sb, 0, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_CHOKE:
   case PEER_MSG_KIND_UNCHOKE:
   case PEER_MSG_KIND_INTERESTED:
   case PEER_MSG_KIND_UNINTERESTED:
-    dynu8_append_u32(&sb, 1, &tmp_arena);
+    pg_string_builder_append_u32(&sb, 1, &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     break;
 
   case PEER_MSG_KIND_HAVE:
-    dynu8_append_u32(&sb, 1 + sizeof(u32), &tmp_arena);
+    pg_string_builder_append_u32(&sb, 1 + sizeof(u32), &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    dynu8_append_u32(&sb, msg.have, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.have, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_BITFIELD:
-    dynu8_append_u32(&sb, 1 + (u32)msg.bitfield.len, &tmp_arena);
+    pg_string_builder_append_u32(&sb, 1 + (u32)msg.bitfield.len, &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     PG_DYN_APPEND_SLICE(&sb, msg.bitfield, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_REQUEST:
-    dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
+    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    dynu8_append_u32(&sb, msg.request.index, &tmp_arena);
-    dynu8_append_u32(&sb, msg.request.begin, &tmp_arena);
-    dynu8_append_u32(&sb, msg.request.length, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.request.index, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.request.begin, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.request.length, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_PIECE:
-    dynu8_append_u32(&sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len,
+    pg_string_builder_append_u32(&sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len,
                      &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    dynu8_append_u32(&sb, msg.piece.index, &tmp_arena);
-    dynu8_append_u32(&sb, msg.piece.begin, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.piece.index, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.piece.begin, &tmp_arena);
     PG_DYN_APPEND_SLICE(&sb, msg.piece.data, &tmp_arena);
     break;
 
   case PEER_MSG_KIND_CANCEL:
-    dynu8_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
+    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    dynu8_append_u32(&sb, msg.cancel.index, &tmp_arena);
-    dynu8_append_u32(&sb, msg.cancel.begin, &tmp_arena);
-    dynu8_append_u32(&sb, msg.cancel.length, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.cancel.index, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.cancel.begin, &tmp_arena);
+    pg_string_builder_append_u32(&sb, msg.cancel.length, &tmp_arena);
     break;
   default:
     PG_ASSERT(0);

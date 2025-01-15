@@ -304,13 +304,13 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
     *PG_DYN_PUSH(sb, arena) = 'i';
-    dynu8_append_u64_to_string(sb, value.num, arena);
+    pg_string_builder_append_u64_to_string(sb, value.num, arena);
     *PG_DYN_PUSH(sb, arena) = 'e';
 
     break;
   }
   case BENCODE_KIND_STRING: {
-    dynu8_append_u64_to_string(sb, value.s.len, arena);
+    pg_string_builder_append_u64_to_string(sb, value.s.len, arena);
     *PG_DYN_PUSH(sb, arena) = ':';
     PG_DYN_APPEND_SLICE(sb, value.s, arena);
 

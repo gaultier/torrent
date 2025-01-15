@@ -130,8 +130,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     }
   }
 
-  peer->reader = reader_make_from_socket(res_create_socket.res);
-  peer->writer = writer_make_from_socket(res_create_socket.res);
+  peer->reader = pg_reader_make_from_socket(res_create_socket.res);
+  peer->writer = pg_writer_make_from_socket(res_create_socket.res);
 
   {
     PgError err = pg_net_connect_ipv4(res_create_socket.res, peer->address);
@@ -178,7 +178,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
   PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
-  PgError err = writer_write_all(peer->writer, handshake);
+  PgError err = pg_writer_write_all(peer->writer, handshake);
   if (err) {
     log(LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -201,7 +201,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
       .len = HANDSHAKE_LENGTH,
   };
 
-  PgError res_io_err = reader_read_exactly(&peer->reader, handshake);
+  PgError res_io_err = pg_reader_read_exactly(&peer->reader, handshake);
   if (res_io_err) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
         L("ipv4", peer->address.ip), L("port", peer->address.port),
@@ -273,7 +273,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = pg_arena_new(&tmp_arena, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
-  PgError err_io = reader_read_exactly(&peer->reader, length);
+  PgError err_io = pg_reader_read_exactly(&peer->reader, length);
   if (err_io) {
     res.err = err_io;
     return res;
@@ -290,7 +290,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       .data = pg_arena_new(&tmp_arena, u8, length_announced),
       .len = length_announced,
   };
-  err_io = reader_read_exactly(&peer->reader, data);
+  err_io = pg_reader_read_exactly(&peer->reader, data);
   if (err_io) {
     res.err = err_io;
     return res;
@@ -493,7 +493,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   PG_ASSERT(sb.len >= sizeof(u32));
 
   PgString s = PG_DYN_SLICE(PgString, sb);
-  res = writer_write_all(peer->writer, s);
+  res = pg_writer_write_all(peer->writer, s);
 
   log(res ? LOG_LEVEL_ERROR : LOG_LEVEL_INFO, "peer sent message", &peer->arena,
       L("ipv4", peer->address.ip), L("port", peer->address.port),

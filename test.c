@@ -284,11 +284,11 @@ static void test_tracker_compute_info_hash() {
 #if 0
 static void test_peer_send_handshake() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
-  PgArena writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena pg_writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   Peer peer = {0};
   peer.address.port = 6881;
-  peer.writer = writer_make_for_buf(&writer_arena);
+  peer.writer = pg_writer_make_for_buf(&pg_writer_arena);
   peer.arena = arena;
   peer.info_hash = PG_S("abcdefghijklmnopqrst");
   PG_ASSERT(20 == peer.info_hash.len);
@@ -341,7 +341,7 @@ static void test_peer_receive_handshake() {
   Peer peer = {0};
   peer.address.port = 6881;
   MemReadContext src_ctx = {.s = req_slice};
-  peer.reader = reader_make_from_slice(&src_ctx);
+  peer.reader = pg_reader_make_from_slice(&src_ctx);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
   peer.info_hash = PG_S("abcdefghijklmnopqrst");
@@ -368,7 +368,7 @@ static void test_peer_receive_any_message_bitfield() {
   Peer peer = {0};
   peer.address.port = 6881;
   MemReadContext src_ctx = {.s = read_slice};
-  peer.reader = reader_make_from_slice(&src_ctx);
+  peer.reader = pg_reader_make_from_slice(&src_ctx);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
 
@@ -384,11 +384,11 @@ static void test_peer_receive_any_message_bitfield() {
 static void test_peer_send_message() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
   PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
-  PgArena writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  PgArena pg_writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   Peer peer = {0};
   peer.address.port = 6881;
-  peer.writer = writer_make_for_buf(&writer_arena);
+  peer.writer = pg_writer_make_for_buf(&pg_writer_arena);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
   peer.info_hash = PG_S("abcdefghijklmnopqrst");

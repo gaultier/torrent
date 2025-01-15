@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
             pg_ring_write_space(tracker.rg) > 0) {
           {
             IoCountResult res_read =
-                reader_read(&tracker.reader, &tracker.rg, arena);
+                pg_reader_read(&tracker.reader, &tracker.rg, arena);
             if (res_read.err) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to read", arena,
                          L("err", res_read.err),
@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
             pg_ring_read_space(tracker.rg) > 0) {
           {
             IoCountResult res_write =
-                writer_write(&tracker.writer, &tracker.rg, arena);
+                pg_writer_write(&tracker.writer, &tracker.rg, arena);
             if (res_write.err) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to write", arena,
                          L("err", res_write.err),

@@ -287,8 +287,8 @@ static PgError tracker_connect(Tracker *tracker) {
     }
   }
 
-  tracker->reader = reader_make_from_socket(tracker->socket);
-  tracker->writer = writer_make_from_socket(tracker->socket);
+  tracker->reader = pg_reader_make_from_socket(tracker->socket);
+  tracker->writer = pg_writer_make_from_socket(tracker->socket);
 
   return (PgError)0;
 }

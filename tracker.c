@@ -155,20 +155,20 @@ tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
     PgString key = PG_SLICE_AT(dict.keys, i);
     BencodeValue value = PG_SLICE_AT(dict.values, i);
 
-    if (string_eq(key, PG_S("failure reason"))) {
+    if (pg_string_eq(key, PG_S("failure reason"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
       res.res.failure = value.s;
-    } else if (string_eq(key, PG_S("interval"))) {
+    } else if (pg_string_eq(key, PG_S("interval"))) {
       if (BENCODE_KIND_NUMBER != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
       res.res.interval_secs = value.num;
-    } else if (string_eq(key, PG_S("peers"))) {
+    } else if (pg_string_eq(key, PG_S("peers"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
@@ -253,7 +253,7 @@ static Tracker tracker_make(Logger *logger, PgString host, u16 port,
   tracker.metadata = metadata;
 
   tracker.arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  tracker.rg = (RingBuffer){.data = string_make(2048, &tracker.arena)};
+  tracker.rg = (RingBuffer){.data = pg_string_make(2048, &tracker.arena)};
 
   return tracker;
 }

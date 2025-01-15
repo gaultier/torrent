@@ -37,7 +37,7 @@ static void test_bencode_decode_u64() {
     BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i123ehello"));
     PG_ASSERT(0 == res.err);
     PG_ASSERT(123 == res.num);
-    PG_ASSERT(string_eq(res.remaining, PG_S("hello")));
+    PG_ASSERT(pg_string_eq(res.remaining, PG_S("hello")));
   }
 }
 
@@ -73,8 +73,8 @@ static void test_bencode_decode_string() {
   {
     BencodeStringDecodeResult res = bencode_decode_string(PG_S("2:abc"));
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(string_eq(res.s, PG_S("ab")));
-    PG_ASSERT(string_eq(res.remaining, PG_S("c")));
+    PG_ASSERT(pg_string_eq(res.s, PG_S("ab")));
+    PG_ASSERT(pg_string_eq(res.remaining, PG_S("c")));
   }
 }
 
@@ -97,7 +97,7 @@ static void test_bencode_decode_list() {
     BencodeListDecodeResult res = bencode_decode_list(PG_S("lefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(0 == res.values.len);
-    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
+    PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
   }
 
   {
@@ -105,12 +105,12 @@ static void test_bencode_decode_list() {
         bencode_decode_list(PG_S("l2:abi123eefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(2 == res.values.len);
-    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
+    PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
 
     {
       BencodeValue v1 = dyn_at(res.values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
-      PG_ASSERT(string_eq(PG_S("ab"), v1.s));
+      PG_ASSERT(pg_string_eq(PG_S("ab"), v1.s));
     }
 
     {
@@ -124,7 +124,7 @@ static void test_bencode_decode_list() {
         bencode_decode_value(PG_S("l2:abi123eefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_LIST == res.value.kind);
-    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
+    PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
 
     DynBencodeValues values = res.value.list;
     PG_ASSERT(2 == values.len);
@@ -132,7 +132,7 @@ static void test_bencode_decode_list() {
     {
       BencodeValue v1 = dyn_at(values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
-      PG_ASSERT(string_eq(PG_S("ab"), v1.s));
+      PG_ASSERT(pg_string_eq(PG_S("ab"), v1.s));
     }
 
     {
@@ -151,7 +151,7 @@ static void test_bencode_decode() {
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     PG_ASSERT(123 == res.value.num);
-    PG_ASSERT(string_eq(PG_S("i456e"), res.remaining));
+    PG_ASSERT(pg_string_eq(PG_S("i456e"), res.remaining));
   }
 
   // Unordered keys.
@@ -166,7 +166,7 @@ static void test_bencode_decode() {
         bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
-    PG_ASSERT(string_eq(PG_S("foo"), res.remaining));
+    PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
 
     BencodeDictionary dict = res.value.dict;
     PG_ASSERT(2 == dict.keys.len);
@@ -174,12 +174,12 @@ static void test_bencode_decode() {
 
     {
       PgString k1 = dyn_at(dict.keys, 0);
-      PG_ASSERT(string_eq(PG_S("ab"), k1));
+      PG_ASSERT(pg_string_eq(PG_S("ab"), k1));
     }
 
     {
       PgString k2 = dyn_at(dict.keys, 1);
-      PG_ASSERT(string_eq(PG_S("xyz"), k2));
+      PG_ASSERT(pg_string_eq(PG_S("xyz"), k2));
     }
 
     {
@@ -191,15 +191,15 @@ static void test_bencode_decode() {
     {
       BencodeValue v2 = dyn_at(dict.values, 1);
       PG_ASSERT(BENCODE_KIND_STRING == v2.kind);
-      PG_ASSERT(string_eq(PG_S("hello"), v2.s));
+      PG_ASSERT(pg_string_eq(PG_S("hello"), v2.s));
     }
   }
   {
     BencodeValueDecodeResult res = bencode_decode_value(PG_S("2:abfoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_STRING == res.value.kind);
-    PG_ASSERT(string_eq(PG_S("ab"), res.value.s));
-    PG_ASSERT(string_eq(PG_S("foo"), res.remaining));
+    PG_ASSERT(pg_string_eq(PG_S("ab"), res.value.s));
+    PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
   }
 }
 
@@ -218,17 +218,17 @@ static void test_decode_metainfo() {
       bencode_decode_metainfo(torrent_file_content, &arena);
   PG_ASSERT(0 == res.err);
 
-  PG_ASSERT(string_eq(PG_S("http"), res.res.announce.scheme));
-  PG_ASSERT(string_eq(PG_S("OpenBSD.somedomain.net"), res.res.announce.host));
+  PG_ASSERT(pg_string_eq(PG_S("http"), res.res.announce.scheme));
+  PG_ASSERT(pg_string_eq(PG_S("OpenBSD.somedomain.net"), res.res.announce.host));
   PG_ASSERT(6969 == res.res.announce.port);
   PG_ASSERT(1 == res.res.announce.path_components.len);
   PgString path_component0 = PG_SLICE_AT(res.res.announce.path_components, 0);
-  PG_ASSERT(string_eq(PG_S("announce"), path_component0));
+  PG_ASSERT(pg_string_eq(PG_S("announce"), path_component0));
 
   PG_ASSERT(234883072 == res.res.length);
-  PG_ASSERT(string_eq(res.res.name, PG_S("OpenBSD_7.4_alpha_install74.iso")));
+  PG_ASSERT(pg_string_eq(res.res.name, PG_S("OpenBSD_7.4_alpha_install74.iso")));
   PG_ASSERT(262144 == res.res.piece_length);
-  PG_ASSERT(string_eq(res.res.pieces, PG_S("abcdefgh")));
+  PG_ASSERT(pg_string_eq(res.res.pieces, PG_S("abcdefgh")));
 }
 
 static void test_bencode_decode_encode() {
@@ -249,7 +249,7 @@ static void test_bencode_decode_encode() {
   Pgu8Dyn sb = {0};
   bencode_encode(res.value, &sb, &arena);
   PgString encoded = dyn_slice(PgString, sb);
-  PG_ASSERT(string_eq(encoded, torrent_file_content));
+  PG_ASSERT(pg_string_eq(encoded, torrent_file_content));
 }
 
 static void test_tracker_compute_info_hash() {
@@ -435,7 +435,7 @@ static void test_peer_send_message() {
       "\x40"
       "\x00");
   PgString got = dyn_slice(PgString, ctx->sb);
-  PG_ASSERT(string_eq(expected, got));
+  PG_ASSERT(pg_string_eq(expected, got));
 }
 #endif
 

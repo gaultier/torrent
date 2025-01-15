@@ -51,8 +51,8 @@ int main(int argc, char *argv[]) {
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
       .info_hash =
-          string_make(20, &arena),        // FIXME: Should use tracker's arena?
-      .peer_id = string_make(20, &arena), // FIXME: Should use tracker's arena?
+          pg_string_make(20, &arena),        // FIXME: Should use tracker's arena?
+      .peer_id = pg_string_make(20, &arena), // FIXME: Should use tracker's arena?
   };
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);

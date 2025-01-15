@@ -52,13 +52,13 @@ typedef struct {
 bencode_decode_number(PgString s) {
   BencodeNumberDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume_byte(s, 'i');
+  StringConsumeResult prefix = pg_string_consume_byte(s, 'i');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
 
-  ParseNumberResult num_res = string_parse_u64(prefix.remaining);
+  ParseNumberResult num_res = pg_string_parse_u64(prefix.remaining);
   if (!num_res.present) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -66,7 +66,7 @@ bencode_decode_number(PgString s) {
 
   res.num = num_res.n;
 
-  StringConsumeResult suffix = string_consume_byte(num_res.remaining, 'e');
+  StringConsumeResult suffix = pg_string_consume_byte(num_res.remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -85,7 +85,7 @@ typedef struct {
 bencode_decode_string(PgString s) {
   BencodeStringDecodeResult res = {0};
 
-  ParseNumberResult num_res = string_parse_u64(s);
+  ParseNumberResult num_res = pg_string_parse_u64(s);
   if (!num_res.present) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -96,7 +96,7 @@ bencode_decode_string(PgString s) {
     return res;
   }
 
-  StringConsumeResult prefix = string_consume_byte(num_res.remaining, ':');
+  StringConsumeResult prefix = pg_string_consume_byte(num_res.remaining, ':');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -123,7 +123,7 @@ typedef struct {
 bencode_decode_dictionary(PgString s, Arena *arena) {
   BencodeDictionaryDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume_byte(s, 'd');
+  StringConsumeResult prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -149,7 +149,7 @@ bencode_decode_dictionary(PgString s, Arena *arena) {
     // Ensure ordering.
     if (res.dict.keys.len > 0) {
       PgString last_key = dyn_last(res.dict.keys);
-      StringCompare cmp = string_cmp(last_key, res_key.s);
+      StringCompare cmp = pg_string_cmp(last_key, res_key.s);
       if (STRING_CMP_LESS != cmp) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -170,7 +170,7 @@ bencode_decode_dictionary(PgString s, Arena *arena) {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = string_consume_byte(remaining, 'e');
+  StringConsumeResult suffix = pg_string_consume_byte(remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -192,7 +192,7 @@ typedef struct {
                                                                  Arena *arena) {
   BencodeListDecodeResult res = {0};
 
-  StringConsumeResult prefix = string_consume_byte(s, 'l');
+  StringConsumeResult prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -220,7 +220,7 @@ typedef struct {
     remaining = res_value.remaining;
   }
 
-  StringConsumeResult suffix = string_consume_byte(remaining, 'e');
+  StringConsumeResult suffix = pg_string_consume_byte(remaining, 'e');
   if (!suffix.consumed) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
@@ -338,7 +338,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
       // Ensure ordering.
       if (i > 0) {
         PgString previous_key = PG_SLICE_AT(value.dict.keys, i - 1);
-        StringCompare cmp = string_cmp(previous_key, k);
+        StringCompare cmp = pg_string_cmp(previous_key, k);
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }
@@ -381,7 +381,7 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
     PgString key = dyn_at(res_dict.dict.keys, i);
     BencodeValue *value = dyn_at_ptr(&res_dict.dict.values, i);
 
-    if (string_eq(key, PG_S("announce"))) {
+    if (pg_string_eq(key, PG_S("announce"))) {
       if (BENCODE_KIND_STRING != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -394,7 +394,7 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
       }
 
       res.res.announce = url_parse_res.res;
-    } else if (string_eq(key, PG_S("info"))) {
+    } else if (pg_string_eq(key, PG_S("info"))) {
       if (BENCODE_KIND_DICTIONARY != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -405,25 +405,25 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
         PgString info_key = dyn_at(info->keys, j);
         BencodeValue *info_value = dyn_at_ptr(&info->values, j);
 
-        if (string_eq(info_key, PG_S("name"))) {
+        if (pg_string_eq(info_key, PG_S("name"))) {
           if (BENCODE_KIND_STRING != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.name = info_value->s;
-        } else if (string_eq(info_key, PG_S("piece length"))) {
+        } else if (pg_string_eq(info_key, PG_S("piece length"))) {
           if (BENCODE_KIND_NUMBER != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.piece_length = info_value->num;
-        } else if (string_eq(info_key, PG_S("pieces"))) {
+        } else if (pg_string_eq(info_key, PG_S("pieces"))) {
           if (BENCODE_KIND_STRING != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.pieces = info_value->s;
-        } else if (string_eq(info_key, PG_S("length"))) {
+        } else if (pg_string_eq(info_key, PG_S("length"))) {
           if (BENCODE_KIND_NUMBER != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;

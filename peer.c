@@ -214,7 +214,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
   PgString prefix_expected = PG_S("\x13"
                              "BitTorrent protocol");
-  if (!string_eq(prefix, prefix_expected)) {
+  if (!pg_string_eq(prefix, prefix_expected)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
         &peer->arena, L("ipv4", peer->address.ip),
         L("port", peer->address.port), L("recv", handshake));
@@ -225,7 +225,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   (void)reserved_bytes; // Ignore.
 
   PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
-  if (!string_eq(info_hash_received, peer->info_hash)) {
+  if (!pg_string_eq(info_hash_received, peer->info_hash)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
         &peer->arena, L("ipv4", peer->address.ip),
         L("port", peer->address.port), L("recv", handshake));
@@ -334,7 +334,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    res.res.bitfield = string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
+    res.res.bitfield = pg_string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
 
     break;
   }
@@ -358,7 +358,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     }
     res.res.piece.index = u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     res.res.piece.begin = u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    res.res.piece.data = string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
+    res.res.piece.data = pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 
     break;
   }

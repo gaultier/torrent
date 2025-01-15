@@ -253,7 +253,7 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
   u64 real_count = PG_MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
-    u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
+    u32 idx = pg_rand_u32(0, (u32)addresses_all->len - 1); // FIXME
     PgIpv4Address address = PG_SLICE_AT(*addresses_all, idx);
     Peer peer = peer_make(address, info_hash);
     *PG_DYN_PUSH(peers_active, arena) = peer;

@@ -315,8 +315,8 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
 
     logger_log(tracker->logger, LOG_LEVEL_DEBUG,
                "wrote http request to ring buffer", tracker->arena,
-               L("write_space", ring_buffer_write_space(tracker->rg)),
-               L("read_space", ring_buffer_read_space(tracker->rg)));
+               L("write_space", pg_ring_write_space(tracker->rg)),
+               L("read_space", pg_ring_read_space(tracker->rg)));
 
     tracker->state = TRACKER_STATE_SENT_REQUEST;
 

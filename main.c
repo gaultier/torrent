@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
 
       if (event_watch.socket == tracker.socket) {
         if ((PG_AIO_EVENT_KIND_IN & event_watch.kind) &&
-            ring_buffer_write_space(tracker.rg) > 0) {
+            pg_ring_write_space(tracker.rg) > 0) {
           {
             IoCountResult res_read =
                 reader_read(&tracker.reader, &tracker.rg, arena);
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
         }
 
         if ((PG_AIO_EVENT_KIND_OUT & event_watch.kind) &&
-            ring_buffer_read_space(tracker.rg) > 0) {
+            pg_ring_read_space(tracker.rg) > 0) {
           {
             IoCountResult res_write =
                 writer_write(&tracker.writer, &tracker.rg, arena);

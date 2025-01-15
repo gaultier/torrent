@@ -69,25 +69,25 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
-    return S("PEER_MSG_KIND_CHOKE");
+    return PG_S("PEER_MSG_KIND_CHOKE");
   case PEER_MSG_KIND_UNCHOKE:
-    return S("PEER_MSG_KIND_UNCHOKE");
+    return PG_S("PEER_MSG_KIND_UNCHOKE");
   case PEER_MSG_KIND_INTERESTED:
-    return S("PEER_MSG_KIND_INTERESTED");
+    return PG_S("PEER_MSG_KIND_INTERESTED");
   case PEER_MSG_KIND_UNINTERESTED:
-    return S("PEER_MSG_KIND_UNINTERESTED");
+    return PG_S("PEER_MSG_KIND_UNINTERESTED");
   case PEER_MSG_KIND_HAVE:
-    return S("PEER_MSG_KIND_HAVE");
+    return PG_S("PEER_MSG_KIND_HAVE");
   case PEER_MSG_KIND_BITFIELD:
-    return S("PEER_MSG_KIND_BITFIELD");
+    return PG_S("PEER_MSG_KIND_BITFIELD");
   case PEER_MSG_KIND_REQUEST:
-    return S("PEER_MSG_KIND_REQUEST");
+    return PG_S("PEER_MSG_KIND_REQUEST");
   case PEER_MSG_KIND_PIECE:
-    return S("PEER_MSG_KIND_PIECE");
+    return PG_S("PEER_MSG_KIND_PIECE");
   case PEER_MSG_KIND_CANCEL:
-    return S("PEER_MSG_KIND_CANCEL");
+    return PG_S("PEER_MSG_KIND_CANCEL");
   case PEER_MSG_KIND_KEEP_ALIVE:
-    return S("PEER_MSG_KIND_KEEP_ALIVE");
+    return PG_S("PEER_MSG_KIND_KEEP_ALIVE");
   default:
     PG_ASSERT(0);
   }
@@ -152,7 +152,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
                                                 Arena *arena) {
   DynU8 sb = {0};
   dyn_append_slice(&sb,
-                   S("\x13"
+                   PG_S("\x13"
                      "BitTorrent protocol"
                      "\x00"
                      "\x00"
@@ -168,7 +168,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   PG_ASSERT(20 == info_hash.len);
   dyn_append_slice(&sb, info_hash, arena);
 
-  PgString peer_id = S("00000000000000000000");
+  PgString peer_id = PG_S("00000000000000000000");
   PG_ASSERT(20 == peer_id.len);
   dyn_append_slice(&sb, peer_id, arena);
 
@@ -212,7 +212,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
       L("ipv4", peer->address.ip), L("port", peer->address.port));
 
   PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
-  PgString prefix_expected = S("\x13"
+  PgString prefix_expected = PG_S("\x13"
                              "BitTorrent protocol");
   if (!string_eq(prefix, prefix_expected)) {
     log(LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",

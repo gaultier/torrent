@@ -21,11 +21,11 @@ typedef struct {
 tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
-    return S("started");
+    return PG_S("started");
   case TRACKER_EVENT_STOPPED:
-    return S("stopped");
+    return PG_S("stopped");
   case TRACKER_EVENT_COMPLETED:
-    return S("completed");
+    return PG_S("completed");
   default:
     PG_ASSERT(0);
   }
@@ -36,25 +36,25 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       Arena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
-  *dyn_push(&value.dict.keys, &arena) = S("length");
+  *dyn_push(&value.dict.keys, &arena) = PG_S("length");
   *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.length,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = S("name");
+  *dyn_push(&value.dict.keys, &arena) = PG_S("name");
   *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.name,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = S("piece length");
+  *dyn_push(&value.dict.keys, &arena) = PG_S("piece length");
   *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.piece_length,
   };
 
-  *dyn_push(&value.dict.keys, &arena) = S("pieces");
+  *dyn_push(&value.dict.keys, &arena) = PG_S("pieces");
   *dyn_push(&value.dict.values, &arena) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.pieces,
@@ -155,20 +155,20 @@ tracker_parse_response(PgString s, Logger *logger, Arena *arena) {
     PgString key = PG_SLICE_AT(dict.keys, i);
     BencodeValue value = PG_SLICE_AT(dict.values, i);
 
-    if (string_eq(key, S("failure reason"))) {
+    if (string_eq(key, PG_S("failure reason"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
       res.res.failure = value.s;
-    } else if (string_eq(key, S("interval"))) {
+    } else if (string_eq(key, PG_S("interval"))) {
       if (BENCODE_KIND_NUMBER != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
       res.res.interval_secs = value.num;
-    } else if (string_eq(key, S("peers"))) {
+    } else if (string_eq(key, PG_S("peers"))) {
       if (BENCODE_KIND_STRING != value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
@@ -193,31 +193,31 @@ tracker_make_http_request(TrackerMetadata req_tracker, Arena *arena) {
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("info_hash"),
+      .key = PG_S("info_hash"),
       .value = req_tracker.info_hash,
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("peer_id"),
+      .key = PG_S("peer_id"),
       .value = req_tracker.peer_id,
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("port"),
+      .key = PG_S("port"),
       .value = u64_to_string(req_tracker.port, arena),
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("uploaded"),
+      .key = PG_S("uploaded"),
       .value = u64_to_string(req_tracker.uploaded, arena),
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("downloaded"),
+      .key = PG_S("downloaded"),
       .value = u64_to_string(req_tracker.downloaded, arena),
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("left"),
+      .key = PG_S("left"),
       .value = u64_to_string(req_tracker.left, arena),
   };
   *dyn_push(&res.url.query_parameters, arena) = (KeyValue){
-      .key = S("event"),
+      .key = PG_S("event"),
       .value = tracker_metadata_event_to_string(req_tracker.event),
   };
 

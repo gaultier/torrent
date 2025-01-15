@@ -6,111 +6,111 @@
 
 static void test_bencode_decode_u64() {
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S(""));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S(""));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("a"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("a"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("i"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("ie"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("ie"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("i123"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i123"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("123"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("123"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("i-123e"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i-123e"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(S("i123ehello"));
+    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i123ehello"));
     PG_ASSERT(0 == res.err);
     PG_ASSERT(123 == res.num);
-    PG_ASSERT(string_eq(res.remaining, S("hello")));
+    PG_ASSERT(string_eq(res.remaining, PG_S("hello")));
   }
 }
 
 static void test_bencode_decode_string() {
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S(""));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S(""));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("a"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("a"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("1"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("1"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("0"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("0"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("0:"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("0:"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("1:"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("1:"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("2:a"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("2:a"));
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(S("2:abc"));
+    BencodeStringDecodeResult res = bencode_decode_string(PG_S("2:abc"));
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(string_eq(res.s, S("ab")));
-    PG_ASSERT(string_eq(res.remaining, S("c")));
+    PG_ASSERT(string_eq(res.s, PG_S("ab")));
+    PG_ASSERT(string_eq(res.remaining, PG_S("c")));
   }
 }
 
 static void test_bencode_decode_list() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   {
-    BencodeListDecodeResult res = bencode_decode_list(S(""), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S(""), &arena);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(S("a"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("a"), &arena);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(S("l"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("l"), &arena);
     PG_ASSERT(0 != res.err);
   }
 
   {
-    BencodeListDecodeResult res = bencode_decode_list(S("lefoo"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("lefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(0 == res.values.len);
-    PG_ASSERT(string_eq(res.remaining, S("foo")));
+    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
   }
 
   {
     BencodeListDecodeResult res =
-        bencode_decode_list(S("l2:abi123eefoo"), &arena);
+        bencode_decode_list(PG_S("l2:abi123eefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(2 == res.values.len);
-    PG_ASSERT(string_eq(res.remaining, S("foo")));
+    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
 
     {
       BencodeValue v1 = dyn_at(res.values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
-      PG_ASSERT(string_eq(S("ab"), v1.s));
+      PG_ASSERT(string_eq(PG_S("ab"), v1.s));
     }
 
     {
@@ -121,10 +121,10 @@ static void test_bencode_decode_list() {
   }
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(S("l2:abi123eefoo"), &arena);
+        bencode_decode_value(PG_S("l2:abi123eefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_LIST == res.value.kind);
-    PG_ASSERT(string_eq(res.remaining, S("foo")));
+    PG_ASSERT(string_eq(res.remaining, PG_S("foo")));
 
     DynBencodeValues values = res.value.list;
     PG_ASSERT(2 == values.len);
@@ -132,7 +132,7 @@ static void test_bencode_decode_list() {
     {
       BencodeValue v1 = dyn_at(values, 0);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
-      PG_ASSERT(string_eq(S("ab"), v1.s));
+      PG_ASSERT(string_eq(PG_S("ab"), v1.s));
     }
 
     {
@@ -147,26 +147,26 @@ static void test_bencode_decode() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(S("i123ei456e"), &arena);
+        bencode_decode_value(PG_S("i123ei456e"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     PG_ASSERT(123 == res.value.num);
-    PG_ASSERT(string_eq(S("i456e"), res.remaining));
+    PG_ASSERT(string_eq(PG_S("i456e"), res.remaining));
   }
 
   // Unordered keys.
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(S("d2:abi123e2:ab5:helloefoo"), &arena);
+        bencode_decode_value(PG_S("d2:abi123e2:ab5:helloefoo"), &arena);
     PG_ASSERT(0 != res.err);
   }
 
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(S("d2:abi123e3:xyz5:helloefoo"), &arena);
+        bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
-    PG_ASSERT(string_eq(S("foo"), res.remaining));
+    PG_ASSERT(string_eq(PG_S("foo"), res.remaining));
 
     BencodeDictionary dict = res.value.dict;
     PG_ASSERT(2 == dict.keys.len);
@@ -174,12 +174,12 @@ static void test_bencode_decode() {
 
     {
       PgString k1 = dyn_at(dict.keys, 0);
-      PG_ASSERT(string_eq(S("ab"), k1));
+      PG_ASSERT(string_eq(PG_S("ab"), k1));
     }
 
     {
       PgString k2 = dyn_at(dict.keys, 1);
-      PG_ASSERT(string_eq(S("xyz"), k2));
+      PG_ASSERT(string_eq(PG_S("xyz"), k2));
     }
 
     {
@@ -191,21 +191,21 @@ static void test_bencode_decode() {
     {
       BencodeValue v2 = dyn_at(dict.values, 1);
       PG_ASSERT(BENCODE_KIND_STRING == v2.kind);
-      PG_ASSERT(string_eq(S("hello"), v2.s));
+      PG_ASSERT(string_eq(PG_S("hello"), v2.s));
     }
   }
   {
-    BencodeValueDecodeResult res = bencode_decode_value(S("2:abfoo"), &arena);
+    BencodeValueDecodeResult res = bencode_decode_value(PG_S("2:abfoo"), &arena);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_STRING == res.value.kind);
-    PG_ASSERT(string_eq(S("ab"), res.value.s));
-    PG_ASSERT(string_eq(S("foo"), res.remaining));
+    PG_ASSERT(string_eq(PG_S("ab"), res.value.s));
+    PG_ASSERT(string_eq(PG_S("foo"), res.remaining));
   }
 }
 
 static void test_decode_metainfo() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  PgString torrent_file_content = S(
+  PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -218,22 +218,22 @@ static void test_decode_metainfo() {
       bencode_decode_metainfo(torrent_file_content, &arena);
   PG_ASSERT(0 == res.err);
 
-  PG_ASSERT(string_eq(S("http"), res.res.announce.scheme));
-  PG_ASSERT(string_eq(S("OpenBSD.somedomain.net"), res.res.announce.host));
+  PG_ASSERT(string_eq(PG_S("http"), res.res.announce.scheme));
+  PG_ASSERT(string_eq(PG_S("OpenBSD.somedomain.net"), res.res.announce.host));
   PG_ASSERT(6969 == res.res.announce.port);
   PG_ASSERT(1 == res.res.announce.path_components.len);
   PgString path_component0 = PG_SLICE_AT(res.res.announce.path_components, 0);
-  PG_ASSERT(string_eq(S("announce"), path_component0));
+  PG_ASSERT(string_eq(PG_S("announce"), path_component0));
 
   PG_ASSERT(234883072 == res.res.length);
-  PG_ASSERT(string_eq(res.res.name, S("OpenBSD_7.4_alpha_install74.iso")));
+  PG_ASSERT(string_eq(res.res.name, PG_S("OpenBSD_7.4_alpha_install74.iso")));
   PG_ASSERT(262144 == res.res.piece_length);
-  PG_ASSERT(string_eq(res.res.pieces, S("abcdefgh")));
+  PG_ASSERT(string_eq(res.res.pieces, PG_S("abcdefgh")));
 }
 
 static void test_bencode_decode_encode() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  PgString torrent_file_content = S(
+  PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -254,7 +254,7 @@ static void test_bencode_decode_encode() {
 
 static void test_tracker_compute_info_hash() {
   Arena arena = arena_make_from_virtual_mem(4 * PG_KiB);
-  PgString torrent_file_content = S(
+  PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
       "fresh (andrew@afresh1.com)\n"
@@ -290,7 +290,7 @@ static void test_peer_send_handshake() {
   peer.address.port = 6881;
   peer.writer = writer_make_for_buf(&writer_arena);
   peer.arena = arena;
-  peer.info_hash = S("abcdefghijklmnopqrst");
+  peer.info_hash = PG_S("abcdefghijklmnopqrst");
   PG_ASSERT(20 == peer.info_hash.len);
 
   PgError err = peer_send_handshake(&peer);
@@ -304,7 +304,7 @@ static void test_peer_receive_handshake() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
-  PgString req_slice = S("\x13"
+  PgString req_slice = PG_S("\x13"
                        "BitTorrent protocol"
                        "\x01"
                        "\x02"
@@ -344,7 +344,7 @@ static void test_peer_receive_handshake() {
   peer.reader = reader_make_from_slice(&src_ctx);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
-  peer.info_hash = S("abcdefghijklmnopqrst");
+  peer.info_hash = PG_S("abcdefghijklmnopqrst");
   PG_ASSERT(20 == peer.info_hash.len);
 
   PgError err = peer_receive_handshake(&peer);
@@ -358,7 +358,7 @@ static void test_peer_receive_any_message_bitfield() {
   Arena arena = arena_make_from_virtual_mem(4 * KiB);
   Arena tmp_arena = arena_make_from_virtual_mem(4 * KiB);
 
-  PgString read_slice = S("\x0"
+  PgString read_slice = PG_S("\x0"
                         "\x0"
                         "\x0"
                         "\x1b"
@@ -391,7 +391,7 @@ static void test_peer_send_message() {
   peer.writer = writer_make_for_buf(&writer_arena);
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
-  peer.info_hash = S("abcdefghijklmnopqrst");
+  peer.info_hash = PG_S("abcdefghijklmnopqrst");
   PG_ASSERT(20 == peer.info_hash.len);
 
   PeerMessage msg = {
@@ -409,7 +409,7 @@ static void test_peer_send_message() {
   WriterBufCtx *ctx = peer.writer.ctx;
   PG_ASSERT(sizeof(u32) + 1 + 3 * sizeof(u32) == ctx->sb.len);
 
-  PgString expected = S(
+  PgString expected = PG_S(
       // Length.
       "\x0"
       "\x0"

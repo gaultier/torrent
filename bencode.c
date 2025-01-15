@@ -381,7 +381,7 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
     PgString key = dyn_at(res_dict.dict.keys, i);
     BencodeValue *value = dyn_at_ptr(&res_dict.dict.values, i);
 
-    if (string_eq(key, S("announce"))) {
+    if (string_eq(key, PG_S("announce"))) {
       if (BENCODE_KIND_STRING != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -394,7 +394,7 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
       }
 
       res.res.announce = url_parse_res.res;
-    } else if (string_eq(key, S("info"))) {
+    } else if (string_eq(key, PG_S("info"))) {
       if (BENCODE_KIND_DICTIONARY != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -405,25 +405,25 @@ bencode_decode_metainfo(PgString s, Arena *arena) {
         PgString info_key = dyn_at(info->keys, j);
         BencodeValue *info_value = dyn_at_ptr(&info->values, j);
 
-        if (string_eq(info_key, S("name"))) {
+        if (string_eq(info_key, PG_S("name"))) {
           if (BENCODE_KIND_STRING != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.name = info_value->s;
-        } else if (string_eq(info_key, S("piece length"))) {
+        } else if (string_eq(info_key, PG_S("piece length"))) {
           if (BENCODE_KIND_NUMBER != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.piece_length = info_value->num;
-        } else if (string_eq(info_key, S("pieces"))) {
+        } else if (string_eq(info_key, PG_S("pieces"))) {
           if (BENCODE_KIND_STRING != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
           res.res.pieces = info_value->s;
-        } else if (string_eq(info_key, S("length"))) {
+        } else if (string_eq(info_key, PG_S("length"))) {
           if (BENCODE_KIND_NUMBER != info_value->kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;

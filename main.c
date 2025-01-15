@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
       PgAioEvent event_watch = PG_SLICE_AT(events_watch, i);
       if (PG_AIO_EVENT_KIND_ERR & event_watch.kind) {
         logger_log(&logger, LOG_LEVEL_ERROR, "event error", arena,
-                   L("socket", (Socket)event_watch.socket));
+                   L("socket", (PgSocket)event_watch.socket));
         (void)net_socket_close(event_watch.socket);
         continue;
       }
@@ -112,13 +112,13 @@ int main(int argc, char *argv[]) {
             if (res_read.err) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to read", arena,
                          L("err", res_read.err),
-                         L("socket", (Socket)event_watch.socket));
+                         L("socket", (PgSocket)event_watch.socket));
               (void)net_socket_close(event_watch.socket);
               continue;
             }
             logger_log(&logger, LOG_LEVEL_DEBUG, "read", arena,
                        L("count", res_read.res),
-                       L("socket", (Socket)event_watch.socket));
+                       L("socket", (PgSocket)event_watch.socket));
           }
         }
         {
@@ -138,13 +138,13 @@ int main(int argc, char *argv[]) {
             if (res_write.err) {
               logger_log(&logger, LOG_LEVEL_ERROR, "failed to write", arena,
                          L("err", res_write.err),
-                         L("socket", (Socket)event_watch.socket));
+                         L("socket", (PgSocket)event_watch.socket));
               (void)net_socket_close(event_watch.socket);
               continue;
             }
             logger_log(&logger, LOG_LEVEL_DEBUG, "written", arena,
                        L("len", res_write.res),
-                       L("socket", (Socket)event_watch.socket));
+                       L("socket", (PgSocket)event_watch.socket));
           }
         }
       }

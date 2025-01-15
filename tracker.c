@@ -233,7 +233,7 @@ typedef enum {
 typedef struct {
   Logger *logger;
   TrackerState state;
-  Socket socket;
+  PgSocket socket;
   PgString host;
   u16 port;
   PgArena arena;

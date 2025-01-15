@@ -89,7 +89,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
     return S("PEER_MSG_KIND_KEEP_ALIVE");
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
   }
 }
 
@@ -107,8 +107,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[maybe_unused]] [[nodiscard]] static PgError peer_connect(Peer *peer) {
-  ASSERT(0 != peer->address.ip);
-  ASSERT(0 != peer->address.port);
+  PG_ASSERT(0 != peer->address.ip);
+  PG_ASSERT(0 != peer->address.port);
 
   log(LOG_LEVEL_INFO, "peer connect", &peer->arena, L("ipv4", peer->address.ip),
       L("port", peer->address.port));
@@ -163,16 +163,16 @@ peer_message_kind_to_string(PeerMessageKind kind) {
                      "\x00"
                      "\x00"),
                    arena);
-  ASSERT(1 + 19 + 8 == sb.len);
+  PG_ASSERT(1 + 19 + 8 == sb.len);
 
-  ASSERT(20 == info_hash.len);
+  PG_ASSERT(20 == info_hash.len);
   dyn_append_slice(&sb, info_hash, arena);
 
   PgString peer_id = S("00000000000000000000");
-  ASSERT(20 == peer_id.len);
+  PG_ASSERT(20 == peer_id.len);
   dyn_append_slice(&sb, peer_id, arena);
 
-  ASSERT(HANDSHAKE_LENGTH == sb.len);
+  PG_ASSERT(HANDSHAKE_LENGTH == sb.len);
   return dyn_slice(PgString, sb);
 }
 
@@ -193,7 +193,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[nodiscard]] static PgError peer_receive_handshake(Peer *peer) {
-  ASSERT(0 != peer->tmp_arena.start);
+  PG_ASSERT(0 != peer->tmp_arena.start);
 
   Arena tmp_arena = peer->tmp_arena;
   PgString handshake = {
@@ -233,7 +233,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 
   PgString remote_peer_id = slice_range_start(handshake, 28 + 20);
-  ASSERT(20 == remote_peer_id.len);
+  PG_ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
   log(LOG_LEVEL_INFO, "peer_receive_handshake valid", &peer->arena,
@@ -261,9 +261,9 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 }
 
 [[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {
-  ASSERT(peer->tmp_arena.start != 0);
-  ASSERT(peer->arena.start != 0);
-  ASSERT(peer->reader.read_fn != nullptr);
+  PG_ASSERT(peer->tmp_arena.start != 0);
+  PG_ASSERT(peer->arena.start != 0);
+  PG_ASSERT(peer->reader.read_fn != nullptr);
 
   PeerMessageResult res = {0};
 
@@ -421,7 +421,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     // TODO
     break;
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
   }
 }
 
@@ -487,10 +487,10 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     dynu8_append_u32(&sb, msg.cancel.length, &tmp_arena);
     break;
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
   }
 
-  ASSERT(sb.len >= sizeof(u32));
+  PG_ASSERT(sb.len >= sizeof(u32));
 
   PgString s = dyn_slice(PgString, sb);
   res = writer_write_all(peer->writer, s);

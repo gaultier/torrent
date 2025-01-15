@@ -177,7 +177,7 @@ bencode_decode_dictionary(PgString s, Arena *arena) {
   }
   res.remaining = suffix.remaining;
 
-  ASSERT(res.dict.keys.len == res.dict.values.len);
+  PG_ASSERT(res.dict.keys.len == res.dict.values.len);
 
   return res;
 }
@@ -339,7 +339,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
       if (i > 0) {
         PgString previous_key = slice_at(value.dict.keys, i - 1);
         StringCompare cmp = string_cmp(previous_key, k);
-        ASSERT(STRING_CMP_LESS == cmp);
+        PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }
     *dyn_push(sb, arena) = 'e';
@@ -348,7 +348,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, Arena *arena) {
   }
   case BENCODE_KIND_NONE:
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
   }
 }
 

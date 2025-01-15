@@ -5,8 +5,8 @@
 [[maybe_unused]] [[nodiscard]] static bool
 bitfield_has_all_blocks_for_piece(PgString bitfield_blocks, u32 blocks_per_piece,
                                   u32 pieces_count, u32 piece) {
-  ASSERT(piece < pieces_count);
-  ASSERT(bitfield_blocks.len ==
+  PG_ASSERT(piece < pieces_count);
+  PG_ASSERT(bitfield_blocks.len ==
          pieces_count * blocks_per_piece); // TODO: round up?
 
   u32 idx_first_block = piece * blocks_per_piece;
@@ -37,8 +37,8 @@ bitfield_pick_random_piece(PgString bitfield_remote_pieces, u32 pieces_count) {
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
 piece_verify_hash(PgString data, PgString hash_expected) {
-  ASSERT(20 == hash_expected.len);
-  ASSERT(0 == data.len % BLOCK_LENGTH);
+  PG_ASSERT(20 == hash_expected.len);
+  PG_ASSERT(0 == data.len % BLOCK_LENGTH);
 
   u8 hash_got[20] = {0};
   sha1(data, hash_got);

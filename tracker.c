@@ -27,7 +27,7 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   case TRACKER_EVENT_COMPLETED:
     return S("completed");
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
   }
 }
 
@@ -68,7 +68,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
 
   u8 sha1_hash[20] = {0};
   sha1(encoded, sha1_hash);
-  ASSERT(sizeof(sha1_hash) == hash.len);
+  PG_ASSERT(sizeof(sha1_hash) == hash.len);
   memcpy(hash.data, sha1_hash, hash.len);
 }
 
@@ -269,7 +269,7 @@ static PgError tracker_connect(Tracker *tracker) {
                  tracker->arena, L("err", res_dns.err));
       return res_dns.err;
     }
-    ASSERT(0 != res_dns.res.socket);
+    PG_ASSERT(0 != res_dns.res.socket);
     tracker->socket = res_dns.res.socket;
 
     logger_log(tracker->logger, LOG_LEVEL_DEBUG,
@@ -310,7 +310,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
       HttpRequest tracker_http_req =
           tracker_make_http_request(tracker->metadata, &arena_tmp);
       PgError err = http_write_request(&tracker->rg, tracker_http_req, arena_tmp);
-      ASSERT(!err); // Ring buffer too small.
+      PG_ASSERT(!err); // Ring buffer too small.
     }
 
     logger_log(tracker->logger, LOG_LEVEL_DEBUG,
@@ -350,7 +350,7 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
     // TODO: timer of ~1m to retrigger the state machine from the start.
   } break;
   default:
-    ASSERT(0);
+    PG_ASSERT(0);
     break;
   }
   return (PgError)0;

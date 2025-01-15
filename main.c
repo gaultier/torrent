@@ -6,7 +6,7 @@
 #include "tracker.c"
 
 int main(int argc, char *argv[]) {
-  ASSERT(argc == 2);
+  PG_ASSERT(argc == 2);
 
   Arena arena = arena_make_from_virtual_mem(128 * PG_KiB);
   Logger logger = log_logger_make_stdout_json(LOG_LEVEL_DEBUG);
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
   dyn_ensure_cap(&events_change, 128, &arena);
 
   for (;;) {
-    ASSERT(0 == events_change.len);
+    PG_ASSERT(0 == events_change.len);
 
     IoCountResult res_wait = aio_queue_wait(queue, events_watch, -1, arena);
     if (res_wait.err) {

@@ -149,7 +149,7 @@ bencode_decode_dictionary(PgString s, PgArena *arena) {
     // Ensure ordering.
     if (res.dict.keys.len > 0) {
       PgString last_key = dyn_last(res.dict.keys);
-      StringCompare cmp = pg_string_cmp(last_key, res_key.s);
+      PgStringCompare cmp = pg_string_cmp(last_key, res_key.s);
       if (STRING_CMP_LESS != cmp) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
@@ -338,7 +338,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
       // Ensure ordering.
       if (i > 0) {
         PgString previous_key = PG_SLICE_AT(value.dict.keys, i - 1);
-        StringCompare cmp = pg_string_cmp(previous_key, k);
+        PgStringCompare cmp = pg_string_cmp(previous_key, k);
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }

@@ -47,7 +47,7 @@ typedef struct {
 RESULT(PeerMessage) PeerMessageResult;
 
 typedef struct {
-  Ipv4Address address;
+  PgIpv4Address address;
   BufferedReader reader;
   Writer writer;
   PgString info_hash;
@@ -93,7 +93,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer peer_make(Ipv4Address address,
+[[maybe_unused]] [[nodiscard]] static Peer peer_make(PgIpv4Address address,
                                                      PgString info_hash) {
   Peer peer = {0};
   peer.info_hash = info_hash;
@@ -250,7 +250,7 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
 
   for (u64 i = 0; i < real_count; i++) {
     u32 idx = arc4random_uniform((u32)addresses_all->len); // FIXME
-    Ipv4Address address = PG_SLICE_AT(*addresses_all, idx);
+    PgIpv4Address address = PG_SLICE_AT(*addresses_all, idx);
     Peer peer = peer_make(address, info_hash);
     *PG_DYN_PUSH(peers_active, arena) = peer;
     PG_slice_swap_remove(addresses_all, idx);

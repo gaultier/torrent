@@ -387,13 +387,13 @@ bencode_decode_metainfo(PgString s, PgArena *arena) {
         return res;
       }
 
-      PgUrlResult url_parse_res = url_parse(value->s, arena);
-      if (url_parse_res.err) {
+      PgUrlResult pg_url_parse_res = pg_url_parse(value->s, arena);
+      if (pg_url_parse_res.err) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
-      res.res.announce = url_parse_res.res;
+      res.res.announce = pg_url_parse_res.res;
     } else if (pg_string_eq(key, PG_S("info"))) {
       if (BENCODE_KIND_DICTIONARY != value->kind) {
         res.err = TORR_ERR_BENCODE_INVALID;

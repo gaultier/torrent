@@ -44,11 +44,11 @@ typedef struct {
   };
 } PeerMessage;
 
-RESULT(PeerMessage) PeerMessageResult;
+PG_RESULT(PeerMessage) PeerMessageResult;
 
 typedef struct {
   PgIpv4Address address;
-  BufferedReader reader;
+  PgReader reader;
   PgWriter writer;
   PgString info_hash;
   PgArena arena;
@@ -61,8 +61,8 @@ typedef struct {
   PgString remote_bitfield;
 } Peer;
 
-DYN(Peer);
-SLICE(Peer);
+PG_DYN(Peer) PgPeerDyn;
+PG_SLICE(Peer) PgPeerSlice;
 
 [[nodiscard]] [[maybe_unused]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
@@ -98,8 +98,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   Peer peer = {0};
   peer.info_hash = info_hash;
   peer.address = address;
-  peer.arena = pg_arena_make_from_virtual_mem(4 * KiB);
-  peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
+  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   peer.choked = true;
   peer.interested = false;
 
@@ -110,23 +110,23 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   PG_ASSERT(0 != peer->address.ip);
   PG_ASSERT(0 != peer->address.port);
 
-  log(PG_LOG_LEVEL_INFO, "peer connect", &peer->arena, PG_L("ipv4", peer->address.ip),
-      PG_L("port", peer->address.port));
+  pg_log(PG_LOG_LEVEL_INFO, "peer connect", &peer->arena,
+         PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
 
   PgCreateSocketResult res_create_socket = pg_net_create_tcp_socket();
   if (res_create_socket.err) {
-    log(PG_LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
-        PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-        PG_L("err", res_create_socket.err));
+    pg_log(PG_LOG_LEVEL_ERROR, "peer create socket", &peer->arena,
+           PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
+           PG_L("err", res_create_socket.err));
     return (PgError)errno;
   }
 
   {
     PgError err_set_nodelay = pg_net_set_nodelay(res_create_socket.res, true);
     if (err_set_nodelay) {
-      log(PG_LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
-          PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-          PG_L("err", err_set_nodelay));
+      pg_log(PG_LOG_LEVEL_ERROR, "failed to setsockopt(2)", &peer->arena,
+             PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
+             PG_L("err", err_set_nodelay));
     }
   }
 
@@ -136,9 +136,9 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   {
     PgError err = pg_net_connect_ipv4(res_create_socket.res, peer->address);
     if (err) {
-      log(PG_LOG_LEVEL_ERROR, "peer connect", &peer->arena,
-          PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-          PG_L("err", err));
+      pg_log(PG_LOG_LEVEL_ERROR, "peer connect", &peer->arena,
+             PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
+             PG_L("err", err));
       return (PgError)err;
     }
   }
@@ -149,20 +149,20 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
-                                                PgArena *arena) {
+                                                  PgArena *arena) {
   DynU8 sb = {0};
   PG_DYN_APPEND_SLICE(&sb,
-                   PG_S("\x13"
-                     "BitTorrent protocol"
-                     "\x00"
-                     "\x00"
-                     "\x00"
-                     "\x00"
-                     "\x00"
-                     "\x00"
-                     "\x00"
-                     "\x00"),
-                   arena);
+                      PG_S("\x13"
+                           "BitTorrent protocol"
+                           "\x00"
+                           "\x00"
+                           "\x00"
+                           "\x00"
+                           "\x00"
+                           "\x00"
+                           "\x00"
+                           "\x00"),
+                      arena);
   PG_ASSERT(1 + 19 + 8 == sb.len);
 
   PG_ASSERT(20 == info_hash.len);
@@ -213,7 +213,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
   PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
   PgString prefix_expected = PG_S("\x13"
-                             "BitTorrent protocol");
+                                  "BitTorrent protocol");
   if (!pg_string_eq(prefix, prefix_expected)) {
     log(PG_LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
         &peer->arena, PG_L("ipv4", peer->address.ip),
@@ -244,8 +244,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]]
 static void peer_pick_random(DynIpv4Address *addresses_all,
-                             DynPeer *peers_active, u64 count, PgString info_hash,
-                             PgArena *arena) {
+                             DynPeer *peers_active, u64 count,
+                             PgString info_hash, PgArena *arena) {
   u64 real_count = MIN(addresses_all->len, count);
 
   for (u64 i = 0; i < real_count; i++) {
@@ -334,7 +334,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
       return res;
     }
 
-    res.res.bitfield = pg_string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
+    res.res.bitfield =
+        pg_string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
 
     break;
   }
@@ -358,7 +359,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     }
     res.res.piece.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     res.res.piece.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    res.res.piece.data = pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
+    res.res.piece.data =
+        pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 
     break;
   }
@@ -425,8 +427,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static PgError peer_send_message(Peer *peer,
-                                                              PeerMessage msg) {
+[[maybe_unused]] [[nodiscard]] static PgError
+peer_send_message(Peer *peer, PeerMessage msg) {
   log(PG_LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
       PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
       PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
@@ -471,8 +473,8 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
     break;
 
   case PEER_MSG_KIND_PIECE:
-    pg_string_builder_append_u32(&sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len,
-                     &tmp_arena);
+    pg_string_builder_append_u32(
+        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len, &tmp_arena);
     *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
     pg_string_builder_append_u32(&sb, msg.piece.index, &tmp_arena);
     pg_string_builder_append_u32(&sb, msg.piece.begin, &tmp_arena);
@@ -495,10 +497,11 @@ static void peer_pick_random(DynIpv4Address *addresses_all,
   PgString s = PG_DYN_SLICE(PgString, sb);
   res = pg_writer_write_all(peer->writer, s);
 
-  log(res ? PG_LOG_LEVEL_ERROR : PG_LOG_LEVEL_INFO, "peer sent message", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-      PG_L("msg.kind", peer_message_kind_to_string(msg.kind)), PG_L("s.len", s.len),
-      PG_L("err", res));
+  log(res ? PG_LOG_LEVEL_ERROR : PG_LOG_LEVEL_INFO, "peer sent message",
+      &peer->arena, PG_L("ipv4", peer->address.ip),
+      PG_L("port", peer->address.port),
+      PG_L("msg.kind", peer_message_kind_to_string(msg.kind)),
+      PG_L("s.len", s.len), PG_L("err", res));
 
   return res;
 }
@@ -509,11 +512,12 @@ static void peer_spawn(Peer *peer) {
     return;
   }
 
-  log(PG_LOG_LEVEL_INFO, "peer spawn", &peer->arena, PG_L("ipv4", peer->address.ip),
-      PG_L("port", peer->address.port));
+  log(PG_LOG_LEVEL_INFO, "peer spawn", &peer->arena,
+      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
 
   if (-1 == pipe(peer->pipe_child_to_parent)) {
-    log(PG_LOG_LEVEL_ERROR, "failed to pipe(2)", &peer->arena, PG_L("err", errno));
+    log(PG_LOG_LEVEL_ERROR, "failed to pipe(2)", &peer->arena,
+        PG_L("err", errno));
     exit(errno);
   }
 
@@ -521,7 +525,8 @@ static void peer_spawn(Peer *peer) {
 
   int child_pid = fork();
   if (-1 == child_pid) {
-    log(PG_LOG_LEVEL_ERROR, "failed to fork(2)", &peer->arena, PG_L("err", errno));
+    log(PG_LOG_LEVEL_ERROR, "failed to fork(2)", &peer->arena,
+        PG_L("err", errno));
     exit(errno);
   }
 

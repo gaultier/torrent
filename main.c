@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
                                                     tracker_on_tcp_connect);
     if (err_connect) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to tcp connect to the tracker", arena,
+             "failed to start tcp connect to the tracker", arena,
              PG_L("err", err_connect));
       return 1;
     }

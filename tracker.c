@@ -119,9 +119,9 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
     {
       PgString pg_net_ipv4_addr_str = pg_net_ipv4_address_to_string(address, arena);
       pg_log(logger, PG_LOG_LEVEL_INFO, "tracker_parse_compact_peers", *arena,
-                 L("res.peer_addresses.len", res.peer_addresses.len),
-                 L("ip", address.ip), L("port", address.port),
-                 L("address", pg_net_ipv4_addr_str));
+                 PG_L("res.peer_addresses.len", res.peer_addresses.len),
+                 PG_L("ip", address.ip), PG_L("port", address.port),
+                 PG_L("address", pg_net_ipv4_addr_str));
     }
     *PG_DYN_PUSH(&res.peer_addresses, arena) = address;
   }
@@ -266,7 +266,7 @@ static PgError tracker_connect(Tracker *tracker) {
     if (res_dns.err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "failed to dns resolve the tracker announce url",
-                 tracker->arena, L("err", res_dns.err));
+                 tracker->arena, PG_L("err", res_dns.err));
       return res_dns.err;
     }
     PG_ASSERT(0 != res_dns.res.socket);
@@ -274,15 +274,15 @@ static PgError tracker_connect(Tracker *tracker) {
 
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
                "dns resolved tracker announce url", tracker->arena,
-               L("host", tracker->host), L("port", tracker->port),
-               L("ip", res_dns.res.address.ip));
+               PG_L("host", tracker->host), PG_L("port", tracker->port),
+               PG_L("ip", res_dns.res.address.ip));
   }
   {
     PgError err = pg_net_socket_set_blocking(tracker->socket, false);
     if (err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "failed to set socket to non blocking", tracker->arena,
-                 L("err", err));
+                 PG_L("err", err));
       return err;
     }
   }
@@ -315,8 +315,8 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
 
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
                "wrote http request to ring buffer", tracker->arena,
-               L("write_space", pg_ring_write_space(tracker->rg)),
-               L("read_space", pg_ring_read_space(tracker->rg)));
+               PG_L("write_space", pg_ring_write_space(tracker->rg)),
+               PG_L("read_space", pg_ring_read_space(tracker->rg)));
 
     tracker->state = TRACKER_STATE_SENT_REQUEST;
 
@@ -333,11 +333,11 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
     if (res_http.err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                  "invalid tracker http response", pg_arena_tmp,
-                 L("err", res_http.err));
+                 PG_L("err", res_http.err));
       return res_http.err;
     }
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "read http tracker response",
-               pg_arena_tmp, L("http.status", res_http.res.status));
+               pg_arena_tmp, PG_L("http.status", res_http.res.status));
     tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
 
     *PG_DYN_PUSH(events_change, events_arena) = (PgAioEvent){

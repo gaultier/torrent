@@ -192,31 +192,31 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("info_hash"),
       .value = req_tracker.info_hash,
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("peer_id"),
       .value = req_tracker.peer_id,
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("port"),
       .value = pg_u64_to_string(req_tracker.port, arena),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("uploaded"),
       .value = pg_u64_to_string(req_tracker.uploaded, arena),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("downloaded"),
       .value = pg_u64_to_string(req_tracker.downloaded, arena),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("left"),
       .value = pg_u64_to_string(req_tracker.left, arena),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (KeyValue){
+  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
       .key = PG_S("event"),
       .value = tracker_metadata_event_to_string(req_tracker.event),
   };

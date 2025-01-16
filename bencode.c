@@ -305,7 +305,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
 
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
-    err = pg_writer_write_character(w, 'i');
+    err = pg_writer_write_u8(w, 'i');
     if (err) {
       return err;
     }
@@ -315,7 +315,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
       return err;
     }
 
-    err = pg_writer_write_character(w, 'e');
+    err = pg_writer_write_u8(w, 'e');
     if (err) {
       return err;
     }
@@ -328,7 +328,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
       return err;
     }
 
-    err = pg_writer_write_character(w, ':');
+    err = pg_writer_write_u8(w, ':');
     if (err) {
       return err;
     }
@@ -341,7 +341,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
     break;
   }
   case BENCODE_KIND_LIST: {
-    err = pg_writer_write_character(w, 'l');
+    err = pg_writer_write_u8(w, 'l');
     if (err) {
       return err;
     }
@@ -353,7 +353,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
         return err;
       }
     }
-    err = pg_writer_write_character(w, 'e');
+    err = pg_writer_write_u8(w, 'e');
     if (err) {
       return err;
     }
@@ -361,7 +361,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
     break;
   }
   case BENCODE_KIND_DICTIONARY: {
-    err = pg_writer_write_character(w, 'd');
+    err = pg_writer_write_u8(w, 'd');
     if (err) {
       return err;
     }
@@ -387,7 +387,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }
-    err = pg_writer_write_character(w, 'e');
+    err = pg_writer_write_u8(w, 'e');
     if (err) {
       return err;
     }

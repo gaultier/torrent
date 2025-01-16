@@ -148,7 +148,7 @@ bencode_decode_dictionary(PgString s, PgArena *arena) {
 
     // Ensure ordering.
     if (res.dict.keys.len > 0) {
-      PgString last_key = PG_DYN_LAST(res.dict.keys);
+      PgString last_key = PG_SLICE_LAST(res.dict.keys);
       PgStringCompare cmp = pg_string_cmp(last_key, res_key.s);
       if (STRING_CMP_LESS != cmp) {
         res.err = TORR_ERR_BENCODE_INVALID;
@@ -188,8 +188,8 @@ typedef struct {
   PgString remaining;
 } BencodeListDecodeResult;
 
-[[nodiscard]] static BencodeListDecodeResult bencode_decode_list(PgString s,
-                                                                 PgArena *arena) {
+[[nodiscard]] static BencodeListDecodeResult
+bencode_decode_list(PgString s, PgArena *arena) {
   BencodeListDecodeResult res = {0};
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');

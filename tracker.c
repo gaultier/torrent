@@ -63,7 +63,8 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
   // TODO: Add unknown keys in `info`?
 
   Pgu8Dyn sb = {0};
-  bencode_encode(value, &sb, &arena);
+  PgWriter w = pg_writer_make_from_string_builder(&sb, &arena);
+  PG_ASSERT(0 == bencode_encode(value, &w, &arena));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
 
   u8 pg_sha1_hash[20] = {0};

@@ -299,41 +299,86 @@ bencode_decode_value(PgString s, PgArena *arena) {
   }
 }
 
-[[maybe_unused]]
-static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
+[[nodiscard]] [[maybe_unused]] static PgError
+bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
+  PgError err = 0;
+
   switch (value.kind) {
   case BENCODE_KIND_NUMBER: {
-    *PG_DYN_PUSH(sb, arena) = 'i';
-    pg_string_builder_append_u64_to_string(sb, value.num, arena);
-    *PG_DYN_PUSH(sb, arena) = 'e';
+    err = pg_writer_write_character(w, 'i');
+    if (err) {
+      return err;
+    }
+
+    err = pg_writer_write_u64_as_string(w, value.num);
+    if (err) {
+      return err;
+    }
+
+    err = pg_writer_write_character(w, 'e');
+    if (err) {
+      return err;
+    }
 
     break;
   }
   case BENCODE_KIND_STRING: {
-    pg_string_builder_append_u64_to_string(sb, value.s.len, arena);
-    *PG_DYN_PUSH(sb, arena) = ':';
-    PG_DYN_APPEND_SLICE(sb, value.s, arena);
+    err = pg_writer_write_u64_as_string(w, value.s.len);
+    if (err) {
+      return err;
+    }
+
+    err = pg_writer_write_character(w, ':');
+    if (err) {
+      return err;
+    }
+
+    err = pg_writer_write_all_string(w, value.s);
+    if (err) {
+      return err;
+    }
 
     break;
   }
   case BENCODE_KIND_LIST: {
-    *PG_DYN_PUSH(sb, arena) = 'l';
+    err = pg_writer_write_character(w, 'l');
+    if (err) {
+      return err;
+    }
+
     for (u64 i = 0; i < value.list.len; i++) {
       BencodeValue v = PG_SLICE_AT(value.list, i);
-      bencode_encode(v, sb, arena);
+      err = bencode_encode(v, w, arena);
+      if (err) {
+        return err;
+      }
     }
-    *PG_DYN_PUSH(sb, arena) = 'e';
+    err = pg_writer_write_character(w, 'e');
+    if (err) {
+      return err;
+    }
 
     break;
   }
   case BENCODE_KIND_DICTIONARY: {
-    *PG_DYN_PUSH(sb, arena) = 'd';
+    err = pg_writer_write_character(w, 'd');
+    if (err) {
+      return err;
+    }
+
     for (u64 i = 0; i < value.dict.keys.len; i++) {
       PgString k = PG_SLICE_AT(value.dict.keys, i);
       BencodeValue v = PG_SLICE_AT(value.dict.values, i);
-      bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k}, sb,
-                     arena);
-      bencode_encode(v, sb, arena);
+      err = bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k},
+                           w, arena);
+      if (err) {
+        return err;
+      }
+
+      err = bencode_encode(v, w, arena);
+      if (err) {
+        return err;
+      }
 
       // Ensure ordering.
       if (i > 0) {
@@ -342,7 +387,10 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }
-    *PG_DYN_PUSH(sb, arena) = 'e';
+    err = pg_writer_write_character(w, 'e');
+    if (err) {
+      return err;
+    }
 
     break;
   }
@@ -350,6 +398,7 @@ static void bencode_encode(BencodeValue value, Pgu8Dyn *sb, PgArena *arena) {
   default:
     PG_ASSERT(0);
   }
+  return 0;
 }
 
 typedef struct {
@@ -363,7 +412,7 @@ typedef struct {
 
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
-[[nodiscard]] static DecodeMetaInfoResult
+[[maybe_unused]] [[nodiscard]] static DecodeMetaInfoResult
 bencode_decode_metainfo(PgString s, PgArena *arena) {
   DecodeMetaInfoResult res = {0};
 

@@ -248,7 +248,9 @@ static void test_bencode_decode_encode() {
   PG_ASSERT(0 == res.err);
 
   Pgu8Dyn sb = {0};
-  bencode_encode(res.value, &sb, &arena);
+  PgWriter w = pg_writer_make_from_string_builder(&sb, &arena);
+
+  PG_ASSERT(0 == bencode_encode(res.value, &w, &arena));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
   PG_ASSERT(pg_string_eq(encoded, torrent_file_content));
 }

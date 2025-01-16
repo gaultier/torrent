@@ -57,12 +57,6 @@ int main(int argc, char *argv[]) {
   PgUrl announce = res_decode_metainfo.res.announce;
   Tracker tracker =
       tracker_make(&logger, announce.host, announce.port, tracker_metadata);
-  {
-    PgError err = tracker_connect(&tracker);
-    if (err) {
-      return 1;
-    }
-  }
   PgEventLoopResult res_loop =
       pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
   if (res_loop.err) {
@@ -72,7 +66,7 @@ int main(int argc, char *argv[]) {
   }
   PgEventLoop loop = res_loop.res;
   {
-    Pgu64Result res_tracker = pg_event_loop_dns_resolve_ipv4_tcp(
+    Pgu64Result res_tracker = pg_event_loop_dns_resolve_ipv4_tcp_start(
         &loop, announce.host, announce.port, tracker_on_dns_resolve, &tracker);
     if (res_tracker.err) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
@@ -80,7 +74,6 @@ int main(int argc, char *argv[]) {
              arena, PG_L("err", res_tracker.err));
       return 1;
     }
-    u64 tracker_handle = res_tracker.res;
   }
 
   PgError err_loop = pg_event_loop_run(&loop, -1);

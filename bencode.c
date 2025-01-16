@@ -378,8 +378,8 @@ bencode_decode_metainfo(PgString s, PgArena *arena) {
   }
 
   for (u64 i = 0; i < res_dict.dict.keys.len; i++) {
-    PgString key = PG_DYN_AT(res_dict.dict.keys, i);
-    BencodeValue *value = PG_DYN_AT_PTR(&res_dict.dict.values, i);
+    PgString key = PG_SLICE_AT(res_dict.dict.keys, i);
+    BencodeValue *value = PG_SLICE_AT_PTR(&res_dict.dict.values, i);
 
     if (pg_string_eq(key, PG_S("announce"))) {
       if (BENCODE_KIND_STRING != value->kind) {
@@ -402,8 +402,8 @@ bencode_decode_metainfo(PgString s, PgArena *arena) {
       BencodeDictionary *info = &value->dict;
 
       for (u64 j = 0; j < info->keys.len; j++) {
-        PgString info_key = PG_DYN_AT(info->keys, j);
-        BencodeValue *info_value = PG_DYN_AT_PTR(&info->values, j);
+        PgString info_key = PG_SLICE_AT(info->keys, j);
+        BencodeValue *info_value = PG_SLICE_AT_PTR(&info->values, j);
 
         if (pg_string_eq(info_key, PG_S("name"))) {
           if (BENCODE_KIND_STRING != info_value->kind) {

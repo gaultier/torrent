@@ -235,13 +235,9 @@ typedef enum {
 typedef struct {
   PgLogger *logger;
   TrackerState state;
-  PgSocket socket;
   PgString host;
   u16 port;
   PgArena arena;
-  PgRing rg;
-  PgReader reader;
-  PgWriter writer;
   TrackerMetadata metadata;
 } Tracker;
 
@@ -255,71 +251,95 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.metadata = metadata;
 
   tracker.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
-  tracker.rg = (PgRing){.data = pg_string_make(2048, &tracker.arena)};
 
   return tracker;
 }
+[[maybe_unused]]
+static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
+                                PgError err, PgString data) {
+  PG_ASSERT(nullptr != ctx);
+  Tracker *tracker = ctx;
+
+  if (err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
+           tracker->arena, PG_L("err", err));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read",
+         tracker->arena, PG_L("data", data));
+
+  // TODO: Parse http.
+}
 
 [[maybe_unused]]
-static void tracker_on_tcp_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
-                                   PgError err) {
-  PG_ASSERT(nullptr != loop);
-  PG_ASSERT(0 != os_handle);
+static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
+                                 PgError err) {
+  PG_ASSERT(nullptr != ctx);
+  Tracker *tracker = ctx;
+
+  if (err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
+           tracker->arena, PG_L("err", err));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+
+  PgError err_read =
+      pg_event_loop_read_start(loop, os_handle, tracker_on_tcp_read);
+  if (err_read) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to start tcp read", tracker->arena,
+           PG_L("err", err_read));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+}
+
+[[maybe_unused]]
+static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
+                                   PgError err, PgIpv4Address address) {
   PG_ASSERT(nullptr != ctx);
   Tracker *tracker = ctx;
 
   if (err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "failed to tcp connect to the tracker", tracker->arena,
+           "tracker: failed to dns resolve the announce url", tracker->arena,
            PG_L("err", err));
+
     (void)pg_event_loop_handle_close(loop, os_handle);
+    // TODO: Maybe stop the event loop?
+
     return;
   }
 
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker tcp connect",
-         tracker->arena, PG_L("os_handle", os_handle));
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
+         tracker->arena, PG_L("ip", address.ip), PG_L("port", address.port));
 
-  tracker->reader = pg_reader_make_from_socket(tracker->socket);
-  tracker->writer = pg_writer_make_from_socket(tracker->socket);
-
-  // TODO: read start.
-}
-
-[[maybe_unused]] [[nodiscard]]
-static PgError tracker_connect(Tracker *tracker) {
   {
-    PgDnsResolveIpv4AddressSocketResult res_dns = pg_net_dns_resolve_ipv4_tcp(
-        tracker->host, tracker->port, tracker->arena);
-    if (res_dns.err) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "failed to dns resolve the tracker announce url", tracker->arena,
-             PG_L("err", res_dns.err));
-      return res_dns.err;
-    }
-    PG_ASSERT(0 != res_dns.res.socket);
-    tracker->socket = res_dns.res.socket;
+    PgArena arena_tmp = tracker->arena;
+    PgHttpRequest http_req =
+        tracker_make_http_request(tracker->metadata, &arena_tmp);
 
-    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
-           "dns resolved tracker announce url", tracker->arena,
-           PG_L("host", tracker->host), PG_L("port", tracker->port),
-           PG_L("ip", res_dns.res.address.ip));
-  }
-  {
-    PgError err = pg_net_socket_set_blocking(tracker->socket, false);
-    if (err) {
+    PgString http_req_s = pg_http_request_to_string(http_req, &arena_tmp);
+
+    PgError err_write =
+        pg_event_loop_write(loop, os_handle, http_req_s, tracker_on_tcp_write);
+    if (err_write) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "failed to set socket to non blocking", tracker->arena,
-             PG_L("err", err));
-      return err;
+             "tracker: failed to start tcp write", tracker->arena,
+             PG_L("err", err_write));
+      (void)pg_event_loop_handle_close(loop, os_handle);
+      // TODO: Maybe stop the event loop?
     }
   }
-
-  tracker->reader = pg_reader_make_from_socket(tracker->socket);
-  tracker->writer = pg_writer_make_from_socket(tracker->socket);
-
-  return (PgError)0;
 }
 
+#if 0
 [[maybe_unused]] [[nodiscard]]
 static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
                                     PgAioEventDyn *events_change,
@@ -383,3 +403,4 @@ static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
   }
   return (PgError)0;
 }
+#endif

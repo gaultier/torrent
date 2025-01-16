@@ -72,23 +72,15 @@ int main(int argc, char *argv[]) {
   }
   PgEventLoop loop = res_loop.res;
   {
-    Pgu64Result res_tracker = pg_event_loop_tcp_init(&loop, &tracker);
+    Pgu64Result res_tracker = pg_event_loop_dns_resolve_ipv4_tcp(
+        &loop, announce.host, announce.port, tracker_on_dns_resolve, &tracker);
     if (res_tracker.err) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to create an event loop tcp handle for the tracker", arena,
-             PG_L("err", res_tracker.err));
+             "failed to create an event loop dns request for the tracker",
+             arena, PG_L("err", res_tracker.err));
       return 1;
     }
     u64 tracker_handle = res_tracker.res;
-    PgIpv4Address addr = {0}; // FIXME: DNS.
-    PgError err_connect = pg_event_loop_tcp_connect(&loop, tracker_handle, addr,
-                                                    tracker_on_tcp_connect);
-    if (err_connect) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to start tcp connect to the tracker", arena,
-             PG_L("err", err_connect));
-      return 1;
-    }
   }
 
   PgError err_loop = pg_event_loop_run(&loop, -1);

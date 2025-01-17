@@ -133,7 +133,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
 }
 
 [[maybe_unused]] [[nodiscard]] static TrackerResponseResult
-tracker_parse_response(PgString s, PgLogger *logger, PgArena *arena) {
+tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
   TrackerResponseResult res = {0};
 
   BencodeValueDecodeResult tracker_response_bencode_res =
@@ -230,7 +230,6 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
 typedef enum {
   TRACKER_STATE_WILL_READ_HTTP_RESPONSE,
   TRACKER_STATE_WILL_READ_BODY,
-  TRACKER_STATE_DONE,
 } TrackerState;
 
 typedef struct {
@@ -259,7 +258,10 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   return tracker;
 }
 
-[[maybe_unused]] static PgError tracker_try_parse_response(Tracker *tracker) {
+[[nodiscard]] [[maybe_unused]] static PgError
+tracker_try_parse_http_response(Tracker *tracker) {
+  PG_ASSERT(TRACKER_STATE_WILL_READ_HTTP_RESPONSE == tracker->state);
+
   PgHttpResponseReadResult res_http =
       pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
   if (res_http.err) {
@@ -303,6 +305,43 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   return 0;
 }
 
+[[nodiscard]] [[maybe_unused]] static PgBoolResult
+tracker_read_http_response_body(Tracker *tracker) {
+  PG_ASSERT(TRACKER_STATE_WILL_READ_BODY == tracker->state);
+
+  PgBoolResult res = {0};
+
+  if (tracker->http_response_content_length != 0) {
+    if (pg_ring_read_space(tracker->http_response_recv) ==
+        tracker->http_response_content_length) {
+      res.res = true;
+
+      PgString s = pg_string_make(
+          pg_ring_read_space(tracker->http_response_recv), &tracker->arena);
+      PG_ASSERT(true == pg_ring_read_slice(&tracker->http_response_recv, s));
+
+      TrackerResponseResult res_bencode =
+          tracker_parse_bencode_response(s, tracker->logger, &tracker->arena);
+      if (res_bencode.err) {
+        res.err = res_bencode.err;
+        return res;
+      }
+
+      pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
+             "tracker: decoded bencode response", tracker->arena,
+             PG_L("failure_reason", res_bencode.res.failure),
+             PG_L("peers.len", res_bencode.res.peer_addresses.len),
+             PG_L("interval_secs", res_bencode.res.interval_secs));
+
+      return res;
+    }
+  } else {
+    PG_ASSERT(0 && "TODO");
+  }
+
+  return res;
+}
+
 [[maybe_unused]]
 static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
                                 PgError io_err, PgString data) {
@@ -333,22 +372,20 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   PgError err = 0;
   switch (tracker->state) {
   case TRACKER_STATE_WILL_READ_HTTP_RESPONSE:
-    err = tracker_try_parse_response(tracker);
+    err = tracker_try_parse_http_response(tracker);
+    if (err) {
+      // TODO: stop event loop?
+      (void)pg_event_loop_handle_close(loop, os_handle);
+    }
     break;
-  case TRACKER_STATE_WILL_READ_BODY:
-    // TODO: read body.
-    break;
-  case TRACKER_STATE_DONE:
+  case TRACKER_STATE_WILL_READ_BODY: {
+    PgBoolResult res_body = tracker_read_http_response_body(tracker);
+    (void)res_body;
     (void)pg_event_loop_handle_close(loop, os_handle);
-    break;
+  } break;
   default:
     PG_ASSERT(0);
     break;
-  }
-
-  if (err) {
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
   }
 }
 
@@ -418,69 +455,3 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
     }
   }
 }
-
-#if 0
-[[maybe_unused]] [[nodiscard]]
-static PgError tracker_handle_event(Tracker *tracker, PgAioEvent event_watch,
-                                    PgAioEventDyn *events_change,
-                                    PgArena *events_arena) {
-
-  switch (tracker->state) {
-  case TRACKER_STATE_NONE: {
-    if (0 == (PG_AIO_EVENT_KIND_OUT & event_watch.kind)) {
-      // Failed to connect or invalid API use.
-      return (PgError)PG_ERR_INVALID_VALUE;
-    }
-
-    {
-      PgArena pg_arena_tmp = tracker->arena;
-      PgHttpRequest tracker_http_req =
-          tracker_make_http_request(tracker->metadata, &pg_arena_tmp);
-      PgError err =
-          pg_http_write_request(&tracker->rg, tracker_http_req, pg_arena_tmp);
-      PG_ASSERT(!err); // Ring buffer too small.
-    }
-
-    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
-           "wrote http request to ring buffer", tracker->arena,
-           PG_L("write_space", pg_ring_write_space(tracker->rg)),
-           PG_L("read_space", pg_ring_read_space(tracker->rg)));
-
-    tracker->state = TRACKER_STATE_SENT_REQUEST;
-
-    *PG_DYN_PUSH(events_change, events_arena) = (PgAioEvent){
-        .kind = PG_AIO_EVENT_KIND_IN,
-        .os_handle = (u64)tracker->socket,
-        .action = PG_AIO_EVENT_ACTION_MOD,
-    };
-  } break;
-  case TRACKER_STATE_SENT_REQUEST: {
-    PgArena pg_arena_tmp = tracker->arena;
-    PgHttpResponseReadResult res_http =
-        pg_http_read_response(&tracker->rg, 128, &pg_arena_tmp);
-    if (res_http.err) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "invalid tracker http response", pg_arena_tmp,
-             PG_L("err", res_http.err));
-      return res_http.err;
-    }
-    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "read http tracker response",
-           pg_arena_tmp, PG_L("http.status", res_http.res.status));
-    tracker->state = TRACKER_STATE_RECEIVED_RESPONSE;
-
-    *PG_DYN_PUSH(events_change, events_arena) = (PgAioEvent){
-        .os_handle = (u64)tracker->socket,
-        .action = PG_AIO_EVENT_ACTION_DEL,
-    };
-  } break;
-  case TRACKER_STATE_RECEIVED_RESPONSE: {
-
-    // TODO: timer of ~1m to retrigger the state machine from the start.
-  } break;
-  default:
-    PG_ASSERT(0);
-    break;
-  }
-  return (PgError)0;
-}
-#endif

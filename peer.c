@@ -1,11 +1,17 @@
 #pragma once
 
-#include "bencode.c"
+#include "submodules/cstd/lib.c"
 
 #define HANDSHAKE_LENGTH 68
 #define LENGTH_LENGTH 4
 #define ERR_HANDSHAKE_INVALID 100
 #define BLOCK_LENGTH (1UL << 14)
+
+typedef enum {
+  PEER_STATE_NONE,
+  PEER_STATE_HANDSHAKED,
+  // More.
+} PeerState;
 
 typedef struct {
   u32 index, begin, length;
@@ -55,6 +61,7 @@ typedef struct {
   u64 os_handle;
   bool choked, interested;
   PgString remote_bitfield;
+  PeerState state;
 
   PgRing recv;
 } Peer;
@@ -64,7 +71,6 @@ PG_SLICE(Peer) PeerSlice;
 
 [[nodiscard]] [[maybe_unused]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
-
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
     return PG_S("PEER_MSG_KIND_CHOKE");
@@ -159,10 +165,75 @@ static void peer_release(Peer *peer, PgEventLoop *loop) {
   free(peer);
 }
 
+[[nodiscard]] static PgError peer_read_handshake(Peer *peer) {
+  PG_ASSERT(0 != peer->tmp_arena.start);
+
+  PgArena tmp_arena = peer->tmp_arena;
+  PgString handshake = {
+      .data = pg_arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
+      .len = HANDSHAKE_LENGTH,
+  };
+
+  if (!pg_ring_read_slice(&peer->recv, handshake)) {
+    return 0;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received handshake",
+         PG_L("address", peer->address), PG_L("handshake", handshake));
+
+  PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
+  PgString prefix_expected = PG_S("\x13"
+                                  "BitTorrent protocol");
+  if (!pg_string_eq(prefix, prefix_expected)) {
+    return ERR_HANDSHAKE_INVALID;
+  }
+
+  PgString reserved_bytes = PG_SLICE_RANGE(handshake, 20, 28);
+  (void)reserved_bytes; // Ignore.
+
+  PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
+  if (!pg_string_eq(info_hash_received, peer->info_hash)) {
+    return ERR_HANDSHAKE_INVALID;
+  }
+
+  PgString remote_peer_id = PG_SLICE_RANGE_START(handshake, 28 + 20);
+  PG_ASSERT(20 == remote_peer_id.len);
+  // Ignore remote_peer_id for now.
+
+  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received valid handshake",
+         PG_L("address", peer->address));
+
+  peer->state = PEER_STATE_HANDSHAKED;
+
+  return 0;
+}
+
+[[nodiscard]] [[maybe_unused]] static PgError
+peer_handle_recv_data(Peer *peer) {
+  for (u64 _i = 0; _i < 128; _i++) {
+    switch (peer->state) {
+    case PEER_STATE_NONE: {
+      PgError err = peer_read_handshake(peer);
+      if (err) {
+        return err;
+      }
+    } break;
+    case PEER_STATE_HANDSHAKED:
+      // TODO: Receive any message.
+      return 0;
+      // break;
+    default:
+      PG_ASSERT(0);
+    }
+  }
+  return 0;
+}
+
 [[maybe_unused]]
 static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
                              PgError err, PgString data) {
   PG_ASSERT(nullptr != ctx);
+  (void)os_handle;
 
   Peer *peer = ctx;
 
@@ -194,8 +265,11 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
     return;
   }
 
-  // TODO: Validate handshake, etc.
-  (void)os_handle;
+  PgError err_handle = peer_handle_recv_data(peer);
+  if (err_handle) {
+    peer_release(peer, loop);
+    return;
+  }
 }
 
 [[maybe_unused]]
@@ -308,58 +382,6 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   return 0;
 }
-
-#if 0
-[[nodiscard]] static PgError peer_receive_handshake(Peer *peer) {
-  PG_ASSERT(0 != peer->tmp_arena.start);
-
-  PgArena tmp_arena = peer->tmp_arena;
-  PgString handshake = {
-      .data = pg_arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
-      .len = HANDSHAKE_LENGTH,
-  };
-
-  PgError res_io_err = pg_reader_read_exactly(&peer->reader, handshake);
-  if (res_io_err) {
-    log(PG_LOG_LEVEL_ERROR, "peer_receive_handshake", &peer->arena,
-        PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-        PG_L("err", res_io_err));
-    return res_io_err;
-  }
-  log(PG_LOG_LEVEL_INFO, "peer_receive_handshake", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
-
-  PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
-  PgString prefix_expected = PG_S("\x13"
-                                  "BitTorrent protocol");
-  if (!pg_string_eq(prefix, prefix_expected)) {
-    log(PG_LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake prefix",
-        &peer->arena, PG_L("ipv4", peer->address.ip),
-        PG_L("port", peer->address.port), PG_L("recv", handshake));
-    return ERR_HANDSHAKE_INVALID;
-  }
-
-  PgString reserved_bytes = PG_SLICE_RANGE(handshake, 20, 28);
-  (void)reserved_bytes; // Ignore.
-
-  PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
-  if (!pg_string_eq(info_hash_received, peer->info_hash)) {
-    log(PG_LOG_LEVEL_ERROR, "peer_receive_handshake wrong handshake hash",
-        &peer->arena, PG_L("ipv4", peer->address.ip),
-        PG_L("port", peer->address.port), PG_L("recv", handshake));
-    return ERR_HANDSHAKE_INVALID;
-  }
-
-  PgString remote_peer_id = PG_SLICE_RANGE_START(handshake, 28 + 20);
-  PG_ASSERT(20 == remote_peer_id.len);
-  // Ignore remote_peer_id for now.
-
-  log(PG_LOG_LEVEL_INFO, "peer_receive_handshake valid", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
-
-  return 0;
-}
-#endif
 
 #if 0
 [[maybe_unused]]

@@ -184,6 +184,8 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
          PG_L("address", peer->address), PG_L("data", data));
+
+  // TODO: Validate handshake.
   (void)os_handle;
 }
 
@@ -296,22 +298,6 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
 }
 
 #if 0
-[[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
-  PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
-  PgError err = pg_writer_write_all(peer->writer, handshake);
-  if (err) {
-    log(PG_LOG_LEVEL_ERROR, "peer send handshake", &peer->arena,
-        PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-        PG_L("err", err));
-    return err;
-  }
-
-  log(PG_LOG_LEVEL_INFO, "peer sent handshake ok", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
-
-  return 0;
-}
-
 [[nodiscard]] static PgError peer_receive_handshake(Peer *peer) {
   PG_ASSERT(0 != peer->tmp_arena.start);
 

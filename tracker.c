@@ -343,6 +343,17 @@ tracker_read_http_response_body(Tracker *tracker) {
 }
 
 [[maybe_unused]]
+static void tracker_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
+
+  Tracker *tracker = ctx;
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: timer triggered",
+         tracker->arena, PG_L("os_handle", os_handle));
+
+  // TODO
+  (void)loop;
+}
+
+[[maybe_unused]]
 static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
                                 PgError io_err, PgString data) {
   PG_ASSERT(nullptr != ctx);
@@ -380,8 +391,20 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
     break;
   case TRACKER_STATE_WILL_READ_BODY: {
     PgBoolResult res_body = tracker_read_http_response_body(tracker);
+    // TODO: Reset the tracker to the initial state, setup a timer for X minutes
+    // to re-trigger the tracker fetch state machine.
+
     (void)res_body;
     (void)pg_event_loop_handle_close(loop, os_handle);
+
+    Pgu64Result res_timer =
+        pg_event_loop_timer_start(loop, PG_CLOCK_KIND_MONOTONIC,
+                                  10 * PG_Seconds, tracker, tracker_on_timer);
+    if (res_timer.err) {
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+             "tracker: failed to start timer", tracker->arena,
+             PG_L("err", err));
+    }
   } break;
   default:
     PG_ASSERT(0);

@@ -305,6 +305,28 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
          PG_L("resp.version_minor", (u64)resp.version_minor),
          PG_L("resp.headers.len", resp.headers.len));
 
+  // TODO: Read body.
+  Pgu64Result res_content_type = pg_http_headers_parse_content_length(
+      PG_DYN_SLICE(PgKeyValueSlice, resp.headers), tracker->arena);
+
+  if (res_content_type.err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to parse http response content type",
+           tracker->arena, PG_L("err", res_http.err), PG_L("data", data));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
+         "tracker: http response content length", tracker->arena,
+         PG_L("length", res_content_type.res));
+  if (res_content_type.res > 0) {
+    // TODO: Read N bytes of body.
+  } else {
+    // TODO: Read until end.
+  }
+
   {
     PgError err_read_stop = pg_event_loop_read_stop(loop, os_handle);
     if (err_read_stop) {

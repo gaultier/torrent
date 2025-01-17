@@ -284,62 +284,54 @@ static void test_tracker_compute_info_hash() {
   PG_ASSERT(0 == memcmp(hash.data, expected_hash, hash.len));
 }
 
-#if 0
-static void test_peer_send_handshake() {
-  PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
-  PgArena pg_writer_arena = pg_arena_make_from_virtual_mem(4 * KiB);
+static void test_peer_make_handshake() {
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgString info_hash = PG_S("abcdefghijklmnopqrst");
+  PgString handshake = peer_make_handshake(info_hash, &arena);
 
-  Peer peer = {0};
-  peer.address.port = 6881;
-  peer.writer = pg_writer_make_for_buf(&pg_writer_arena);
-  peer.arena = arena;
-  peer.info_hash = PG_S("abcdefghijklmnopqrst");
-  PG_ASSERT(20 == peer.info_hash.len);
-
-  PgError err = peer_send_handshake(&peer);
-  PG_ASSERT(0 == err);
-
-  WriterBufCtx *ctx = peer.writer.ctx;
-  PG_ASSERT(HANDSHAKE_LENGTH == ctx->sb.len);
+  PG_ASSERT(HANDSHAKE_LENGTH == handshake.len);
+  PG_ASSERT(pg_string_starts_with(handshake, PG_S("\x13"
+                                                  "BitTorrent protocol")));
 }
 
+#if 0
 static void test_peer_receive_handshake() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * KiB);
   PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   PgString req_slice = PG_S("\x13"
-                       "BitTorrent protocol"
-                       "\x01"
-                       "\x02"
-                       "\x03"
-                       "\x04"
-                       "\x05"
-                       "\x06"
-                       "\x07"
-                       "\x08"
+                            "BitTorrent protocol"
+                            "\x01"
+                            "\x02"
+                            "\x03"
+                            "\x04"
+                            "\x05"
+                            "\x06"
+                            "\x07"
+                            "\x08"
 
-                       "abcdefghijklmnopqrst"
+                            "abcdefghijklmnopqrst"
 
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09"
-                       "\x09");
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09"
+                            "\x09");
 
   Peer peer = {0};
   peer.address.port = 6881;
@@ -362,11 +354,11 @@ static void test_peer_receive_any_message_bitfield() {
   PgArena tmp_arena = pg_arena_make_from_virtual_mem(4 * KiB);
 
   PgString read_slice = PG_S("\x0"
-                        "\x0"
-                        "\x0"
-                        "\x1b"
-                        "\x5"
-                        "abcdefghijklmnopqrstuvwxyz");
+                             "\x0"
+                             "\x0"
+                             "\x1b"
+                             "\x5"
+                             "abcdefghijklmnopqrstuvwxyz");
 
   Peer peer = {0};
   peer.address.port = 6881;
@@ -450,8 +442,8 @@ int main() {
   test_decode_metainfo();
   test_bencode_decode_encode();
   test_tracker_compute_info_hash();
+  test_peer_make_handshake();
 #if 0
-  test_peer_send_handshake();
   test_peer_receive_handshake();
   test_peer_receive_any_message_bitfield();
   test_peer_send_message();

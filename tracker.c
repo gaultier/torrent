@@ -133,6 +133,8 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
 tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
   TrackerResponseResult res = {0};
 
+  // TODO: Optimize memory usage with a temp arena.
+
   BencodeValueDecodeResult tracker_response_bencode_res =
       bencode_decode_value(s, arena);
   if (tracker_response_bencode_res.err) {

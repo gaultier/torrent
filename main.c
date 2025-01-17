@@ -66,6 +66,8 @@ int main(int argc, char *argv[]) {
   }
   PgEventLoop loop = res_loop.res;
   {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
+           PG_L("host", announce.host));
     Pgu64Result res_tracker = pg_event_loop_dns_resolve_ipv4_tcp_start(
         &loop, announce.host, announce.port, tracker_on_dns_resolve, &tracker);
     if (res_tracker.err) {

@@ -101,30 +101,26 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
       break;
     }
 
-    PgString pg_net_ipv4_str = PG_SLICE_RANGE(remaining, 0, 4);
+    PgString ipv4_str = PG_SLICE_RANGE(remaining, 0, 4);
     PgString port_str = PG_SLICE_RANGE(remaining, 4, 6);
 
     remaining = PG_SLICE_RANGE_START(remaining, 6);
 
-    u32 pg_net_ipv4_network_order = 0;
-    memcpy(&pg_net_ipv4_network_order, pg_net_ipv4_str.data,
-           pg_net_ipv4_str.len);
+    u32 ipv4_network_order = 0;
+    memcpy(&ipv4_network_order, ipv4_str.data, ipv4_str.len);
 
     u16 port_network_order = 0;
     memcpy(&port_network_order, port_str.data, port_str.len);
 
     PgIpv4Address address = {
-        .ip = ntohl(pg_net_ipv4_network_order),
+        .ip = ntohl(ipv4_network_order),
         .port = ntohs(port_network_order),
     };
 
     {
-      PgString pg_net_ipv4_addr_str =
-          pg_net_ipv4_address_to_string(address, arena);
       pg_log(logger, PG_LOG_LEVEL_INFO, "tracker_parse_compact_peers",
              PG_L("res.peer_addresses.len", res.peer_addresses.len),
-             PG_L("ip", address.ip), PG_L("port", address.port),
-             PG_L("address", pg_net_ipv4_addr_str));
+             PG_L("address", address));
     }
     *PG_DYN_PUSH(&res.peer_addresses, arena) = address;
   }
@@ -454,7 +450,7 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
-         PG_L("ip", address.ip), PG_L("port", address.port));
+         PG_L("address", address));
 
   {
     PgArena arena_tmp = tracker->arena;

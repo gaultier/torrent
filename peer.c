@@ -168,13 +168,22 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
-           PG_L("err", err));
+           PG_L("address", peer->address), PG_L("err", err));
+    peer_release(peer, loop);
+    return;
+  }
+
+  // TODO: What to do here, maybe `read_stop` and set a timer to `read_start` at
+  // a later time?
+  if (0 == data.len) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: nothing to read, closing",
+           PG_L("address", peer->address));
     peer_release(peer, loop);
     return;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
-         PG_L("data", data));
+         PG_L("address", peer->address), PG_L("data", data));
   (void)os_handle;
 }
 
@@ -187,7 +196,7 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("err", err));
+           PG_L("address", peer->address), PG_L("err", err));
     peer_release(peer, loop);
     return;
   }
@@ -199,7 +208,7 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
   if (err_read) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
-           PG_L("err", err_read));
+           PG_L("address", peer->address), PG_L("err", err_read));
     peer_release(peer, loop);
     return;
   }

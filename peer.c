@@ -209,6 +209,35 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
   return PG_DYN_SLICE(PgString, sb);
 }
 
+[[maybe_unused]]
+static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
+                            PgError err) {
+  Peer *peer = ctx;
+
+  if (err) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to connect",
+           PG_L("err", err), PG_L("address", peer->address));
+    peer_release(peer, loop);
+    return;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
+         PG_L("address", peer->address));
+
+  {
+    PgArena arena_tmp = peer->arena;
+    PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
+    PgError err_write =
+        pg_event_loop_write(loop, os_handle, handshake, peer_on_tcp_write);
+    if (err_write) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+             PG_L("err", err_write), PG_L("address", peer->address));
+      peer_release(peer, loop);
+      return;
+    }
+  }
+}
+
 [[maybe_unused]] [[nodiscard]] static PgError peer_start(PgEventLoop *loop,
                                                          Peer *peer) {
   Pgu64Result res_tcp = pg_event_loop_tcp_init(loop, peer);
@@ -219,17 +248,14 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
   }
   peer->os_handle = res_tcp.res;
 
-  {
-    PgArena arena_tmp = peer->arena;
-    PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
-    PgError err_write =
-        pg_event_loop_write(loop, res_tcp.res, handshake, peer_on_tcp_write);
-    if (err_write) {
-      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-             PG_L("err", err_write), PG_L("address", peer->address));
-      return err_write;
-    }
+  PgError err_connect = pg_event_loop_tcp_connect(
+      loop, peer->os_handle, peer->address, peer_on_connect);
+  if (err_connect) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
+           PG_L("err", err_connect), PG_L("address", peer->address));
+    return err_connect;
   }
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: started",
          PG_L("address", peer->address));
 

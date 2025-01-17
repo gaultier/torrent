@@ -240,6 +240,7 @@ typedef struct {
   u16 port;
   PgArena arena;
   TrackerMetadata metadata;
+  PgRing http_response_recv;
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
@@ -272,7 +273,37 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read",
          tracker->arena, PG_L("data", data));
 
-  // TODO: Parse http.
+  if (!pg_ring_write_slice(&tracker->http_response_recv, data)) {
+    pg_log(
+        tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: http response too big",
+        tracker->arena, PG_L("data.len", data.len),
+        PG_L("write_space", pg_ring_write_space(tracker->http_response_recv)));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+
+  PgHttpResponseReadResult res_http =
+      pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
+  if (res_http.err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to parse http response", tracker->arena,
+           PG_L("err", res_http.err), PG_L("data", data));
+    // TODO: stop event loop?
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
+  if (!res_http.done) {
+    // Keep reading more.
+    return;
+  }
+
+  PgHttpResponse resp = res_http.res;
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: read http response",
+         tracker->arena, PG_L("resp.status", resp.status),
+         PG_L("resp.version_major", (u64)resp.version_major),
+         PG_L("resp.version_minor", (u64)resp.version_minor),
+         PG_L("resp.headers.len", resp.headers.len));
 }
 
 [[maybe_unused]]
@@ -299,6 +330,8 @@ static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     (void)pg_event_loop_handle_close(loop, os_handle);
     return;
   }
+
+  tracker->http_response_recv = pg_ring_make(4096, &tracker->arena);
 }
 
 [[maybe_unused]]

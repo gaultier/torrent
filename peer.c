@@ -51,6 +51,7 @@ typedef struct {
   PgReader reader;
   PgWriter writer;
   PgString info_hash;
+  PgLogger *logger;
   PgArena arena;
   PgArena tmp_arena;
   int pid;
@@ -93,11 +94,13 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer peer_make(PgIpv4Address address,
-                                                     PgString info_hash) {
+[[maybe_unused]] [[nodiscard]] static Peer
+peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger) {
   Peer peer = {0};
-  peer.info_hash = info_hash;
   peer.address = address;
+  peer.info_hash = info_hash;
+  peer.logger = logger;
+
   peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   peer.choked = true;
@@ -187,6 +190,32 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
   return PG_DYN_SLICE(PgString, sb);
 }
 
+[[maybe_unused]] [[nodiscard]] static PgError peer_start(PgEventLoop *loop,
+                                                         Peer *peer) {
+  Pgu64Result res_tcp = pg_event_loop_tcp_init(loop, peer);
+  if (res_tcp.err) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
+           PG_L("err", res_tcp.err), PG_L("address", peer->address));
+    return res_tcp.err;
+  }
+
+  {
+    PgArena arena_tmp = peer->arena;
+    PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
+    PgError err_write =
+        pg_event_loop_write(loop, res_tcp.res, handshake, peer_on_tcp_write);
+    if (err_write) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+             PG_L("err", err_write), PG_L("address", peer->address));
+      return err_write;
+    }
+  }
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: started",
+         PG_L("address", peer->address));
+
+  return 0;
+}
+
 #if 0
 [[nodiscard]] static PgError peer_send_handshake(Peer *peer) {
   PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
@@ -255,6 +284,7 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
 }
 #endif
 
+#if 0
 [[maybe_unused]]
 static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
                              PeerDyn *peers_active, u64 count,
@@ -268,12 +298,11 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
     *PG_DYN_PUSH(peers_active, arena) = peer;
     PG_SLICE_SWAP_REMOVE(addresses_all, idx);
 
-#if 0
     pg_log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
            PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
-#endif
   }
 }
+#endif
 
 #if 0
 [[nodiscard]] static PeerMessageResult peer_receive_any_message(Peer *peer) {

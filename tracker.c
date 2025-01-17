@@ -343,32 +343,14 @@ tracker_read_http_response_body(Tracker *tracker) {
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         Peer *peer = calloc(sizeof(Peer), 1);
-        *peer = peer_make(addr, tracker->metadata.info_hash);
+        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger);
 
         // TODO: move to peer.c
 
-        Pgu64Result res_tcp = pg_event_loop_tcp_init(tracker->loop, peer);
-        if (res_tcp.err) {
-          pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-                 "peer: failed to tcp init", PG_L("err", res_bencode.err),
-                 PG_L("address", addr));
+        PgError err_peer = peer_start(tracker->loop, peer);
+        if (err_peer) {
           free(peer);
           continue;
-        }
-
-        {
-          PgArena arena_tmp = tracker->arena;
-          PgString handshake =
-              peer_make_handshake(tracker->metadata.info_hash, &arena_tmp);
-          PgError err_write = pg_event_loop_write(tracker->loop, res_tcp.res,
-                                                  handshake, peer_on_tcp_write);
-          if (err_write) {
-            pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-                   "peer: failed to tcp write", PG_L("err", res_bencode.err),
-                   PG_L("address", addr));
-            free(peer);
-            continue;
-          }
         }
       }
 

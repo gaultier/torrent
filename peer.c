@@ -160,10 +160,27 @@ static void peer_release(Peer *peer, PgEventLoop *loop) {
 }
 
 [[maybe_unused]]
+static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
+                             PgError err, PgString data) {
+  PG_ASSERT(nullptr != ctx);
+
+  Peer *peer = ctx;
+
+  if (err) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
+           PG_L("err", err));
+    peer_release(peer, loop);
+    return;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
+         PG_L("data", data));
+  (void)os_handle;
+}
+
+[[maybe_unused]]
 static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
                               PgError err) {
-  (void)loop;
-  (void)os_handle;
   PG_ASSERT(nullptr != ctx);
 
   Peer *peer = ctx;
@@ -178,7 +195,14 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: wrote",
          PG_L("address", peer->address));
 
-  // TODO: read_start.
+  PgError err_read =
+      pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
+  if (err_read) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
+           PG_L("err", err_read));
+    peer_release(peer, loop);
+    return;
+  }
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString

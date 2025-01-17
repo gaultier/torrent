@@ -293,6 +293,42 @@ static void peer_release(Peer *peer, PgEventLoop *loop) {
   return res;
 }
 
+[[maybe_unused]] static void peer_handle_message(Peer *peer, PeerMessage msg) {
+  switch (msg.kind) {
+  case PEER_MSG_KIND_CHOKE:
+    peer->choked = true;
+    break;
+  case PEER_MSG_KIND_UNCHOKE:
+    peer->choked = false;
+    break;
+  case PEER_MSG_KIND_INTERESTED:
+    peer->interested = true;
+    break;
+  case PEER_MSG_KIND_UNINTERESTED:
+    peer->interested = false;
+    break;
+  case PEER_MSG_KIND_HAVE:
+    break;
+  case PEER_MSG_KIND_BITFIELD:
+    peer->remote_bitfield = msg.bitfield;
+    break;
+  case PEER_MSG_KIND_REQUEST:
+    // TODO
+    break;
+  case PEER_MSG_KIND_PIECE:
+    // TODO
+    break;
+  case PEER_MSG_KIND_CANCEL:
+    // TODO
+    break;
+  case PEER_MSG_KIND_KEEP_ALIVE:
+    // TODO
+    break;
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 [[nodiscard]] [[maybe_unused]] static PgError
 peer_handle_recv_data(Peer *peer) {
   for (u64 _i = 0; _i < 8; _i++) {
@@ -308,6 +344,7 @@ peer_handle_recv_data(Peer *peer) {
       if (res_msg.err) {
         return res_msg.err;
       }
+      peer_handle_message(peer, res_msg.res);
 
     } break;
     default:
@@ -491,42 +528,6 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
 }
 #endif
 
-[[maybe_unused]] static void peer_handle_message(Peer *peer, PeerMessage msg) {
-  switch (msg.kind) {
-  case PEER_MSG_KIND_CHOKE:
-    peer->choked = true;
-    break;
-  case PEER_MSG_KIND_UNCHOKE:
-    peer->choked = false;
-    break;
-  case PEER_MSG_KIND_INTERESTED:
-    peer->interested = true;
-    break;
-  case PEER_MSG_KIND_UNINTERESTED:
-    peer->interested = false;
-    break;
-  case PEER_MSG_KIND_HAVE:
-    break;
-  case PEER_MSG_KIND_BITFIELD:
-    peer->remote_bitfield = msg.bitfield;
-    break;
-  case PEER_MSG_KIND_REQUEST:
-    // TODO
-    break;
-  case PEER_MSG_KIND_PIECE:
-    // TODO
-    break;
-  case PEER_MSG_KIND_CANCEL:
-    // TODO
-    break;
-  case PEER_MSG_KIND_KEEP_ALIVE:
-    // TODO
-    break;
-  default:
-    PG_ASSERT(0);
-  }
-}
-
 #if 0
 [[maybe_unused]] [[nodiscard]] static PgError
 peer_send_message(Peer *peer, PeerMessage msg) {
@@ -605,94 +606,5 @@ peer_send_message(Peer *peer, PeerMessage msg) {
       PG_L("s.len", s.len), PG_L("err", res));
 
   return res;
-}
-
-[[maybe_unused]]
-static void peer_spawn(Peer *peer) {
-  if (peer->pid) { // Idempotency.
-    return;
-  }
-
-  log(PG_LOG_LEVEL_INFO, "peer spawn", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port));
-
-  if (-1 == pipe(peer->pipe_child_to_parent)) {
-    log(PG_LOG_LEVEL_ERROR, "failed to pipe(2)", &peer->arena,
-        PG_L("err", errno));
-    exit(errno);
-  }
-
-  peer->liveness_last_message_ns = monotonic_now_ns();
-
-  int child_pid = fork();
-  if (-1 == child_pid) {
-    log(PG_LOG_LEVEL_ERROR, "failed to fork(2)", &peer->arena,
-        PG_L("err", errno));
-    exit(errno);
-  }
-
-  if (child_pid > 0) { // Parent.
-    peer->pid = child_pid;
-    close(peer->pipe_child_to_parent[1]); // Close write end of the
-                                          // liveness pipe.
-    return;
-  }
-
-  // Child.
-  close(peer->pipe_child_to_parent[0]); // Close read end of the
-                                        // liveness pipe.
-  {
-    PgError err = peer_connect(peer);
-    if (err) {
-      exit(1);
-    }
-  }
-
-  {
-    u64 now_ns = monotonic_now_ns();
-    write(peer->pipe_child_to_parent[1], &now_ns, sizeof(now_ns));
-  }
-
-  {
-    PgError err = peer_send_handshake(peer);
-    if (err) {
-      exit(1);
-    }
-  }
-  {
-    PgError err = peer_receive_handshake(peer);
-    if (err) {
-      exit(1);
-    }
-  }
-  {
-    PeerMessageResult res = peer_receive_any_message(peer);
-    if (res.err) {
-      exit(1);
-    }
-  }
-  {
-    PeerMessage msg = {
-        .kind = PEER_MSG_KIND_REQUEST,
-        .request =
-            {
-                .index = 2,
-                .begin = 17 * BLOCK_LENGTH,
-                .length = BLOCK_LENGTH,
-            },
-    };
-    PgError res_send_msg = peer_send_message(peer, msg);
-    if (res_send_msg) {
-      exit(1);
-    }
-  }
-  {
-    PeerMessageResult res = peer_receive_any_message(peer);
-    if (res.err) {
-      exit(1);
-    }
-  }
-
-  sleep(10000);
 }
 #endif

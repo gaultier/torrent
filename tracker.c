@@ -1,5 +1,6 @@
 #pragma once
 #include "bencode.c"
+#include "peer.c"
 
 typedef enum {
   TRACKER_EVENT_STARTED,
@@ -327,6 +328,17 @@ tracker_read_http_response_body(Tracker *tracker) {
              PG_L("failure_reason", res_bencode.res.failure),
              PG_L("peers.len", res_bencode.res.peer_addresses.len),
              PG_L("interval_secs", res_bencode.res.interval_secs));
+
+      PgIpv4AddressSlice peers =
+          PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
+#if 0
+      // TODO
+      for (u64 i = 0; i < peers.len; i++) {
+        PgIpv4Address addr = PG_SLICE_AT(peers, i);
+        Peer peer = peer_make(addr, tracker->metadata.info_hash);
+        pg_event_loop_tcp_init(loop, peer);
+      }
+#endif
 
       return res;
     }

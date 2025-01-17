@@ -48,8 +48,6 @@ PG_RESULT(PeerMessage) PeerMessageResult;
 
 typedef struct {
   PgIpv4Address address;
-  PgReader reader;
-  PgWriter writer;
   PgString info_hash;
   PgLogger *logger;
   PgArena arena;
@@ -57,6 +55,8 @@ typedef struct {
   u64 os_handle;
   bool choked, interested;
   PgString remote_bitfield;
+
+  PgRing recv;
 } Peer;
 
 PG_DYN(Peer) PeerDyn;
@@ -185,7 +185,16 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
          PG_L("address", peer->address), PG_L("data", data));
 
-  // TODO: Validate handshake.
+  if (!pg_ring_write_slice(&peer->recv, data)) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: read too much data",
+           PG_L("address", peer->address),
+           PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
+           PG_L("data.len", data.len));
+    peer_release(peer, loop);
+    return;
+  }
+
+  // TODO: Validate handshake, etc.
   (void)os_handle;
 }
 
@@ -259,6 +268,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
+  // Maximum size of one message should be below 2048?
+  // TODO: Revisit this number (e.g. for big files & the Bitfield message).
+  peer->recv = pg_ring_make(2048, &peer->arena);
   {
     PgArena arena_tmp = peer->arena;
     PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);

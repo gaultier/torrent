@@ -252,7 +252,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
 
-  tracker.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  tracker.arena = pg_arena_make_from_virtual_mem(8 * PG_KiB);
 
   return tracker;
 }
@@ -304,6 +304,17 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
          PG_L("resp.version_major", (u64)resp.version_major),
          PG_L("resp.version_minor", (u64)resp.version_minor),
          PG_L("resp.headers.len", resp.headers.len));
+
+  {
+    PgError err_read_stop = pg_event_loop_read_stop(loop, os_handle);
+    if (err_read_stop) {
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+             "tracker: failed to stop tcp read", tracker->arena,
+             PG_L("err", err));
+    }
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    return;
+  }
 }
 
 [[maybe_unused]]

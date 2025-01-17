@@ -253,7 +253,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
 
-  tracker.arena = pg_arena_make_from_virtual_mem(8 * PG_KiB);
+  tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
   return tracker;
 }

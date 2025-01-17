@@ -228,9 +228,9 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
 }
 
 typedef enum {
-  TRACKER_STATE_NONE,
-  TRACKER_STATE_SENT_REQUEST,
-  TRACKER_STATE_RECEIVED_RESPONSE,
+  TRACKER_STATE_WILL_READ_HTTP_RESPONSE,
+  TRACKER_STATE_WILL_READ_BODY,
+  TRACKER_STATE_DONE,
 } TrackerState;
 
 typedef struct {
@@ -240,7 +240,9 @@ typedef struct {
   u16 port;
   PgArena arena;
   TrackerMetadata metadata;
+
   PgRing http_response_recv;
+  u64 http_response_content_length;
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
@@ -256,15 +258,60 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
 
   return tracker;
 }
+
+[[maybe_unused]] static PgError tracker_try_parse_response(Tracker *tracker) {
+  PgHttpResponseReadResult res_http =
+      pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
+  if (res_http.err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to parse http response", tracker->arena,
+           PG_L("err", res_http.err));
+    return res_http.err;
+  }
+
+  if (!res_http.done) {
+    // Keep reading more.
+    return 0;
+  }
+
+  PgHttpResponse resp = res_http.res;
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: read http response",
+         tracker->arena, PG_L("resp.status", resp.status),
+         PG_L("resp.version_major", (u64)resp.version_major),
+         PG_L("resp.version_minor", (u64)resp.version_minor),
+         PG_L("resp.headers.len", resp.headers.len));
+
+  Pgu64Result res_content_length = pg_http_headers_parse_content_length(
+      PG_DYN_SLICE(PgKeyValueSlice, resp.headers), tracker->arena);
+
+  if (res_content_length.err) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to parse http response content type",
+           tracker->arena, PG_L("err", res_http.err));
+    return res_content_length.err;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
+         "tracker: http response content length", tracker->arena,
+         PG_L("length", res_content_length.res));
+  if (res_content_length.res > 0) {
+    tracker->http_response_content_length = res_content_length.res;
+  }
+
+  tracker->state = TRACKER_STATE_WILL_READ_BODY;
+
+  return 0;
+}
+
 [[maybe_unused]]
 static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
-                                PgError err, PgString data) {
+                                PgError io_err, PgString data) {
   PG_ASSERT(nullptr != ctx);
   Tracker *tracker = ctx;
 
-  if (err) {
+  if (io_err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
-           tracker->arena, PG_L("err", err));
+           tracker->arena, PG_L("err", io_err));
     // TODO: stop event loop?
     (void)pg_event_loop_handle_close(loop, os_handle);
     return;
@@ -283,59 +330,25 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
     return;
   }
 
-  PgHttpResponseReadResult res_http =
-      pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
-  if (res_http.err) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to parse http response", tracker->arena,
-           PG_L("err", res_http.err), PG_L("data", data));
+  PgError err = 0;
+  switch (tracker->state) {
+  case TRACKER_STATE_WILL_READ_HTTP_RESPONSE:
+    err = tracker_try_parse_response(tracker);
+    break;
+  case TRACKER_STATE_WILL_READ_BODY:
+    // TODO: read body.
+    break;
+  case TRACKER_STATE_DONE:
+    (void)pg_event_loop_handle_close(loop, os_handle);
+    break;
+  default:
+    PG_ASSERT(0);
+    break;
+  }
+
+  if (err) {
     // TODO: stop event loop?
     (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-  if (!res_http.done) {
-    // Keep reading more.
-    return;
-  }
-
-  PgHttpResponse resp = res_http.res;
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: read http response",
-         tracker->arena, PG_L("resp.status", resp.status),
-         PG_L("resp.version_major", (u64)resp.version_major),
-         PG_L("resp.version_minor", (u64)resp.version_minor),
-         PG_L("resp.headers.len", resp.headers.len));
-
-  // TODO: Read body.
-  Pgu64Result res_content_type = pg_http_headers_parse_content_length(
-      PG_DYN_SLICE(PgKeyValueSlice, resp.headers), tracker->arena);
-
-  if (res_content_type.err) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to parse http response content type",
-           tracker->arena, PG_L("err", res_http.err), PG_L("data", data));
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
-         "tracker: http response content length", tracker->arena,
-         PG_L("length", res_content_type.res));
-  if (res_content_type.res > 0) {
-    // TODO: Read N bytes of body.
-  } else {
-    // TODO: Read until end.
-  }
-
-  {
-    PgError err_read_stop = pg_event_loop_read_stop(loop, os_handle);
-    if (err_read_stop) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to stop tcp read", tracker->arena,
-             PG_L("err", err));
-    }
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
   }
 }
 

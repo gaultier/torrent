@@ -54,10 +54,7 @@ typedef struct {
   PgLogger *logger;
   PgArena arena;
   PgArena tmp_arena;
-  int pid;
-  int pipe_child_to_parent[2];
-  u64 liveness_last_message_ns;
-  bool tombstone;
+  u64 os_handle;
   bool choked, interested;
   PgString remote_bitfield;
 } Peer;
@@ -154,12 +151,34 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger) {
 #endif
 
 [[maybe_unused]]
+static void peer_release(Peer *peer, PgEventLoop *loop) {
+
+  (void)pg_arena_release(&peer->arena);
+  (void)pg_arena_release(&peer->tmp_arena);
+  (void)pg_event_loop_handle_close(loop, peer->os_handle);
+  free(peer);
+}
+
+[[maybe_unused]]
 static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
                               PgError err) {
   (void)loop;
   (void)os_handle;
-  (void)ctx;
-  (void)err;
+  PG_ASSERT(nullptr != ctx);
+
+  Peer *peer = ctx;
+
+  if (err) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+           PG_L("err", err));
+    peer_release(peer, loop);
+    return;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: wrote",
+         PG_L("address", peer->address));
+
+  // TODO: read_start.
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString
@@ -198,6 +217,7 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
            PG_L("err", res_tcp.err), PG_L("address", peer->address));
     return res_tcp.err;
   }
+  peer->os_handle = res_tcp.res;
 
   {
     PgArena arena_tmp = peer->arena;

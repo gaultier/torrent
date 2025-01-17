@@ -5,7 +5,7 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
-  PgLogger logger = pg_log_make_logger_stdout_json(PG_LOG_LEVEL_DEBUG);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
 
   PgAioQueueResult res_queue_create = pg_aio_queue_create();
   if (res_queue_create.err) {

@@ -55,8 +55,6 @@ int main(int argc, char *argv[]) {
                             arena);
 
   PgUrl announce = res_decode_metainfo.res.announce;
-  Tracker tracker =
-      tracker_make(&logger, announce.host, announce.port, tracker_metadata);
   PgEventLoopResult res_loop =
       pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
   if (res_loop.err) {
@@ -65,6 +63,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   PgEventLoop loop = res_loop.res;
+  Tracker tracker = tracker_make(&logger, announce.host, announce.port,
+                                 tracker_metadata, &loop);
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
            PG_L("host", announce.host));

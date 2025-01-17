@@ -150,6 +150,15 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 #endif
 
+[[maybe_unused]]
+static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
+                              PgError err) {
+  (void)loop;
+  (void)os_handle;
+  (void)ctx;
+  (void)err;
+}
+
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_make_handshake(PgString info_hash, PgArena *arena) {
   Pgu8Dyn sb = {0};

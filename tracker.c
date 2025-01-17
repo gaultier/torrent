@@ -238,6 +238,7 @@ typedef struct {
   u16 port;
   PgArena arena;
   TrackerMetadata metadata;
+  PgEventLoop *loop;
 
   PgRing http_response_recv;
   u64 http_response_content_length;
@@ -245,12 +246,13 @@ typedef struct {
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
-                            TrackerMetadata metadata) {
+                            TrackerMetadata metadata, PgEventLoop *loop) {
   Tracker tracker = {0};
   tracker.logger = logger;
   tracker.host = host;
   tracker.port = port;
   tracker.metadata = metadata;
+  tracker.loop = loop;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
@@ -321,6 +323,10 @@ tracker_read_http_response_body(Tracker *tracker) {
       TrackerResponseResult res_bencode =
           tracker_parse_bencode_response(s, tracker->logger, &tracker->arena);
       if (res_bencode.err) {
+        pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+               "tracker: failed to decode bencode response",
+               PG_L("err", res_bencode.err), PG_L("bencoded", s));
+
         res.err = res_bencode.err;
         return res;
       }
@@ -333,14 +339,38 @@ tracker_read_http_response_body(Tracker *tracker) {
 
       PgIpv4AddressSlice peers =
           PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
-#if 0
       // TODO
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
-        Peer peer = peer_make(addr, tracker->metadata.info_hash);
-        pg_event_loop_tcp_init(loop, peer);
+        Peer *peer = calloc(sizeof(Peer), 1);
+        *peer = peer_make(addr, tracker->metadata.info_hash);
+
+        // TODO: move to peer.c
+
+        Pgu64Result res_tcp = pg_event_loop_tcp_init(tracker->loop, peer);
+        if (res_tcp.err) {
+          pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+                 "peer: failed to tcp init", PG_L("err", res_bencode.err),
+                 PG_L("address", addr));
+          free(peer);
+          continue;
+        }
+
+        {
+          PgArena arena_tmp = tracker->arena;
+          PgString handshake =
+              peer_make_handshake(tracker->metadata.info_hash, &arena_tmp);
+          PgError err_write = pg_event_loop_write(tracker->loop, res_tcp.res,
+                                                  handshake, peer_on_tcp_write);
+          if (err_write) {
+            pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+                   "peer: failed to tcp write", PG_L("err", res_bencode.err),
+                   PG_L("address", addr));
+            free(peer);
+            continue;
+          }
+        }
       }
-#endif
 
       return res;
     }

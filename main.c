@@ -9,7 +9,7 @@ int main(int argc, char *argv[]) {
 
   PgAioQueueResult res_queue_create = pg_aio_queue_create();
   if (res_queue_create.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create aio queue", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create aio queue",
            PG_L("err", res_queue_create.err));
     return 1;
   }
@@ -20,24 +20,24 @@ int main(int argc, char *argv[]) {
   PgStringResult res_torrent_file_read =
       pg_file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
            PG_L("err", res_torrent_file_read.err),
            PG_L("path", torrent_file_path));
     return 1;
   }
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file", arena,
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
          PG_L("path", torrent_file_path),
          PG_L("len", res_torrent_file_read.res.len));
 
   DecodeMetaInfoResult res_decode_metainfo =
       bencode_decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
            PG_L("err", res_decode_metainfo.err));
     return 1;
   }
 
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file", arena,
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file",
          PG_L("path", torrent_file_path));
 
   u16 port_ours_torrent = 6881;
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
   PgEventLoopResult res_loop =
       pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
   if (res_loop.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create event loop", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create event loop",
            PG_L("err", res_loop.err));
     return 1;
   }
@@ -71,14 +71,14 @@ int main(int argc, char *argv[]) {
     if (res_tracker.err) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to create an event loop dns request for the tracker",
-             arena, PG_L("err", res_tracker.err));
+             PG_L("err", res_tracker.err));
       return 1;
     }
   }
 
   PgError err_loop = pg_event_loop_run(&loop, -1);
   if (err_loop) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to run the event loop", arena,
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to run the event loop",
            PG_L("err", err_loop));
     return 1;
   }

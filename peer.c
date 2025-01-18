@@ -266,6 +266,7 @@ static void peer_release(Peer *peer) {
     }
     res.res.piece.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     res.res.piece.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
+    // TODO: Is it fine to duplicate this in terms of mem usage?
     res.res.piece.data =
         pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 

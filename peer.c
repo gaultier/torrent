@@ -115,7 +115,9 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.logger = logger;
   peer.loop = loop;
 
-  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  // At most one block is held in memory at any time, plus a bit of temporary
+  // data for encoding/decoding messages.
+  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_LENGTH);
   peer.choked = true;
   peer.interested = false;
 

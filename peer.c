@@ -117,6 +117,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
+  // TODO: Check if this still holds if we use async I/O for file rw.
   peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_LENGTH);
   peer.choked = true;
   peer.interested = false;
@@ -268,7 +269,6 @@ static void peer_release(Peer *peer) {
     }
     res.res.piece.index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     res.res.piece.begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    // TODO: Is it fine to duplicate this in terms of mem usage?
     res.res.piece.data =
         pg_string_dup(PG_SLICE_RANGE_START(data, 9), &peer->arena);
 

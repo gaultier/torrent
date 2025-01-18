@@ -3,6 +3,8 @@
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
 // TODO: Requesting & storing pieces.
+// TODO: Verify piece data hash.
+// TODO: Serve piece data.
 
 #include "submodules/cstd/lib.c"
 

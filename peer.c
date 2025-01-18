@@ -58,11 +58,12 @@ typedef struct {
   PgLogger *logger;
   PgArena arena;
   PgArena tmp_arena;
-  u64 os_handle;
   bool choked, interested;
   PgString remote_bitfield;
   PeerState state;
 
+  PgEventLoop *loop;
+  u64 os_handle;
   PgRing recv;
 } Peer;
 
@@ -97,12 +98,15 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer
-peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger) {
+[[maybe_unused]] [[nodiscard]] static Peer peer_make(PgIpv4Address address,
+                                                     PgString info_hash,
+                                                     PgLogger *logger,
+                                                     PgEventLoop *loop) {
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
   peer.logger = logger;
+  peer.loop = loop;
 
   peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
@@ -112,12 +116,13 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger) {
   return peer;
 }
 
+// TODO: Principled peer lifetime. Perhaps with a pool?
+// Need to be careful when the peer is released, and handling double release.
 [[maybe_unused]]
-static void peer_release(Peer *peer, PgEventLoop *loop) {
-
+static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->tmp_arena);
-  (void)pg_event_loop_handle_close(loop, peer->os_handle);
+  (void)pg_event_loop_handle_close(peer->loop, peer->os_handle);
   free(peer);
 }
 
@@ -293,7 +298,94 @@ static void peer_release(Peer *peer, PgEventLoop *loop) {
   return res;
 }
 
-[[maybe_unused]] static void peer_handle_message(Peer *peer, PeerMessage msg) {
+// NOTE: Uses the tmp_arena!.
+[[maybe_unused]] [[nodiscard]] static PgString
+peer_encode_message(PeerMessage msg, PgArena *arena) {
+
+  Pgu8Dyn sb = {0};
+  u64 cap = 16 + (PEER_MSG_KIND_BITFIELD == msg.kind ? (msg.bitfield.len) : 0);
+  PG_DYN_ENSURE_CAP(&sb, cap, arena);
+
+  switch (msg.kind) {
+  case PEER_MSG_KIND_KEEP_ALIVE:
+    pg_string_builder_append_u32(&sb, 0, arena);
+    break;
+
+  case PEER_MSG_KIND_CHOKE:
+  case PEER_MSG_KIND_UNCHOKE:
+  case PEER_MSG_KIND_INTERESTED:
+  case PEER_MSG_KIND_UNINTERESTED:
+    pg_string_builder_append_u32(&sb, 1, arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    break;
+
+  case PEER_MSG_KIND_HAVE:
+    pg_string_builder_append_u32(&sb, 1 + sizeof(u32), arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    pg_string_builder_append_u32(&sb, msg.have, arena);
+    break;
+
+  case PEER_MSG_KIND_BITFIELD:
+    pg_string_builder_append_u32(&sb, 1 + (u32)msg.bitfield.len, arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    PG_DYN_APPEND_SLICE(&sb, msg.bitfield, arena);
+    break;
+
+  case PEER_MSG_KIND_REQUEST:
+    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    pg_string_builder_append_u32(&sb, msg.request.index, arena);
+    pg_string_builder_append_u32(&sb, msg.request.begin, arena);
+    pg_string_builder_append_u32(&sb, msg.request.length, arena);
+    break;
+
+  case PEER_MSG_KIND_PIECE:
+    pg_string_builder_append_u32(
+        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len, arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    pg_string_builder_append_u32(&sb, msg.piece.index, arena);
+    pg_string_builder_append_u32(&sb, msg.piece.begin, arena);
+    PG_DYN_APPEND_SLICE(&sb, msg.piece.data, arena);
+    break;
+
+  case PEER_MSG_KIND_CANCEL:
+    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), arena);
+    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    pg_string_builder_append_u32(&sb, msg.cancel.index, arena);
+    pg_string_builder_append_u32(&sb, msg.cancel.begin, arena);
+    pg_string_builder_append_u32(&sb, msg.cancel.length, arena);
+    break;
+  default:
+    PG_ASSERT(0);
+  }
+
+  PG_ASSERT(sb.len >= sizeof(u32));
+
+  PgString s = PG_DYN_SLICE(PgString, sb);
+  return s;
+}
+
+[[maybe_unused]] static void peer_on_write(PgEventLoop *loop, u64 os_handle,
+                                           void *ctx, PgError err) {
+  (void)loop;
+  (void)os_handle;
+
+  PG_ASSERT(nullptr != ctx);
+  Peer *peer = ctx;
+
+  if (err) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
+           PG_L("err", err), PG_L("address", peer->address));
+    peer_release(peer);
+    return;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: write successful",
+         PG_L("address", peer->address));
+}
+
+[[maybe_unused]] static PgError peer_handle_message(Peer *peer,
+                                                    PeerMessage msg) {
   switch (msg.kind) {
   case PEER_MSG_KIND_CHOKE:
     peer->choked = true;
@@ -321,12 +413,23 @@ static void peer_release(Peer *peer, PgEventLoop *loop) {
   case PEER_MSG_KIND_CANCEL:
     // TODO
     break;
-  case PEER_MSG_KIND_KEEP_ALIVE:
-    // TODO
-    break;
+  case PEER_MSG_KIND_KEEP_ALIVE: {
+    PgArena arena_tmp = peer->arena;
+    PeerMessage msg_response = {.kind = PEER_MSG_KIND_KEEP_ALIVE};
+    PgString msg_encoded = peer_encode_message(msg_response, &arena_tmp);
+    PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
+                                      peer_on_write);
+    if (err) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
+             PG_L("err", err), PG_L("address", peer->address));
+      peer_release(peer);
+      return err;
+    }
+  } break;
   default:
     PG_ASSERT(0);
   }
+  return 0;
 }
 
 [[nodiscard]] [[maybe_unused]] static PgError
@@ -355,9 +458,10 @@ peer_handle_recv_data(Peer *peer) {
 }
 
 [[maybe_unused]]
-static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
-                             PgError err, PgString data) {
+static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
+                         PgError err, PgString data) {
   PG_ASSERT(nullptr != ctx);
+  (void)loop;
   (void)os_handle;
 
   Peer *peer = ctx;
@@ -365,7 +469,7 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
            PG_L("address", peer->address), PG_L("err", err));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 
@@ -374,7 +478,7 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (0 == data.len) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: nothing to read, closing",
            PG_L("address", peer->address));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 
@@ -386,13 +490,13 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
            PG_L("address", peer->address),
            PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
            PG_L("data.len", data.len));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 
   PgError err_handle = peer_handle_recv_data(peer);
   if (err_handle) {
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 }
@@ -407,19 +511,18 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address), PG_L("err", err));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: wrote",
          PG_L("address", peer->address));
 
-  PgError err_read =
-      pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
+  PgError err_read = pg_event_loop_read_start(loop, os_handle, peer_on_read);
   if (err_read) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
            PG_L("address", peer->address), PG_L("err", err_read));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 }
@@ -460,7 +563,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to connect",
            PG_L("err", err), PG_L("address", peer->address));
-    peer_release(peer, loop);
+    peer_release(peer);
     return;
   }
 
@@ -478,7 +581,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
     if (err_write) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
              PG_L("err", err_write), PG_L("address", peer->address));
-      peer_release(peer, loop);
+      peer_release(peer);
       return;
     }
   }
@@ -490,6 +593,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (res_tcp.err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
            PG_L("err", res_tcp.err), PG_L("address", peer->address));
+    peer_release(peer);
     return res_tcp.err;
   }
   peer->os_handle = res_tcp.res;
@@ -499,6 +603,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (err_connect) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
            PG_L("err", err_connect), PG_L("address", peer->address));
+    peer_release(peer);
     return err_connect;
   }
 
@@ -525,86 +630,5 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
     pg_log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
            PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
   }
-}
-#endif
-
-#if 0
-[[maybe_unused]] [[nodiscard]] static PgError
-peer_send_message(Peer *peer, PeerMessage msg) {
-  log(PG_LOG_LEVEL_INFO, "peer_send_message", &peer->arena,
-      PG_L("ipv4", peer->address.ip), PG_L("port", peer->address.port),
-      PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
-
-  PgError res = 0;
-
-  PgArena tmp_arena = peer->tmp_arena;
-  DynU8 sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 256, &tmp_arena);
-
-  switch (msg.kind) {
-  case PEER_MSG_KIND_KEEP_ALIVE:
-    pg_string_builder_append_u32(&sb, 0, &tmp_arena);
-    break;
-
-  case PEER_MSG_KIND_CHOKE:
-  case PEER_MSG_KIND_UNCHOKE:
-  case PEER_MSG_KIND_INTERESTED:
-  case PEER_MSG_KIND_UNINTERESTED:
-    pg_string_builder_append_u32(&sb, 1, &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    break;
-
-  case PEER_MSG_KIND_HAVE:
-    pg_string_builder_append_u32(&sb, 1 + sizeof(u32), &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.have, &tmp_arena);
-    break;
-
-  case PEER_MSG_KIND_BITFIELD:
-    pg_string_builder_append_u32(&sb, 1 + (u32)msg.bitfield.len, &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    PG_DYN_APPEND_SLICE(&sb, msg.bitfield, &tmp_arena);
-    break;
-
-  case PEER_MSG_KIND_REQUEST:
-    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.request.index, &tmp_arena);
-    pg_string_builder_append_u32(&sb, msg.request.begin, &tmp_arena);
-    pg_string_builder_append_u32(&sb, msg.request.length, &tmp_arena);
-    break;
-
-  case PEER_MSG_KIND_PIECE:
-    pg_string_builder_append_u32(
-        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len, &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.piece.index, &tmp_arena);
-    pg_string_builder_append_u32(&sb, msg.piece.begin, &tmp_arena);
-    PG_DYN_APPEND_SLICE(&sb, msg.piece.data, &tmp_arena);
-    break;
-
-  case PEER_MSG_KIND_CANCEL:
-    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), &tmp_arena);
-    *PG_DYN_PUSH(&sb, &tmp_arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.cancel.index, &tmp_arena);
-    pg_string_builder_append_u32(&sb, msg.cancel.begin, &tmp_arena);
-    pg_string_builder_append_u32(&sb, msg.cancel.length, &tmp_arena);
-    break;
-  default:
-    PG_ASSERT(0);
-  }
-
-  PG_ASSERT(sb.len >= sizeof(u32));
-
-  PgString s = PG_DYN_SLICE(PgString, sb);
-  res = pg_writer_write_all(peer->writer, s);
-
-  log(res ? PG_LOG_LEVEL_ERROR : PG_LOG_LEVEL_INFO, "peer sent message",
-      &peer->arena, PG_L("ipv4", peer->address.ip),
-      PG_L("port", peer->address.port),
-      PG_L("msg.kind", peer_message_kind_to_string(msg.kind)),
-      PG_L("s.len", s.len), PG_L("err", res));
-
-  return res;
 }
 #endif

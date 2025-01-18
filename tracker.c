@@ -343,11 +343,11 @@ tracker_read_http_response_body(Tracker *tracker) {
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         Peer *peer = calloc(sizeof(Peer), 1);
-        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger);
+        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
+                          tracker->loop);
 
         PgError err_peer = peer_start(tracker->loop, peer);
         if (err_peer) {
-          peer_release(peer, tracker->loop);
           continue;
         }
       }

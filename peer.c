@@ -1,5 +1,9 @@
 #pragma once
 
+// TODO: Timeouts.
+// TODO: Timer-triggered keep-alives.
+// TODO: Requesting & storing pieces.
+
 #include "submodules/cstd/lib.c"
 
 #define HANDSHAKE_LENGTH 68
@@ -230,6 +234,7 @@ static void peer_release(Peer *peer) {
   case PEER_MSG_KIND_BITFIELD: {
     res.res.kind = kind;
     // TODO: Length check?
+    // TODO: Error if we already received one bitfield.
     res.res.bitfield.len = length_announced - 1;
     if (0 == res.res.bitfield.len) {
       res.err = PG_ERR_INVALID_VALUE;

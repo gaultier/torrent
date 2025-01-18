@@ -187,8 +187,7 @@ static void peer_release(Peer *peer) {
 
   if (0 == length_announced) {
     res.res.kind = PEER_MSG_KIND_KEEP_ALIVE;
-    peer->recv = recv_tmp;
-    return res;
+    goto end;
   }
 
   PgString data = {
@@ -198,7 +197,6 @@ static void peer_release(Peer *peer) {
   if (!pg_ring_read_slice(&recv_tmp, data)) {
     return res;
   }
-  peer->recv = recv_tmp;
 
   u8 kind = PG_SLICE_AT(data, 0);
 
@@ -288,11 +286,13 @@ static void peer_release(Peer *peer) {
     return res;
   }
 
+end:
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
          PG_L("address", peer->address),
          PG_L("length_announced", length_announced),
-         PG_L("kind", peer_message_kind_to_string(kind)));
+         PG_L("kind", peer_message_kind_to_string(res.res.kind)));
 
+  peer->recv = recv_tmp;
   res.present = true;
   return res;
 }

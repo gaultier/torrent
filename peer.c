@@ -11,7 +11,6 @@
 
 #define HANDSHAKE_LENGTH 68
 #define LENGTH_LENGTH 4
-#define ERR_HANDSHAKE_INVALID 100
 #define BLOCK_LENGTH (1UL << 14)
 
 typedef enum {
@@ -155,7 +154,7 @@ static void peer_release(Peer *peer) {
   PgString prefix_expected = PG_S("\x13"
                                   "BitTorrent protocol");
   if (!pg_string_eq(prefix, prefix_expected)) {
-    return ERR_HANDSHAKE_INVALID;
+    return PG_ERR_INVALID_VALUE;
   }
 
   PgString reserved_bytes = PG_SLICE_RANGE(handshake, 20, 28);
@@ -163,7 +162,7 @@ static void peer_release(Peer *peer) {
 
   PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
   if (!pg_string_eq(info_hash_received, peer->info_hash)) {
-    return ERR_HANDSHAKE_INVALID;
+    return PG_ERR_INVALID_VALUE;
   }
 
   PgString remote_peer_id = PG_SLICE_RANGE_START(handshake, 28 + 20);

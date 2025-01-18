@@ -1,4 +1,8 @@
 #pragma once
+
+// TODO: Re-query tracker every N minutes.
+// TODO: Retry on failure (with exp backoff?).
+
 #include "bencode.c"
 #include "peer.c"
 

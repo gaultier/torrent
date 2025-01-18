@@ -5,6 +5,7 @@
 // TODO: Requesting & storing pieces.
 // TODO: Verify piece data hash.
 // TODO: Serve piece data.
+// TODO: Retry on failure (with exp backoff?).
 
 #include "submodules/cstd/lib.c"
 

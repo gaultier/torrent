@@ -50,14 +50,17 @@ typedef struct {
   };
 } PeerMessage;
 
-PG_RESULT(PeerMessage) PeerMessageResult;
+typedef struct {
+  bool present;
+  PgError err;
+  PeerMessage res;
+} PeerMessageReadResult;
 
 typedef struct {
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
   PgArena arena;
-  PgArena tmp_arena;
   bool choked, interested;
   PgString remote_bitfield;
   PeerState state;
@@ -109,7 +112,6 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.loop = loop;
 
   peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
-  peer.tmp_arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   peer.choked = true;
   peer.interested = false;
 
@@ -121,15 +123,12 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 [[maybe_unused]]
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
-  (void)pg_arena_release(&peer->tmp_arena);
   (void)pg_event_loop_handle_close(peer->loop, peer->os_handle);
   free(peer);
 }
 
 [[nodiscard]] static PgError peer_read_handshake(Peer *peer) {
-  PG_ASSERT(0 != peer->tmp_arena.start);
-
-  PgArena tmp_arena = peer->tmp_arena;
+  PgArena tmp_arena = peer->arena;
   PgString handshake = {
       .data = pg_arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
       .len = HANDSHAKE_LENGTH,
@@ -169,13 +168,12 @@ static void peer_release(Peer *peer) {
   return 0;
 }
 
-[[nodiscard]] static PeerMessageResult peer_read_any_message(Peer *peer) {
-  PG_ASSERT(peer->tmp_arena.start != 0);
+[[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
   PG_ASSERT(peer->arena.start != 0);
 
-  PeerMessageResult res = {0};
+  PeerMessageReadResult res = {0};
 
-  PgArena tmp_arena = peer->tmp_arena;
+  PgArena tmp_arena = peer->arena;
   PgRing recv_tmp = peer->recv;
 
   PgString length = {
@@ -295,10 +293,10 @@ static void peer_release(Peer *peer) {
          PG_L("length_announced", length_announced),
          PG_L("kind", peer_message_kind_to_string(kind)));
 
+  res.present = true;
   return res;
 }
 
-// NOTE: Uses the tmp_arena!.
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_encode_message(PeerMessage msg, PgArena *arena) {
 
@@ -386,6 +384,10 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 
 [[maybe_unused]] static PgError peer_handle_message(Peer *peer,
                                                     PeerMessage msg) {
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: handle message",
+         PG_L("address", peer->address),
+         PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
+
   switch (msg.kind) {
   case PEER_MSG_KIND_CHOKE:
     peer->choked = true;
@@ -421,10 +423,15 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
                                       peer_on_write);
     if (err) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
-             PG_L("err", err), PG_L("address", peer->address));
+             PG_L("err", err), PG_L("address", peer->address),
+             PG_L("msg_encoded", msg_encoded),
+             PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
       peer_release(peer);
       return err;
     }
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: sending keep alive",
+           PG_L("address", peer->address),
+           PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
   } break;
   default:
     PG_ASSERT(0);
@@ -443,9 +450,12 @@ peer_handle_recv_data(Peer *peer) {
       }
     } break;
     case PEER_STATE_HANDSHAKED: {
-      PeerMessageResult res_msg = peer_read_any_message(peer);
+      PeerMessageReadResult res_msg = peer_read_any_message(peer);
       if (res_msg.err) {
         return res_msg.err;
+      }
+      if (!res_msg.present) {
+        return 0;
       }
       peer_handle_message(peer, res_msg.res);
 

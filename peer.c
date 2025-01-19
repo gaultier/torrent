@@ -1,4 +1,5 @@
 #pragma once
+#include "download.c"
 
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
@@ -11,7 +12,6 @@
 
 #define HANDSHAKE_LENGTH 68
 #define LENGTH_LENGTH 4
-#define BLOCK_LENGTH (1UL << 14)
 
 typedef enum {
   PEER_STATE_NONE,

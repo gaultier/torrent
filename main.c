@@ -1,4 +1,3 @@
-#include "peer.c"
 #include "tracker.c"
 
 int main(int argc, char *argv[]) {
@@ -44,6 +43,9 @@ int main(int argc, char *argv[]) {
   };
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
+
+  u64 pieces_count = download_compute_pieces_count();
+  PgString download_pieces = pg_string_make(pieces_count, &arena);
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

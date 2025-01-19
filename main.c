@@ -7,15 +7,6 @@ int main(int argc, char *argv[]) {
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
 
-  PgAioQueueResult res_queue_create = pg_aio_queue_create();
-  if (res_queue_create.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create aio queue",
-           PG_L("err", res_queue_create.err));
-    return 1;
-  }
-  PgAioQueue queue = res_queue_create.res;
-  (void)queue; // FIXME.
-
   PgString torrent_file_path = cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
       pg_file_read_full(torrent_file_path, &arena);

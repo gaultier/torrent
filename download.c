@@ -14,17 +14,12 @@ download_is_piece_length_valid(u64 piece_length) {
 
 [[maybe_unused]] [[nodiscard]] static u64
 download_compute_blocks_count_in_piece(u64 piece_length) {
-  PG_ASSERT(piece_length > 0);
-
-  return piece_length / BLOCK_SIZE;
+  return pg_div_ceil(piece_length, BLOCK_SIZE);
 }
 
 [[maybe_unused]] [[nodiscard]] static u64
-download_compute_pieces_count(u64 blocks_count_in_piece, u64 total_file_size) {
-  PG_ASSERT(blocks_count_in_piece > 0);
-  PG_ASSERT(total_file_size > 0);
-
-  return total_file_size / blocks_count_in_piece / BLOCK_SIZE;
+download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
+  return pg_div_ceil(total_file_size, piece_length);
 }
 
 // TODO: use.

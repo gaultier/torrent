@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
       res_decode_metainfo.res.piece_length);
   PG_ASSERT(blocks_count_in_piece > 0);
   u64 pieces_count = download_compute_pieces_count(
-      blocks_count_in_piece, res_decode_metainfo.res.length);
+      res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
   PG_ASSERT(pieces_count > 0);
 
   // TODO: Fill this bitfield with the (hash verified) on-disk data.

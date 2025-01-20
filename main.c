@@ -44,8 +44,16 @@ int main(int argc, char *argv[]) {
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
 
-  u64 pieces_count = download_compute_pieces_count();
-  PgString download_pieces = pg_string_make(pieces_count, &arena);
+  u64 blocks_count_in_piece = download_compute_blocks_count_in_piece(
+      res_decode_metainfo.res.piece_length);
+  PG_ASSERT(blocks_count_in_piece > 0);
+  u64 pieces_count = download_compute_pieces_count(
+      blocks_count_in_piece, res_decode_metainfo.res.length);
+  PG_ASSERT(pieces_count > 0);
+
+  // TODO: Fill this bitfield with the (hash verified) on-disk data.
+  PgString bitfield_download_pieces = pg_string_make(pieces_count, &arena);
+  (void)bitfield_download_pieces;
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

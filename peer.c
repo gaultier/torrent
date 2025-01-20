@@ -120,7 +120,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
   // TODO: Check if this still holds if we use async I/O for file rw.
-  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_LENGTH);
+  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.choked = true;
   peer.interested = false;
 
@@ -265,7 +265,7 @@ static void peer_release(Peer *peer) {
   }
   case PEER_MSG_KIND_PIECE: {
     res.res.kind = kind;
-    if (1 + 2 * sizeof(u32) + BLOCK_LENGTH != length_announced) {
+    if (1 + 2 * sizeof(u32) + BLOCK_SIZE != length_announced) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }

@@ -66,3 +66,8 @@ download_verify_piece_hash(PgString data, PgString hash_expected) {
   pg_sha1(data, hash_got);
   return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
 }
+
+[[maybe_unused]] [[nodiscard]] static PgStringResult
+download_load_bitfield_pieces_from_disk(PgString path) {
+  PG_ASSERT(0 && "TODO");
+}

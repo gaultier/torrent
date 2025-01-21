@@ -68,13 +68,6 @@ download_verify_piece_hash(PgString data, PgString hash_expected) {
 }
 
 [[maybe_unused]] [[nodiscard]] static PgError
-download_file_on_chunk(PgString chunk, void *ctx) {
-  (void)chunk;
-  (void)ctx;
-  return 0;
-}
-
-[[maybe_unused]] [[nodiscard]] static PgError
 download_file_create_if_not_exists(PgString path, u64 size, PgArena arena) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
@@ -97,18 +90,28 @@ download_file_create_if_not_exists(PgString path, u64 size, PgArena arena) {
 typedef struct {
   PgString bitfield;
   PgString info_hash;
+  PgLogger *logger;
 } DownloadLoadBitfieldFromDisk;
+
+[[maybe_unused]] [[nodiscard]] static PgError
+download_file_on_chunk(PgString chunk, void *ctx) {
+  (void)chunk;
+  DownloadLoadBitfieldFromDisk *d = ctx;
+  pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len));
+  return 0;
+}
 
 [[maybe_unused]] [[nodiscard]] static PgStringResult
 download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
                                         u64 piece_length, u64 pieces_count,
-                                        PgArena *arena) {
+                                        PgLogger *logger, PgArena *arena) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
   DownloadLoadBitfieldFromDisk ctx = {
       .bitfield = pg_string_make(pieces_count, arena),
       .info_hash = info_hash,
+      .logger = logger,
   };
 
   PgStringResult res = {0};

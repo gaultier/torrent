@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
 
   PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
       res_decode_metainfo.res.name, res_decode_metainfo.res.pieces,
-      res_decode_metainfo.res.piece_length, pieces_count, &arena);
+      res_decode_metainfo.res.piece_length, pieces_count, &logger, &arena);
   if (res_bitfield_pieces.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
            PG_L("path", res_decode_metainfo.res.name),
@@ -72,7 +72,8 @@ int main(int argc, char *argv[]) {
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),
-         PG_L("bitfield", res_bitfield_pieces.res));
+         PG_L("bitfield_set_count",
+              pg_bitfield_count(res_bitfield_pieces.res, true)));
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

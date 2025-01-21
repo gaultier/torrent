@@ -67,7 +67,59 @@ download_verify_piece_hash(PgString data, PgString hash_expected) {
   return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
 }
 
+[[maybe_unused]] [[nodiscard]] static PgError
+download_file_on_chunk(PgString chunk, void *ctx) {
+  return 0;
+}
+
+[[maybe_unused]] [[nodiscard]] static PgError
+download_file_create_if_not_exists(PgString path, u64 size, PgArena arena) {
+  PgString filename = pg_string_to_filename(path);
+  PG_ASSERT(pg_string_eq(filename, path));
+
+  PgFileFlags flags =
+      PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
+  PgError err = pg_file_create(filename, flags, arena);
+  if (err) {
+    return err;
+  }
+
+  err = pg_file_set_size(filename, size, arena);
+  if (err) {
+    return err;
+  }
+
+  return 0;
+}
+
+typedef struct {
+  PgString bitfield;
+  PgString info_hash;
+} DownloadLoadBitfieldFromDisk;
+
 [[maybe_unused]] [[nodiscard]] static PgStringResult
-download_load_bitfield_pieces_from_disk(PgString path) {
-  PG_ASSERT(0 && "TODO");
+download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
+                                        u64 piece_length, u64 pieces_count,
+                                        PgArena *arena) {
+  PgString filename = pg_string_to_filename(path);
+  PG_ASSERT(pg_string_eq(filename, path));
+
+  DownloadLoadBitfieldFromDisk ctx = {
+      .bitfield = pg_string_make(pieces_count, arena),
+      .info_hash = info_hash,
+  };
+
+  PgStringResult res = {0};
+  {
+    PgArena arena_tmp = *arena;
+    PgError err = pg_file_read_chunks(filename, piece_length,
+                                      download_file_on_chunk, &ctx, arena_tmp);
+    if (err) {
+      res.err = err;
+      return res;
+    }
+    res.res = ctx.bitfield;
+  }
+
+  return res;
 }

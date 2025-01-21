@@ -31,10 +31,11 @@ int main(int argc, char *argv[]) {
          PG_L("path", torrent_file_path));
 
   PgError err_file_create = download_file_create_if_not_exists(
-      torrent_file_path, res_decode_metainfo.res.length, arena);
+      res_decode_metainfo.res.name, res_decode_metainfo.res.length, arena);
   if (err_file_create) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
-           PG_L("path", torrent_file_path), PG_L("err", err_file_create));
+           PG_L("path", res_decode_metainfo.res.name),
+           PG_L("err", err_file_create));
     return 1;
   }
 
@@ -60,17 +61,17 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(pieces_count > 0);
 
   PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
-      torrent_file_path, res_decode_metainfo.res.pieces,
+      res_decode_metainfo.res.name, res_decode_metainfo.res.pieces,
       res_decode_metainfo.res.piece_length, pieces_count, &arena);
   if (res_bitfield_pieces.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
-           PG_L("path", torrent_file_path),
+           PG_L("path", res_decode_metainfo.res.name),
            PG_L("err", res_bitfield_pieces.err));
     return 1;
   }
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
-         PG_L("path", torrent_file_path),
+         PG_L("path", res_decode_metainfo.res.name),
          PG_L("bitfield", res_bitfield_pieces.res));
 
   PgUrl announce = res_decode_metainfo.res.announce;

@@ -69,6 +69,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
+         PG_L("path", torrent_file_path),
+         PG_L("bitfield", res_bitfield_pieces.res));
+
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =
       pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));

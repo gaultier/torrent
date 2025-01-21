@@ -91,13 +91,32 @@ typedef struct {
   PgString bitfield;
   PgString info_hash;
   PgLogger *logger;
+  u64 piece_i;
+  u64 pieces_count;
 } DownloadLoadBitfieldFromDisk;
 
 [[maybe_unused]] [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
   (void)chunk;
   DownloadLoadBitfieldFromDisk *d = ctx;
-  pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len));
+  PG_ASSERT(d->piece_i < d->pieces_count);
+
+  u8 sha[20] = {0};
+  pg_sha1(chunk, sha);
+
+  PgString sha_expected =
+      PG_SLICE_RANGE(d->info_hash, 20 * d->piece_i, 20 * (d->piece_i + 1));
+  PgString sha_actual = {.data = sha, .len = PG_STATIC_ARRAY_LEN(sha)};
+  bool eq = pg_string_eq(sha_expected, sha_actual);
+
+  pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len),
+         PG_L("piece", d->piece_i), PG_L("pieces_count", d->pieces_count),
+         PG_L("eq", (u64)eq));
+
+  pg_bitfield_set(d->bitfield, d->piece_i, eq);
+
+  d->piece_i += 1;
+
   return 0;
 }
 
@@ -112,6 +131,7 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
       .bitfield = pg_string_make(pieces_count, arena),
       .info_hash = info_hash,
       .logger = logger,
+      .pieces_count = pieces_count,
   };
 
   PgStringResult res = {0};

@@ -69,6 +69,8 @@ download_verify_piece_hash(PgString data, PgString hash_expected) {
 
 [[maybe_unused]] [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
+  (void)chunk;
+  (void)ctx;
   return 0;
 }
 

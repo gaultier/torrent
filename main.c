@@ -30,6 +30,14 @@ int main(int argc, char *argv[]) {
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file",
          PG_L("path", torrent_file_path));
 
+  PgError err_file_create = download_file_create_if_not_exists(
+      torrent_file_path, res_decode_metainfo.res.length, arena);
+  if (err_file_create) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
+           PG_L("path", torrent_file_path), PG_L("err", err_file_create));
+    return 1;
+  }
+
   u16 port_ours_torrent = 6881;
   TrackerMetadata tracker_metadata = {
       .port = port_ours_torrent,
@@ -51,9 +59,15 @@ int main(int argc, char *argv[]) {
       res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
   PG_ASSERT(pieces_count > 0);
 
-  // TODO: Fill this bitfield with the (hash verified) on-disk data.
-  PgString bitfield_download_pieces = pg_string_make(pieces_count, &arena);
-  (void)bitfield_download_pieces;
+  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
+      torrent_file_path, res_decode_metainfo.res.pieces,
+      res_decode_metainfo.res.piece_length, pieces_count, &arena);
+  if (res_bitfield_pieces.err) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
+           PG_L("path", torrent_file_path),
+           PG_L("err", res_bitfield_pieces.err));
+    return 1;
+  }
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

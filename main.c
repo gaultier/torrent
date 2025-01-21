@@ -3,7 +3,7 @@
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
-  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
 
   PgString torrent_file_path = cstr_to_string(argv[1]);

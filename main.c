@@ -70,10 +70,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
-         PG_L("path", res_decode_metainfo.res.name),
-         PG_L("bitfield_set_count",
-              pg_bitfield_count(res_bitfield_pieces.res, true)));
+  pg_log(
+      &logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
+      PG_L("path", res_decode_metainfo.res.name),
+      PG_L("bitfield_set_count", pg_bitfield_count(res_bitfield_pieces.res)));
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

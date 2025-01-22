@@ -147,11 +147,6 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
 
   PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
                     &peer.arena);
-  for (u64 i = 0; i < concurrent_pieces_download_max; i++) {
-    PieceDownload *pd = PG_SLICE_AT_PTR(&peer.downloading_pieces, i);
-    pd->blocks_bitfield_have = pg_string_make(
-        pg_div_ceil(download->blocks_per_piece_count, 8), &peer.arena);
-  }
 
   return peer;
 }

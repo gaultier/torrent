@@ -41,7 +41,7 @@ download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
       download_compute_pieces_count(piece_length, total_file_size);
   PG_ASSERT(pieces_count > 0);
 
-  if (piece == pieces_count - 1) {
+  if (piece < pieces_count - 1) {
     return download_compute_blocks_per_piece_count(piece_length);
   }
 

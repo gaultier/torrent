@@ -70,6 +70,7 @@ typedef struct {
   PgArena arena_tmp;
   bool choked, interested;
   PgString remote_bitfield;
+  bool remote_bitfield_received;
   u32 downloading_piece;
   Download *download;
   PeerState state;
@@ -127,6 +128,8 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.choked = true;
   peer.interested = false;
+  peer.remote_bitfield =
+      pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
 
   return peer;
 }
@@ -240,7 +243,7 @@ static void peer_release(Peer *peer) {
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
-    if (peer->remote_bitfield.len != 0) {
+    if (peer->remote_bitfield_received) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "received bitfield message more than once",
              PG_L("address", peer->address));
@@ -260,8 +263,10 @@ static void peer_release(Peer *peer) {
       return res;
     }
 
-    res.res.bitfield =
-        pg_string_dup(PG_SLICE_RANGE_START(data, 1), &peer->arena);
+    PgString bitfield = PG_SLICE_RANGE_START(data, 1);
+    PG_ASSERT(nullptr != peer->remote_bitfield.data);
+    memcpy(peer->remote_bitfield.data, bitfield.data, bitfield.len);
+    peer->remote_bitfield_received = true;
 
     break;
   }
@@ -428,7 +433,6 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   case PEER_MSG_KIND_HAVE:
     break;
   case PEER_MSG_KIND_BITFIELD:
-    peer->remote_bitfield = msg.bitfield;
     i64 next_piece =
         download_pick_next_piece(peer->download, peer->remote_bitfield);
     if (-1 == next_piece) {

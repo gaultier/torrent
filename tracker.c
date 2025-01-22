@@ -250,16 +250,16 @@ typedef struct {
 
   // Options to spawn peers.
   // TODO: Decouple from tracker.
-  u64 concurrent_pieces_download_count;
-  u64 concurrent_blocks_download_count;
+  u64 concurrent_pieces_download_max;
+  u64 concurrent_blocks_download_max;
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata, Download *download,
                             PgEventLoop *loop,
-                            u64 concurrent_pieces_download_count,
-                            u64 concurrent_blocks_download_count) {
+                            u64 concurrent_pieces_download_max,
+                            u64 concurrent_blocks_download_max) {
   Tracker tracker = {0};
   tracker.logger = logger;
   tracker.host = host;
@@ -267,8 +267,8 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.metadata = metadata;
   tracker.download = download;
   tracker.loop = loop;
-  tracker.concurrent_pieces_download_count = concurrent_pieces_download_count;
-  tracker.concurrent_blocks_download_count = concurrent_blocks_download_count;
+  tracker.concurrent_pieces_download_max = concurrent_pieces_download_max;
+  tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
@@ -361,8 +361,8 @@ tracker_read_http_response_body(Tracker *tracker) {
         Peer *peer = calloc(sizeof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
                           tracker->download, tracker->loop,
-                          tracker->concurrent_pieces_download_count,
-                          tracker->concurrent_blocks_download_count);
+                          tracker->concurrent_pieces_download_max,
+                          tracker->concurrent_blocks_download_max);
 
         PgError err_peer = peer_start(tracker->loop, peer);
         if (err_peer) {

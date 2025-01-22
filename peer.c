@@ -80,8 +80,8 @@ typedef struct {
   PieceDownloadDyn downloading_pieces;
   Download *download;
   PeerState state;
-  u64 concurrent_pieces_download_count;
-  u64 concurrent_blocks_download_count;
+  u64 concurrent_pieces_download_max;
+  u64 concurrent_blocks_download_max;
 
   PgEventLoop *loop;
   u64 os_handle;
@@ -122,16 +122,16 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
           Download *download, PgEventLoop *loop,
-          u64 concurrent_pieces_download_count,
-          u64 concurrent_blocks_download_count) {
+          u64 concurrent_pieces_download_max,
+          u64 concurrent_blocks_download_max) {
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
   peer.logger = logger;
   peer.download = download;
   peer.loop = loop;
-  peer.concurrent_pieces_download_count = concurrent_pieces_download_count;
-  peer.concurrent_blocks_download_count = concurrent_blocks_download_count;
+  peer.concurrent_pieces_download_max = concurrent_pieces_download_max;
+  peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
 
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
@@ -143,9 +143,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
 
-  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_count,
+  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
                     &peer.arena);
-  for (u64 i = 0; i < concurrent_pieces_download_count; i++) {
+  for (u64 i = 0; i < concurrent_pieces_download_max; i++) {
     PieceDownload *pd = PG_SLICE_AT_PTR(&peer.downloading_pieces, i);
     pd->blocks_bitfield_have = pg_string_make(
         pg_div_ceil(download->blocks_per_piece_count, 8), &peer.arena);
@@ -437,13 +437,13 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 }
 
 [[maybe_unused]] static void peer_request_remote_data_maybe(Peer *peer) {
-  PG_ASSERT(0 != peer->concurrent_pieces_download_count);
-  PG_ASSERT(0 != peer->concurrent_blocks_download_count);
+  PG_ASSERT(0 != peer->concurrent_pieces_download_max);
+  PG_ASSERT(0 != peer->concurrent_blocks_download_max);
 
   PG_ASSERT(peer->downloading_pieces.len <=
-            peer->concurrent_pieces_download_count);
+            peer->concurrent_pieces_download_max);
 
-  if (peer->downloading_pieces.len == peer->concurrent_pieces_download_count) {
+  if (peer->downloading_pieces.len == peer->concurrent_pieces_download_max) {
     return;
   }
 }

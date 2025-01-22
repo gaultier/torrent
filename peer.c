@@ -562,7 +562,8 @@ peer_handle_message(Peer *peer, PeerMessage msg) {
     pg_bitfield_set(peer->remote_bitfield, msg.have, true);
     break;
   case PEER_MSG_KIND_BITFIELD: {
-  } break;
+    return peer_request_remote_data_maybe(peer);
+  }
   case PEER_MSG_KIND_REQUEST:
     // TODO
     break;

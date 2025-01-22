@@ -70,7 +70,6 @@ download_pick_next_piece(Download *download, PgString remote_bitfield_have) {
 [[maybe_unused]] [[nodiscard]] static bool
 download_verify_piece_hash(PgString data, PgString hash_expected) {
   PG_ASSERT(20 == hash_expected.len);
-  PG_ASSERT(0 == data.len % BLOCK_SIZE);
 
   u8 hash_got[20] = {0};
   pg_sha1(data, hash_got);

@@ -438,7 +438,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   case PEER_MSG_KIND_HAVE:
     pg_bitfield_set(peer->remote_bitfield, msg.have, true);
     break;
-  case PEER_MSG_KIND_BITFIELD:
+  case PEER_MSG_KIND_BITFIELD: {
     i64 next_piece =
         download_pick_next_piece(peer->download, peer->remote_bitfield);
     if (-1 == next_piece) {
@@ -450,7 +450,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
            "peer: picked next piece to download",
            PG_L("address", peer->address),
            PG_L("downloading_piece", peer->downloading_piece));
-    break;
+  } break;
   case PEER_MSG_KIND_REQUEST:
     // TODO
     break;

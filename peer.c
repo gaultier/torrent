@@ -463,6 +463,8 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
       peer_pick_block(pd->piece, peer->download, pd->blocks_bitfield_have);
   if (-1 == block) {
     // TODO: Verify piece hash.
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
+           PG_L("address", peer->address), PG_L("piece", pd->piece));
     return 0;
   }
 
@@ -497,9 +499,8 @@ peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(peer->downloading_pieces.len <=
             peer->concurrent_pieces_download_max);
 
-  if (!peer->local_interested) {
-    // TODO: Should we send 'interested'?
-  }
+  // TODO: Should we send 'interested' first?
+
   if (peer->remote_choked) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: not requesting remote data since remote is choked",
@@ -516,6 +517,9 @@ peer_request_remote_data_maybe(Peer *peer) {
       i64 piece =
           download_pick_next_piece(peer->download, peer->remote_bitfield);
       if (-1 == piece) {
+        pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no piece left to pick",
+               PG_L("address", peer->address));
+
         break;
       }
 
@@ -563,7 +567,7 @@ peer_handle_message(Peer *peer, PeerMessage msg) {
     break;
   case PEER_MSG_KIND_UNCHOKE:
     peer->remote_choked = false;
-    break;
+    return peer_request_remote_data_maybe(peer);
   case PEER_MSG_KIND_INTERESTED:
     peer->remote_interested = true;
     break;

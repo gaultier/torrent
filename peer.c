@@ -737,9 +737,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-  // Maximum size of one message should be below 2048?
-  // TODO: Revisit this number (e.g. for big files & the Bitfield message).
-  peer->recv = pg_ring_make(2048, &peer->arena);
+  peer->recv = pg_ring_make(
+      4 * PG_KiB + peer->download->blocks_per_piece_count * BLOCK_SIZE,
+      &peer->arena);
   {
     PgArena arena_tmp = peer->arena_tmp;
     PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);

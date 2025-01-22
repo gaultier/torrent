@@ -65,6 +65,7 @@ typedef struct {
 typedef struct {
   u32 piece;
   PgString blocks_bitfield_have;
+  u64 concurrent_blocks_download_count;
 } PieceDownload;
 PG_DYN(PieceDownload) PieceDownloadDyn;
 
@@ -77,9 +78,10 @@ typedef struct {
   bool choked, interested;
   PgString remote_bitfield;
   bool remote_bitfield_received;
-  PieceDownloadDyn downloading_pieces;
   Download *download;
   PeerState state;
+
+  PieceDownloadDyn downloading_pieces;
   u64 concurrent_pieces_download_max;
   u64 concurrent_blocks_download_max;
 
@@ -436,16 +438,78 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
          PG_L("address", peer->address));
 }
 
-[[maybe_unused]] static void peer_request_remote_data_maybe(Peer *peer) {
+[[nodiscard]] [[maybe_unused]] static PgError
+peer_request_block(Peer *peer, PieceDownload *pd) {
+  PgArena arena_tmp = peer->arena_tmp;
+  u32 block = 0; // FIXME
+  PeerMessage msg = {
+      .kind = PEER_MSG_KIND_REQUEST,
+      .request =
+          {
+              .index = block,
+              .begin = block * BLOCK_SIZE,
+              .length = BLOCK_SIZE,
+          },
+  };
+  PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
+  PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
+                                    peer_on_write);
+  if (err) {
+    return err;
+  }
+
+  return 0;
+}
+
+[[nodiscard]] [[maybe_unused]] static PgError
+peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(0 != peer->concurrent_pieces_download_max);
   PG_ASSERT(0 != peer->concurrent_blocks_download_max);
 
   PG_ASSERT(peer->downloading_pieces.len <=
             peer->concurrent_pieces_download_max);
 
-  if (peer->downloading_pieces.len == peer->concurrent_pieces_download_max) {
-    return;
+  if (peer->downloading_pieces.len < peer->concurrent_pieces_download_max) {
+    for (u64 i = 0; i < peer->concurrent_pieces_download_max -
+                            peer->downloading_pieces.len;
+         i++) {
+
+      i64 piece =
+          download_pick_next_piece(peer->download, peer->remote_bitfield);
+      if (-1 == piece) {
+        break;
+      }
+
+      *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) = (PieceDownload){
+          .piece = (u32)piece,
+          .blocks_bitfield_have = pg_string_make(
+              pg_div_ceil(peer->download->blocks_per_piece_count, 8),
+              &peer->arena),
+      };
+    }
   }
+
+  for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
+    PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
+    PG_ASSERT(pd->concurrent_blocks_download_count <=
+              peer->concurrent_blocks_download_max);
+
+    if (pd->concurrent_blocks_download_count ==
+        peer->concurrent_blocks_download_max) {
+      continue;
+    }
+
+    for (u64 j = 0; j < peer->concurrent_blocks_download_max -
+                            pd->concurrent_blocks_download_count;
+         j++) {
+      PgError err = peer_request_block(peer, pd);
+      if (err) {
+        return err;
+      }
+    }
+  }
+
+  return 0;
 }
 
 [[nodiscard]] [[maybe_unused]] static PgError

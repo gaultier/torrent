@@ -69,11 +69,11 @@ int main(int argc, char *argv[]) {
            PG_L("err", res_bitfield_pieces.err));
     return 1;
   }
+  PgString local_bitfield = res_bitfield_pieces.res;
 
-  pg_log(
-      &logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
-      PG_L("path", res_decode_metainfo.res.name),
-      PG_L("bitfield_set_count", pg_bitfield_count(res_bitfield_pieces.res)));
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
+         PG_L("path", res_decode_metainfo.res.name),
+         PG_L("bitfield_set_count", pg_bitfield_count(local_bitfield)));
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
   }
   PgEventLoop loop = res_loop.res;
   Tracker tracker = tracker_make(&logger, announce.host, announce.port,
-                                 tracker_metadata, &loop);
+                                 tracker_metadata, local_bitfield, &loop);
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
            PG_L("host", announce.host));

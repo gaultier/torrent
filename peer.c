@@ -438,19 +438,46 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
          PG_L("address", peer->address));
 }
 
+[[nodiscard]] [[maybe_unused]] static i64
+peer_pick_block(u32 piece, Download *download, PgString blocks_bitfield_have) {
+  u32 blocks_count = download_compute_blocks_count_for_piece(
+      piece, download->piece_length, download->total_file_size);
+  u64 start = pg_rand_u32(0, blocks_count);
+
+  for (u64 i = 0; i < blocks_count; i++) {
+    u64 idx = (start + i) % blocks_count;
+    if (!pg_bitfield_get(blocks_bitfield_have, idx)) {
+      PG_ASSERT(idx <= UINT32_MAX);
+      PG_ASSERT(idx < blocks_count);
+      return (i32)idx;
+    }
+  }
+  return -1;
+}
+
 [[nodiscard]] [[maybe_unused]] static PgError
-peer_request_block(Peer *peer, PieceDownload *pd) {
+peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   PgArena arena_tmp = peer->arena_tmp;
-  u32 block = 0; // FIXME
+  i64 block =
+      peer_pick_block(pd->piece, peer->download, pd->blocks_bitfield_have);
+  if (-1 == block) {
+    // TODO: Verify piece hash.
+    return 0;
+  }
+
   PeerMessage msg = {
       .kind = PEER_MSG_KIND_REQUEST,
       .request =
           {
-              .index = block,
-              .begin = block * BLOCK_SIZE,
+              .index = (u32)block,
+              .begin = (u32)block * BLOCK_SIZE,
               .length = BLOCK_SIZE,
           },
   };
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
+         PG_L("address", peer->address), PG_L("block", (u32)block),
+         PG_L("piece", pd->piece));
+
   PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
   PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
                                     peer_on_write);
@@ -502,7 +529,7 @@ peer_request_remote_data_maybe(Peer *peer) {
     for (u64 j = 0; j < peer->concurrent_blocks_download_max -
                             pd->concurrent_blocks_download_count;
          j++) {
-      PgError err = peer_request_block(peer, pd);
+      PgError err = peer_request_block_maybe(peer, pd);
       if (err) {
         return err;
       }

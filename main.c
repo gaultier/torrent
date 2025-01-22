@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
       .pieces_count = pieces_count,
       .blocks_per_piece_count = download_compute_blocks_per_piece_count(
           res_decode_metainfo.res.piece_length),
+      .piece_length = res_decode_metainfo.res.piece_length,
+      .total_file_size = res_decode_metainfo.res.length,
   };
   PG_ASSERT(download.blocks_per_piece_count > 0);
 

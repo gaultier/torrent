@@ -138,7 +138,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
   // TODO: Check if this still holds if we use async I/O for file rw.
-  peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
+  peer.arena = pg_arena_make_from_virtual_mem(
+      4 * PG_KiB +
+      peer.concurrent_pieces_download_max * download->piece_length);
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.choked = true;
   peer.interested = false;

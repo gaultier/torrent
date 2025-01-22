@@ -88,8 +88,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   PgEventLoop loop = res_loop.res;
-  Tracker tracker = tracker_make(&logger, announce.host, announce.port,
-                                 tracker_metadata, &download, &loop);
+  u64 concurrent_pieces_download_count = 5;
+  u64 concurrent_blocks_download_count = 5;
+  Tracker tracker = tracker_make(
+      &logger, announce.host, announce.port, tracker_metadata, &download, &loop,
+      concurrent_pieces_download_count, concurrent_blocks_download_count);
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
            PG_L("host", announce.host));

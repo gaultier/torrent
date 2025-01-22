@@ -80,6 +80,7 @@ typedef struct {
   PieceDownloadDyn downloading_pieces;
   Download *download;
   PeerState state;
+  u64 concurrent_blocks_download_count;
 
   PgEventLoop *loop;
   u64 os_handle;
@@ -119,13 +120,16 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, PgEventLoop *loop) {
+          Download *download, PgEventLoop *loop,
+          u64 concurrent_piece_downloads_count,
+          u64 concurrent_blocks_download_count) {
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
   peer.logger = logger;
   peer.download = download;
   peer.loop = loop;
+  peer.concurrent_blocks_download_count = concurrent_blocks_download_count;
 
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
@@ -137,10 +141,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
 
-  u64 SIMULTANEOUS_PIECE_DOWNLOADS = 5;
-  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, SIMULTANEOUS_PIECE_DOWNLOADS,
+  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_piece_downloads_count,
                     &peer.arena);
-  for (u64 i = 0; i < SIMULTANEOUS_PIECE_DOWNLOADS; i++) {
+  for (u64 i = 0; i < concurrent_piece_downloads_count; i++) {
     PieceDownload *pd = PG_SLICE_AT_PTR(&peer.downloading_pieces, i);
     pd->blocks_bitfield_have = pg_string_make(
         pg_div_ceil(download->blocks_per_piece_count, 8), &peer.arena);

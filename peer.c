@@ -240,8 +240,15 @@ static void peer_release(Peer *peer) {
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
+    if (peer->remote_bitfield.len != 0) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+             "received bitfield message more than once",
+             PG_L("address", peer->address));
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+
     res.res.kind = kind;
-    // TODO: Error if we already received one bitfield.
     u64 bitfield_len = length_announced - 1;
     if (0 == bitfield_len ||
         peer->download->local_bitfield_have.len != bitfield_len) {

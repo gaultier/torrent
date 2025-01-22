@@ -24,7 +24,7 @@ case $1 in
     EXTRA_FLAGS="-O3 -march=native"
     ;;
   release_sanitizer)
-    EXTRA_FLAGS="-O3 -march=native -fsanitize=undefined -fsanitize-trap=all"
+    EXTRA_FLAGS="-O1 -march=native -fsanitize=undefined -fsanitize-trap=all"
     ;;
 	*)
 		error "Build mode \"$1\" unsupported!"

@@ -67,6 +67,7 @@ typedef struct {
   PgString info_hash;
   PgLogger *logger;
   PgArena arena;
+  PgArena arena_tmp;
   bool choked, interested;
   PgString remote_bitfield;
   u32 downloading_piece;
@@ -123,6 +124,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   // data for encoding/decoding messages.
   // TODO: Check if this still holds if we use async I/O for file rw.
   peer.arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
+  peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.choked = true;
   peer.interested = false;
 
@@ -134,14 +136,15 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
 [[maybe_unused]]
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
+  (void)pg_arena_release(&peer->arena_tmp);
   (void)pg_event_loop_handle_close(peer->loop, peer->os_handle);
   free(peer);
 }
 
 [[nodiscard]] static PgError peer_read_handshake(Peer *peer) {
-  PgArena tmp_arena = peer->arena;
+  PgArena arena_tmp = peer->arena_tmp;
   PgString handshake = {
-      .data = pg_arena_new(&tmp_arena, u8, HANDSHAKE_LENGTH),
+      .data = pg_arena_new(&arena_tmp, u8, HANDSHAKE_LENGTH),
       .len = HANDSHAKE_LENGTH,
   };
 
@@ -180,15 +183,13 @@ static void peer_release(Peer *peer) {
 }
 
 [[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
-  PG_ASSERT(peer->arena.start != 0);
-
   PeerMessageReadResult res = {0};
 
-  PgArena tmp_arena = peer->arena;
+  PgArena arena_tmp = peer->arena_tmp;
   PgRing recv_tmp = peer->recv;
 
   PgString length = {
-      .data = pg_arena_new(&tmp_arena, u8, LENGTH_LENGTH),
+      .data = pg_arena_new(&arena_tmp, u8, LENGTH_LENGTH),
       .len = LENGTH_LENGTH,
   };
   if (!pg_ring_read_slice(&recv_tmp, length)) {
@@ -202,7 +203,7 @@ static void peer_release(Peer *peer) {
   }
 
   PgString data = {
-      .data = pg_arena_new(&tmp_arena, u8, length_announced),
+      .data = pg_arena_new(&arena_tmp, u8, length_announced),
       .len = length_announced,
   };
   if (!pg_ring_read_slice(&recv_tmp, data)) {
@@ -240,11 +241,10 @@ static void peer_release(Peer *peer) {
   }
   case PEER_MSG_KIND_BITFIELD: {
     res.res.kind = kind;
-    // TODO: Length check?
     // TODO: Error if we already received one bitfield.
-    res.res.bitfield.len = length_announced - 1;
-    if (0 == res.res.bitfield.len ||
-        peer->download->local_bitfield_have.len != res.res.bitfield.len) {
+    u64 bitfield_len = length_announced - 1;
+    if (0 == bitfield_len ||
+        peer->download->local_bitfield_have.len != bitfield_len) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "invalid bitfield length received", PG_L("address", peer->address),
              PG_L("len_actual", res.res.bitfield.len),
@@ -444,7 +444,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
     // TODO
     break;
   case PEER_MSG_KIND_KEEP_ALIVE: {
-    PgArena arena_tmp = peer->arena;
+    PgArena arena_tmp = peer->arena_tmp;
     PeerMessage msg_response = {.kind = PEER_MSG_KIND_KEEP_ALIVE};
     PgString msg_encoded = peer_encode_message(msg_response, &arena_tmp);
     PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
@@ -612,7 +612,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   // TODO: Revisit this number (e.g. for big files & the Bitfield message).
   peer->recv = pg_ring_make(2048, &peer->arena);
   {
-    PgArena arena_tmp = peer->arena;
+    PgArena arena_tmp = peer->arena_tmp;
     PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
     PgError err_write =
         pg_event_loop_write(loop, os_handle, handshake, peer_on_tcp_write);

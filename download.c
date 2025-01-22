@@ -5,7 +5,7 @@
 
 typedef struct {
   PgString local_bitfield_have;
-  PgString local_bitfield_requested;
+  u32 pieces_count;
 } Download;
 
 [[maybe_unused]] [[nodiscard]] static bool
@@ -22,9 +22,11 @@ download_compute_blocks_count_in_piece(u64 piece_length) {
   return pg_div_ceil(piece_length, BLOCK_SIZE);
 }
 
-[[maybe_unused]] [[nodiscard]] static u64
+[[maybe_unused]] [[nodiscard]] static u32
 download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
-  return pg_div_ceil(total_file_size, piece_length);
+  u64 res = pg_div_ceil(total_file_size, piece_length);
+  PG_ASSERT(res <= UINT32_MAX);
+  return (u32)res;
 }
 
 // TODO: use.
@@ -48,19 +50,17 @@ download_has_all_blocks_for_piece(PgString bitfield_blocks,
   return res;
 }
 
-// FIXME: randomness.
 // Pick a random piece that the remote claimed they have.
-// TODO: use.
-[[maybe_unused]] [[nodiscard]] static i64
-download_pick_next_piece(Download *download, u32 pieces_count) {
-  PG_ASSERT(download->local_bitfield_have.len ==
-            download->local_bitfield_requested.len);
+[[maybe_unused]] [[nodiscard]] static i32
+download_pick_next_piece(Download *download, PgString remote_bitfield_have) {
+  u64 start = pg_rand_u32(0, download->pieces_count);
+  for (u64 i = start; i < start + download->pieces_count; i++) {
+    u64 idx = i % download->pieces_count;
+    if (!pg_bitfield_get(download->local_bitfield_have, idx) &&
+        pg_bitfield_get(remote_bitfield_have, idx)) {
 
-  for (u64 i = 0; i < pieces_count; i++) {
-    if (!pg_bitfield_get(download->local_bitfield_requested, i)) {
-      PG_ASSERT(!pg_bitfield_get(download->local_bitfield_have, i));
-      pg_bitfield_set(download->local_bitfield_requested, i, true);
-      return (i64)i;
+      PG_ASSERT(idx <= UINT32_MAX);
+      return (i32)idx;
     }
   }
   return -1;

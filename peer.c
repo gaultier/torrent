@@ -69,6 +69,7 @@ typedef struct {
   PgArena arena;
   bool choked, interested;
   PgString remote_bitfield;
+  u32 downloading_piece;
   Download *download;
   PeerState state;
 
@@ -242,7 +243,12 @@ static void peer_release(Peer *peer) {
     // TODO: Length check?
     // TODO: Error if we already received one bitfield.
     res.res.bitfield.len = length_announced - 1;
-    if (0 == res.res.bitfield.len) {
+    if (0 == res.res.bitfield.len ||
+        peer->download->local_bitfield_have.len != res.res.bitfield.len) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+             "invalid bitfield length received", PG_L("address", peer->address),
+             PG_L("len_actual", res.res.bitfield.len),
+             PG_L("len_expected", peer->download->local_bitfield_have.len));
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -416,6 +422,13 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
     break;
   case PEER_MSG_KIND_BITFIELD:
     peer->remote_bitfield = msg.bitfield;
+    i64 next_piece =
+        download_pick_next_piece(peer->download, peer->remote_bitfield);
+    if (-1 == next_piece) {
+      // Finished.
+      PG_ASSERT(0 && "TODO");
+    }
+    peer->downloading_piece = (u32)next_piece;
     break;
   case PEER_MSG_KIND_REQUEST:
     // TODO

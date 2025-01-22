@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
   u64 blocks_count_in_piece = download_compute_blocks_count_in_piece(
       res_decode_metainfo.res.piece_length);
   PG_ASSERT(blocks_count_in_piece > 0);
-  u64 pieces_count = download_compute_pieces_count(
+  u32 pieces_count = download_compute_pieces_count(
       res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
   PG_ASSERT(pieces_count > 0);
 
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
   }
   Download download = {
       .local_bitfield_have = res_bitfield_pieces.res,
-      .local_bitfield_requested = pg_string_make(pieces_count, &arena),
+      .pieces_count = pieces_count,
   };
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",

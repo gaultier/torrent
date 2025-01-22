@@ -429,6 +429,10 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
       PG_ASSERT(0 && "TODO");
     }
     peer->downloading_piece = (u32)next_piece;
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: picked next piece to download",
+           PG_L("address", peer->address),
+           PG_L("downloading_piece", peer->downloading_piece));
     break;
   case PEER_MSG_KIND_REQUEST:
     // TODO

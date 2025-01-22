@@ -111,13 +111,9 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   DownloadLoadBitfieldFromDisk *d = ctx;
   PG_ASSERT(d->piece_i < d->pieces_count);
 
-  u8 sha[20] = {0};
-  pg_sha1(chunk, sha);
-
   PgString sha_expected =
       PG_SLICE_RANGE(d->info_hash, 20 * d->piece_i, 20 * (d->piece_i + 1));
-  PgString sha_actual = {.data = sha, .len = PG_STATIC_ARRAY_LEN(sha)};
-  bool eq = pg_string_eq(sha_expected, sha_actual);
+  bool eq = download_verify_piece_hash(chunk, sha_expected);
 
   pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len),
          PG_L("piece", d->piece_i), PG_L("pieces_count", d->pieces_count),

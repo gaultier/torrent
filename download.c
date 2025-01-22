@@ -3,6 +3,11 @@
 
 #define BLOCK_SIZE (1UL << 14)
 
+typedef struct {
+  PgString local_bitfield_have;
+  PgString local_bitfield_requested;
+} Download;
+
 [[maybe_unused]] [[nodiscard]] static bool
 download_is_piece_length_valid(u64 piece_length) {
   if (0 == piece_length) {

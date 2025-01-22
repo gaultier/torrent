@@ -69,7 +69,7 @@ typedef struct {
   PgArena arena;
   bool choked, interested;
   PgString remote_bitfield;
-  PgString local_bitfield;
+  Download *download;
   PeerState state;
 
   PgEventLoop *loop;
@@ -110,12 +110,12 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          PgString local_bitfield, PgEventLoop *loop) {
+          Download *download, PgEventLoop *loop) {
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
   peer.logger = logger;
-  peer.local_bitfield = local_bitfield;
+  peer.download = download;
   peer.loop = loop;
 
   // At most one block is held in memory at any time, plus a bit of temporary

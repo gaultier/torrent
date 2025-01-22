@@ -242,7 +242,7 @@ typedef struct {
   u16 port;
   PgArena arena;
   TrackerMetadata metadata;
-  PgString local_bitfield;
+  Download *download;
   PgEventLoop *loop;
 
   PgRing http_response_recv;
@@ -251,14 +251,14 @@ typedef struct {
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
-                            TrackerMetadata metadata, PgString local_bitfield,
+                            TrackerMetadata metadata, Download *download,
                             PgEventLoop *loop) {
   Tracker tracker = {0};
   tracker.logger = logger;
   tracker.host = host;
   tracker.port = port;
   tracker.metadata = metadata;
-  tracker.local_bitfield = local_bitfield;
+  tracker.download = download;
   tracker.loop = loop;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
@@ -351,7 +351,7 @@ tracker_read_http_response_body(Tracker *tracker) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         Peer *peer = calloc(sizeof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
-                          tracker->local_bitfield, tracker->loop);
+                          tracker->download, tracker->loop);
 
         PgError err_peer = peer_start(tracker->loop, peer);
         if (err_peer) {

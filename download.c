@@ -6,6 +6,7 @@
 typedef struct {
   PgString local_bitfield_have;
   u32 pieces_count;
+  u32 blocks_per_piece_count;
 } Download;
 
 [[maybe_unused]] [[nodiscard]] static bool
@@ -17,9 +18,11 @@ download_is_piece_length_valid(u64 piece_length) {
   return true;
 }
 
-[[maybe_unused]] [[nodiscard]] static u64
-download_compute_blocks_count_in_piece(u64 piece_length) {
-  return pg_div_ceil(piece_length, BLOCK_SIZE);
+[[maybe_unused]] [[nodiscard]] static u32
+download_compute_blocks_per_piece_count(u64 piece_length) {
+  u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
+  PG_ASSERT(res <= UINT32_MAX);
+  return (u32)res;
 }
 
 [[maybe_unused]] [[nodiscard]] static u32

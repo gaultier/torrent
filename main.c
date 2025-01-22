@@ -52,10 +52,6 @@ int main(int argc, char *argv[]) {
   };
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
-
-  u64 blocks_count_in_piece = download_compute_blocks_count_in_piece(
-      res_decode_metainfo.res.piece_length);
-  PG_ASSERT(blocks_count_in_piece > 0);
   u32 pieces_count = download_compute_pieces_count(
       res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
   PG_ASSERT(pieces_count > 0);
@@ -69,10 +65,14 @@ int main(int argc, char *argv[]) {
            PG_L("err", res_bitfield_pieces.err));
     return 1;
   }
+
   Download download = {
       .local_bitfield_have = res_bitfield_pieces.res,
       .pieces_count = pieces_count,
+      .blocks_per_piece_count = download_compute_blocks_per_piece_count(
+          res_decode_metainfo.res.piece_length),
   };
+  PG_ASSERT(download.blocks_per_piece_count > 0);
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),

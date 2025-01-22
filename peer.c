@@ -63,6 +63,12 @@ typedef struct {
 } PeerMessageReadResult;
 
 typedef struct {
+  u32 piece;
+  PgString blocks_bitfield_have;
+} PieceDownload;
+PG_DYN(PieceDownload) PieceDownloadDyn;
+
+typedef struct {
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
@@ -71,7 +77,7 @@ typedef struct {
   bool choked, interested;
   PgString remote_bitfield;
   bool remote_bitfield_received;
-  u32 downloading_piece;
+  PieceDownloadDyn downloading_pieces;
   Download *download;
   PeerState state;
 
@@ -130,6 +136,15 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.interested = false;
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
+
+  u64 SIMULTANEOUS_PIECE_DOWNLOADS = 5;
+  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, SIMULTANEOUS_PIECE_DOWNLOADS,
+                    &peer.arena);
+  for (u64 i = 0; i < SIMULTANEOUS_PIECE_DOWNLOADS; i++) {
+    PieceDownload *pd = PG_SLICE_AT_PTR(&peer.downloading_pieces, i);
+    pd->blocks_bitfield_have = pg_string_make(
+        pg_div_ceil(download->blocks_per_piece_count, 8), &peer.arena);
+  }
 
   return peer;
 }
@@ -416,8 +431,13 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
          PG_L("address", peer->address));
 }
 
-[[maybe_unused]] static PgError peer_handle_message(Peer *peer,
-                                                    PeerMessage msg) {
+[[maybe_unused]] static void peer_request_remote_data_maybe(Peer *peer) {
+  (void)peer;
+  // TODO
+}
+
+[[nodiscard]] [[maybe_unused]] static PgError
+peer_handle_message(Peer *peer, PeerMessage msg) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: handle message",
          PG_L("address", peer->address),
          PG_L("msg.kind", peer_message_kind_to_string(msg.kind)));
@@ -439,17 +459,6 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
     pg_bitfield_set(peer->remote_bitfield, msg.have, true);
     break;
   case PEER_MSG_KIND_BITFIELD: {
-    i64 next_piece =
-        download_pick_next_piece(peer->download, peer->remote_bitfield);
-    if (-1 == next_piece) {
-      // Finished.
-      PG_ASSERT(0 && "TODO");
-    }
-    peer->downloading_piece = (u32)next_piece;
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
-           "peer: picked next piece to download",
-           PG_L("address", peer->address),
-           PG_L("downloading_piece", peer->downloading_piece));
   } break;
   case PEER_MSG_KIND_REQUEST:
     // TODO
@@ -502,7 +511,11 @@ peer_handle_recv_data(Peer *peer) {
       if (!res_msg.present) {
         return 0;
       }
-      peer_handle_message(peer, res_msg.res);
+
+      PgError err_handle_msg = peer_handle_message(peer, res_msg.res);
+      if (err_handle_msg) {
+        return err_handle_msg;
+      }
 
     } break;
     default:

@@ -240,6 +240,11 @@ static void peer_release(Peer *peer) {
     res.res.kind = kind;
     PgString data_msg = PG_SLICE_RANGE_START(data, 1);
     res.res.have = pg_u8x4_be_to_u32(data_msg);
+
+    if (res.res.have > peer->download->pieces_count) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
     break;
   }
   case PEER_MSG_KIND_BITFIELD: {
@@ -431,6 +436,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
     peer->interested = false;
     break;
   case PEER_MSG_KIND_HAVE:
+    pg_bitfield_set(peer->remote_bitfield, msg.have, true);
     break;
   case PEER_MSG_KIND_BITFIELD:
     i64 next_piece =

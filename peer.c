@@ -462,7 +462,7 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   i64 block =
       peer_pick_block(pd->piece, peer->download, pd->blocks_bitfield_have);
   if (-1 == block) {
-    // TODO: Verify piece hash.
+    // TODO: Verify piece hash, reset counters, etc.
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
            PG_L("address", peer->address), PG_L("piece", pd->piece));
     return 0;
@@ -556,6 +556,15 @@ peer_request_remote_data_maybe(Peer *peer) {
 }
 
 [[nodiscard]] [[maybe_unused]] static PgError
+peer_receive_block(Peer *peer, PeerMessagePiece msg) {
+  // TODO
+  (void)peer;
+  (void)msg;
+
+  return 0;
+}
+
+[[nodiscard]] [[maybe_unused]] static PgError
 peer_handle_message(Peer *peer, PeerMessage msg) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: handle message",
          PG_L("address", peer->address),
@@ -584,8 +593,8 @@ peer_handle_message(Peer *peer, PeerMessage msg) {
     // TODO
     break;
   case PEER_MSG_KIND_PIECE:
-    // TODO
-    break;
+    // TODO: Check that we requested a block from this piece.
+    return peer_receive_block(peer, msg.piece);
   case PEER_MSG_KIND_CANCEL:
     // TODO
     break;

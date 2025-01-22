@@ -75,7 +75,8 @@ typedef struct {
   PgLogger *logger;
   PgArena arena;
   PgArena arena_tmp;
-  bool choked, interested;
+  bool remote_choked, remote_interested;
+  bool local_choked, local_interested;
   PgString remote_bitfield;
   bool remote_bitfield_received;
   Download *download;
@@ -142,10 +143,13 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
       4 * PG_KiB +
       peer.concurrent_pieces_download_max * download->piece_length);
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
-  peer.choked = true;
-  peer.interested = false;
+  peer.remote_choked = true;
+  peer.remote_interested = false;
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
+
+  peer.local_choked = true;
+  peer.local_interested = false;
 
   PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
                     &peer.arena);
@@ -493,6 +497,17 @@ peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(peer->downloading_pieces.len <=
             peer->concurrent_pieces_download_max);
 
+  if (!peer->local_interested) {
+    // TODO: Should we send 'interested'?
+  }
+  if (peer->remote_choked) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: not requesting remote data since remote is choked",
+           PG_L("address", peer->address));
+
+    return 0;
+  }
+
   if (peer->downloading_pieces.len < peer->concurrent_pieces_download_max) {
     for (u64 i = 0; i < peer->concurrent_pieces_download_max -
                             peer->downloading_pieces.len;
@@ -544,16 +559,16 @@ peer_handle_message(Peer *peer, PeerMessage msg) {
 
   switch (msg.kind) {
   case PEER_MSG_KIND_CHOKE:
-    peer->choked = true;
+    peer->remote_choked = true;
     break;
   case PEER_MSG_KIND_UNCHOKE:
-    peer->choked = false;
+    peer->remote_choked = false;
     break;
   case PEER_MSG_KIND_INTERESTED:
-    peer->interested = true;
+    peer->remote_interested = true;
     break;
   case PEER_MSG_KIND_UNINTERESTED:
-    peer->interested = false;
+    peer->remote_interested = false;
     break;
   case PEER_MSG_KIND_HAVE:
     pg_bitfield_set(peer->remote_bitfield, msg.have, true);

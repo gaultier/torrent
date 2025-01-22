@@ -52,9 +52,14 @@ download_has_all_blocks_for_piece(PgString bitfield_blocks,
 // Pick a random piece that the remote claimed they have.
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static i64
-download_pick_next_piece(PgString pg_bitfield_remote_pieces, u32 pieces_count) {
+download_pick_next_piece(Download *download, u32 pieces_count) {
+  PG_ASSERT(download->local_bitfield_have.len ==
+            download->local_bitfield_requested.len);
+
   for (u64 i = 0; i < pieces_count; i++) {
-    if (pg_bitfield_get(pg_bitfield_remote_pieces, i)) {
+    if (!pg_bitfield_get(download->local_bitfield_requested, i)) {
+      PG_ASSERT(!pg_bitfield_get(download->local_bitfield_have, i));
+      pg_bitfield_set(download->local_bitfield_requested, i, true);
       return (i64)i;
     }
   }

@@ -103,12 +103,12 @@ typedef struct {
   PgLogger *logger;
   u64 piece_i;
   u64 pieces_count;
-} DownloadLoadBitfieldFromDisk;
+} DownloadLoadBitfieldFromDiskCtx;
 
 [[maybe_unused]] [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
   (void)chunk;
-  DownloadLoadBitfieldFromDisk *d = ctx;
+  DownloadLoadBitfieldFromDiskCtx *d = ctx;
   PG_ASSERT(d->piece_i < d->pieces_count);
 
   PgString sha_expected =
@@ -133,7 +133,7 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
-  DownloadLoadBitfieldFromDisk ctx = {
+  DownloadLoadBitfieldFromDiskCtx ctx = {
       .bitfield = pg_string_make(pieces_count, arena),
       .info_hash = info_hash,
       .logger = logger,

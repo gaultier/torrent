@@ -133,7 +133,7 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
   PG_ASSERT(pg_string_eq(filename, path));
 
   DownloadLoadBitfieldFromDiskCtx ctx = {
-      .bitfield = pg_string_make(pieces_count, arena),
+      .bitfield = pg_string_make(pg_div_ceil(pieces_count, 8), arena),
       .info_hash = info_hash,
       .logger = logger,
       .pieces_count = pieces_count,

@@ -263,13 +263,17 @@ static void peer_release(Peer *peer) {
   }
   PG_ASSERT(pd->data.len == peer->download->piece_length);
 
-  memcpy(pd->data.data + begin, data.data, data.len);
-
   u32 block = begin / BLOCK_SIZE;
   u64 blocks_count_for_piece = download_compute_blocks_count_for_piece(
       piece, peer->download->piece_length, peer->download->total_file_size);
   PG_ASSERT(block < blocks_count_for_piece);
+
+  PG_ASSERT(false == pg_bitfield_get(pd->blocks_bitfield_have, block));
+
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
+
+  // Actual data copy here, the rest is just metadata bookkeeping.
+  memcpy(pd->data.data + begin, data.data, data.len);
 
   pd->concurrent_blocks_download_count -= 1;
 

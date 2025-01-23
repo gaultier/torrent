@@ -64,6 +64,7 @@ typedef struct {
 
 typedef struct {
   u32 piece;
+  PgString data; // Piece data.
   PgString blocks_bitfield_have;
   u64 concurrent_blocks_download_count;
 } PieceDownload;
@@ -93,6 +94,18 @@ typedef struct {
 
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
+
+[[nodiscard]] [[maybe_unused]] static PieceDownload
+piece_download_make(u32 piece, u64 piece_length, u32 blocks_per_piece_count,
+                    PgArena *arena) {
+  PieceDownload res = {0};
+  res.piece = piece;
+  res.data = pg_string_make(piece_length, arena);
+  res.blocks_bitfield_have =
+      pg_string_make(pg_div_ceil(blocks_per_piece_count, 8), arena);
+
+  return res;
+}
 
 [[nodiscard]] [[maybe_unused]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
@@ -523,12 +536,10 @@ peer_request_remote_data_maybe(Peer *peer) {
         break;
       }
 
-      *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) = (PieceDownload){
-          .piece = (u32)piece,
-          .blocks_bitfield_have = pg_string_make(
-              pg_div_ceil(peer->download->blocks_per_piece_count, 8),
-              &peer->arena),
-      };
+      *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) =
+          piece_download_make((u32)piece, peer->download->piece_length,
+                              peer->download->blocks_per_piece_count,
+                              &peer->arena);
     }
   }
 

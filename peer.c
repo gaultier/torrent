@@ -489,6 +489,13 @@ peer_request_remote_data_maybe(Peer *peer) {
   u8 kind = PEER_MSG_KIND_KEEP_ALIVE;
   PgString data = {0};
   if (length_announced > 0) {
+    if (pg_ring_read_space(recv_tmp) < length_announced) {
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
+             PG_L("address", peer->address),
+             PG_L("length_announced", length_announced),
+             PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
+      return 0;
+    }
     data = (PgString){
         .data = pg_arena_new(&arena_tmp, u8, length_announced),
         .len = length_announced,

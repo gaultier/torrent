@@ -54,6 +54,13 @@ download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
   return (u32)res;
 }
 
+[[maybe_unused]] [[nodiscard]] static u32
+download_compute_block_length(u32 block, u64 piece_length) {
+  PG_ASSERT(block * BLOCK_SIZE < piece_length);
+  u32 res = (u32)(piece_length - (u64)block * BLOCK_SIZE) % BLOCK_SIZE;
+  return res;
+}
+
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
 download_has_all_blocks_for_piece(PgString bitfield_blocks,

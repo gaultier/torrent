@@ -387,18 +387,23 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
     return 0;
   }
 
+  u32 block_length =
+      download_compute_block_length((u32)block, peer->download->piece_length);
   PeerMessage msg = {
       .kind = PEER_MSG_KIND_REQUEST,
       .request =
           {
               .index = (u32)block,
               .begin = (u32)block * BLOCK_SIZE,
-              .length = BLOCK_SIZE,
+              .length = block_length,
           },
   };
+  PG_ASSERT(msg.request.index + msg.request.length <=
+            peer->download->piece_length);
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
          PG_L("address", peer->address), PG_L("block", (u32)block),
-         PG_L("piece", pd->piece));
+         PG_L("piece", pd->piece), PG_L("block_length", block_length));
 
   PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
   PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,

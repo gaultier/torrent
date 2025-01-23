@@ -298,7 +298,7 @@ static void peer_release(Peer *peer) {
         peer->download->local_bitfield_have.len != bitfield_len) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "invalid bitfield length received", PG_L("address", peer->address),
-             PG_L("len_actual", res.res.bitfield.len),
+             PG_L("len_actual", bitfield_len),
              PG_L("len_expected", peer->download->local_bitfield_have.len));
       res.err = PG_ERR_INVALID_VALUE;
       return res;

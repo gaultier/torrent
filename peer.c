@@ -518,6 +518,8 @@ peer_request_remote_data_maybe(Peer *peer) {
       .data = pg_arena_new(&arena_tmp, u8, length_announced),
       .len = length_announced,
   };
+  // TODO: Optimize by reading directly from ring lazily.
+  PG_ASSERT(true == pg_ring_read_slice(&recv_tmp, data));
 
   kind = PG_SLICE_AT(data, 0);
 

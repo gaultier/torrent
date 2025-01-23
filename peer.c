@@ -259,7 +259,7 @@ static void peer_release(Peer *peer) {
 
   u32 block = begin / BLOCK_SIZE;
   u64 blocks_count_for_piece = download_compute_blocks_count_for_piece(
-      begin, peer->download->piece_length, peer->download->total_file_size);
+      piece, peer->download->piece_length, peer->download->total_file_size);
   PG_ASSERT(block < blocks_count_for_piece);
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",

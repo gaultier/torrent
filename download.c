@@ -37,6 +37,8 @@ download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
 [[maybe_unused]] [[nodiscard]] static u32
 download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
                                         u64 total_file_size) {
+  PG_ASSERT(piece * piece_length <= total_file_size);
+
   u32 pieces_count =
       download_compute_pieces_count(piece_length, total_file_size);
   PG_ASSERT(pieces_count > 0);
@@ -44,8 +46,6 @@ download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
   if (piece < pieces_count - 1) {
     return download_compute_blocks_per_piece_count(piece_length);
   }
-
-  PG_ASSERT(piece * piece_length <= total_file_size);
 
   u64 rem = total_file_size - piece * piece_length;
 

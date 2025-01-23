@@ -163,7 +163,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   // data for encoding/decoding messages.
   // TODO: Check if this still holds if we use async I/O for file rw.
   peer.arena = pg_arena_make_from_virtual_mem(
-      4 * PG_KiB +
+      32 * PG_KiB + BLOCK_SIZE +
       peer.concurrent_pieces_download_max * download->piece_length);
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.remote_choked = true;
@@ -376,6 +376,9 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 
 [[nodiscard]] [[maybe_unused]] static PgError
 peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
+  PG_ASSERT(pd->concurrent_blocks_download_count <
+            peer->concurrent_blocks_download_max);
+
   PgArena arena_tmp = peer->arena_tmp;
   i64 block =
       peer_pick_block(pd->piece, peer->download, pd->blocks_bitfield_have);
@@ -392,7 +395,7 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
       .kind = PEER_MSG_KIND_REQUEST,
       .request =
           {
-              .index = (u32)block,
+              .index = (u32)pd->piece,
               .begin = (u32)block * BLOCK_SIZE,
               .length = block_length,
           },
@@ -402,7 +405,8 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
          PG_L("address", peer->address), PG_L("block", (u32)block),
-         PG_L("piece", pd->piece), PG_L("block_length", block_length));
+         PG_L("piece", pd->piece), PG_L("begin", msg.request.begin),
+         PG_L("block_length", block_length));
 
   PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
   PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
@@ -411,6 +415,7 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
     return err;
   }
 
+  pd->concurrent_blocks_download_count += 1;
   return 0;
 }
 

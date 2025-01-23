@@ -59,7 +59,6 @@ typedef struct {
 typedef struct {
   bool present;
   PgError err;
-  PeerMessage res;
 } PeerMessageReadResult;
 
 typedef struct {
@@ -477,8 +476,9 @@ peer_request_remote_data_maybe(Peer *peer) {
   return 0;
 }
 
-[[nodiscard]] static PgError peer_read_any_message(Peer *peer) {
-  PgError err = 0;
+[[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
+  PeerMessageReadResult res = {0};
+
   PgArena arena_tmp = peer->arena_tmp;
   PgRing recv_tmp = peer->recv;
 
@@ -487,30 +487,39 @@ peer_request_remote_data_maybe(Peer *peer) {
       .len = LENGTH_LENGTH,
   };
   if (!pg_ring_read_slice(&recv_tmp, length)) {
-    return 0;
+    return res;
   }
   u32 length_announced = pg_u8x4_be_to_u32(length);
+  u32 length_announced_max = 16 + BLOCK_SIZE;
+  if (length_announced > length_announced_max) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
+           PG_L("address", peer->address),
+           PG_L("length_announced", length_announced),
+           PG_L("length_announced_max", length_announced_max));
+    res.err = PG_ERR_INVALID_VALUE;
+    return res;
+  }
 
   u8 kind = PEER_MSG_KIND_KEEP_ALIVE;
-  PgString data = {0};
-  if (length_announced > 0) {
-    if (pg_ring_read_space(recv_tmp) < length_announced) {
-      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
-             PG_L("address", peer->address),
-             PG_L("length_announced", length_announced),
-             PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
-      return 0;
-    }
-    data = (PgString){
-        .data = pg_arena_new(&arena_tmp, u8, length_announced),
-        .len = length_announced,
-    };
-    if (!pg_ring_read_slice(&recv_tmp, data)) {
-      return 0;
-    }
 
-    kind = PG_SLICE_AT(data, 0);
+  if (0 == length_announced) {
+    goto end;
   }
+
+  PgString data = {0};
+  if (pg_ring_read_space(recv_tmp) < length_announced) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
+           PG_L("address", peer->address),
+           PG_L("length_announced", length_announced),
+           PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
+    return res;
+  }
+  data = (PgString){
+      .data = pg_arena_new(&arena_tmp, u8, length_announced),
+      .len = length_announced,
+  };
+
+  kind = PG_SLICE_AT(data, 0);
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
@@ -520,7 +529,7 @@ peer_request_remote_data_maybe(Peer *peer) {
   }
   case PEER_MSG_KIND_UNCHOKE: {
     peer->remote_choked = false;
-    err = peer_request_remote_data_maybe(peer);
+    res.err = peer_request_remote_data_maybe(peer);
     break;
   }
   case PEER_MSG_KIND_INTERESTED: {
@@ -533,13 +542,15 @@ peer_request_remote_data_maybe(Peer *peer) {
   }
   case PEER_MSG_KIND_HAVE: {
     if ((1 + sizeof(u32)) != length_announced) {
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
     PgString data_msg = PG_SLICE_RANGE_START(data, 1);
     u32 have = pg_u8x4_be_to_u32(data_msg);
 
     if (have > peer->download->pieces_count) {
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
     break;
   }
@@ -548,7 +559,8 @@ peer_request_remote_data_maybe(Peer *peer) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "received bitfield message more than once",
              PG_L("address", peer->address));
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
 
     u64 bitfield_len = length_announced - 1;
@@ -558,7 +570,8 @@ peer_request_remote_data_maybe(Peer *peer) {
              "invalid bitfield length received", PG_L("address", peer->address),
              PG_L("len_actual", bitfield_len),
              PG_L("len_expected", peer->download->local_bitfield_have.len));
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
 
     PgString bitfield = PG_SLICE_RANGE_START(data, 1);
@@ -570,7 +583,8 @@ peer_request_remote_data_maybe(Peer *peer) {
   }
   case PEER_MSG_KIND_REQUEST: {
     if (1 + 3 * sizeof(u32) != length_announced) {
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
     u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
@@ -585,19 +599,21 @@ peer_request_remote_data_maybe(Peer *peer) {
   }
   case PEER_MSG_KIND_PIECE: {
     if (1 + 2 * sizeof(u32) + BLOCK_SIZE != length_announced) {
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
     u32 piece = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
     PgString piece_data = PG_SLICE_RANGE_START(data, 9);
 
-    err = peer_receive_block(peer, piece, begin, piece_data);
+    res.err = peer_receive_block(peer, piece, begin, piece_data);
 
     break;
   }
   case PEER_MSG_KIND_CANCEL: {
     if (1 + 3 * sizeof(u32) != length_announced) {
-      return PG_ERR_INVALID_VALUE;
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
     }
     u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
     u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
@@ -614,16 +630,19 @@ peer_request_remote_data_maybe(Peer *peer) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: message unknown kind",
            PG_L("address", peer->address),
            PG_L("kind", peer_message_kind_to_string(kind)));
-    return PG_ERR_INVALID_VALUE;
+    res.err = PG_ERR_INVALID_VALUE;
+    return res;
   }
 
+end:
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
          PG_L("address", peer->address),
-         PG_L("length_announced", length_announced),
+         PG_L("length_announced", length_announced), PG_L("err", res.err),
          PG_L("kind", peer_message_kind_to_string(kind)));
 
+  res.present = true;
   peer->recv = recv_tmp;
-  return err;
+  return res;
 }
 
 [[nodiscard]] [[maybe_unused]] static PgError
@@ -637,9 +656,12 @@ peer_handle_recv_data(Peer *peer) {
       }
     } break;
     case PEER_STATE_HANDSHAKED: {
-      PgError err = peer_read_any_message(peer);
-      if (err) {
-        return err;
+      PeerMessageReadResult res = peer_read_any_message(peer);
+      if (res.err) {
+        return res.err;
+      }
+      if (!res.present) {
+        return 0;
       }
       break;
     }

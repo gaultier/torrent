@@ -94,6 +94,9 @@ typedef struct {
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
 
+[[nodiscard]] [[maybe_unused]] static PgError
+peer_request_block_maybe(Peer *peer, PieceDownload *pd);
+
 [[nodiscard]] [[maybe_unused]] static PieceDownload
 piece_download_make(u32 piece, u64 piece_length, u32 blocks_per_piece_count,
                     PgArena *arena) {
@@ -270,16 +273,23 @@ static void peer_release(Peer *peer) {
 
   pd->concurrent_blocks_download_count -= 1;
 
+  u64 blocks_have_count_for_piece = pg_bitfield_count(pd->blocks_bitfield_have);
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
          PG_L("address", peer->address), PG_L("piece", piece),
          PG_L("begin", begin), PG_L("data.len", data.len), PG_L("block", block),
-         PG_L("block_have_count_for_piece",
-              pg_bitfield_count(pd->blocks_bitfield_have)),
+         PG_L("block_have_count_for_piece", blocks_have_count_for_piece),
          PG_L("blocks_count_for_piece", blocks_count_for_piece),
          PG_L("piece_download_concurrent_blocks_download_count",
               pd->concurrent_blocks_download_count));
 
-  // TODO: Handle having all blocks for piece.
+  PG_ASSERT(blocks_have_count_for_piece <= blocks_count_for_piece);
+
+  if (blocks_have_count_for_piece < blocks_count_for_piece) {
+    return peer_request_block_maybe(peer, pd);
+  } else {
+    // TODO: Handle having all blocks for piece.
+  }
 
   return 0;
 }

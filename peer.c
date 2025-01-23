@@ -433,10 +433,12 @@ peer_request_remote_data_maybe(Peer *peer) {
   }
 
   if (peer->downloading_pieces.len < peer->concurrent_pieces_download_max) {
-    for (u64 i = 0; i < peer->concurrent_pieces_download_max -
-                            peer->downloading_pieces.len;
-         i++) {
+    u64 pieces_to_queue_count =
+        peer->concurrent_pieces_download_max - peer->downloading_pieces.len;
+    PG_ASSERT(pieces_to_queue_count > 0);
+    PG_ASSERT(pieces_to_queue_count <= peer->concurrent_pieces_download_max);
 
+    for (u64 i = 0; i < pieces_to_queue_count; i++) {
       i64 piece =
           download_pick_next_piece(peer->download, peer->remote_bitfield);
       if (-1 == piece) {
@@ -450,6 +452,9 @@ peer_request_remote_data_maybe(Peer *peer) {
           piece_download_make((u32)piece, peer->download->piece_length,
                               peer->download->blocks_per_piece_count,
                               &peer->arena);
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing piece download",
+             PG_L("address", peer->address), PG_L("piece", (u32)piece),
+             PG_L("downloading_pieces_count", peer->downloading_pieces.len));
     }
   }
 
@@ -462,16 +467,25 @@ peer_request_remote_data_maybe(Peer *peer) {
         peer->concurrent_blocks_download_max) {
       continue;
     }
+    u64 blocks_to_queue_count = peer->concurrent_blocks_download_max -
+                                pd->concurrent_blocks_download_count;
+    PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);
 
-    for (u64 j = 0; j < peer->concurrent_blocks_download_max -
-                            pd->concurrent_blocks_download_count;
-         j++) {
+    for (u64 j = 0; j < blocks_to_queue_count; j++) {
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing block download",
+             PG_L("address", peer->address), PG_L("piece", pd->piece),
+             PG_L("piece_download_concurrent_blocks_download_count",
+                  pd->concurrent_blocks_download_count));
       PgError err = peer_request_block_maybe(peer, pd);
       if (err) {
         return err;
       }
     }
+    PG_ASSERT(pd->concurrent_blocks_download_count <=
+              peer->concurrent_blocks_download_max);
   }
+  PG_ASSERT(peer->downloading_pieces.len <=
+            peer->concurrent_pieces_download_max);
 
   return 0;
 }

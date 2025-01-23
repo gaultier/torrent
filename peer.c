@@ -233,6 +233,10 @@ static void peer_release(Peer *peer) {
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
                                                 u32 begin, PgString data) {
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
+         PG_L("address", peer->address), PG_L("piece", piece),
+         PG_L("begin", begin), PG_L("data.len", data.len));
+
   PieceDownload *pd = peer_find_piece_download(peer, piece);
   if (nullptr == pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
@@ -240,6 +244,7 @@ static void peer_release(Peer *peer) {
            PG_L("address", peer->address), PG_L("piece", piece));
     return PG_ERR_INVALID_VALUE;
   }
+  PG_ASSERT(pd->concurrent_blocks_download_count > 0);
 
   // TODO: Check that this particular block was requested?
 
@@ -262,12 +267,19 @@ static void peer_release(Peer *peer) {
       piece, peer->download->piece_length, peer->download->total_file_size);
   PG_ASSERT(block < blocks_count_for_piece);
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
+
+  pd->concurrent_blocks_download_count -= 1;
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
          PG_L("address", peer->address), PG_L("piece", piece),
          PG_L("begin", begin), PG_L("data.len", data.len), PG_L("block", block),
          PG_L("block_have_count_for_piece",
               pg_bitfield_count(pd->blocks_bitfield_have)),
-         PG_L("blocks_count_for_piece", blocks_count_for_piece));
+         PG_L("blocks_count_for_piece", blocks_count_for_piece),
+         PG_L("piece_download_concurrent_blocks_download_count",
+              pd->concurrent_blocks_download_count));
+
+  // TODO: Handle having all blocks for piece.
 
   return 0;
 }

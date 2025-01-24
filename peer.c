@@ -214,7 +214,7 @@ static void peer_release(Peer *peer) {
     return 0;
   }
 
-  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received handshake",
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received handshake",
          PG_L("address", peer->address), PG_L("handshake", handshake));
 
   PgString prefix = PG_SLICE_RANGE(handshake, 0, PG_SHA1_DIGEST_LENGTH);
@@ -239,7 +239,7 @@ static void peer_release(Peer *peer) {
   PG_ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
-  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received valid handshake",
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received valid handshake",
          PG_L("address", peer->address));
 
   peer->state = PEER_STATE_HANDSHAKED;
@@ -1041,7 +1041,7 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
     *PG_DYN_PUSH(peers_active, arena) = peer;
     PG_SLICE_SWAP_REMOVE(addresses_all, idx);
 
-    pg_log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
+    pg_log(PG_LOG_LEVEL_DEBUG, "peer_pick_random", &peer.arena,
            PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
   }
 }

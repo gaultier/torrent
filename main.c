@@ -6,6 +6,7 @@ static void download_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
 
   Download *download = ctx;
   pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
+         PG_L("pieces_count", download->pieces_count),
          PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
 }
 
@@ -13,7 +14,7 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
 
   PgString torrent_file_path = cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
@@ -121,7 +122,7 @@ int main(int argc, char *argv[]) {
   }
   {
     Pgu64Result res_timer = pg_event_loop_timer_start(
-        &loop, PG_CLOCK_KIND_MONOTONIC, 10 * PG_Seconds, 10 * PG_Seconds,
+        &loop, PG_CLOCK_KIND_MONOTONIC, 3 * PG_Seconds, 15 * PG_Seconds,
         &download, download_on_timer);
     if (res_timer.err) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to start metrics timer",

@@ -122,7 +122,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
     };
 
     {
-      pg_log(logger, PG_LOG_LEVEL_INFO, "tracker_parse_compact_peers",
+      pg_log(logger, PG_LOG_LEVEL_DEBUG, "tracker_parse_compact_peers",
              PG_L("res.peer_addresses.len", res.peer_addresses.len),
              PG_L("address", address));
     }

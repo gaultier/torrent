@@ -3,7 +3,7 @@ set -e
 set -f # disable globbing.
 
 CFLAGS="${CFLAGS}"
-EXTRA_FLAGS=""
+EXTRA_FLAGS="-fpie"
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 
@@ -15,16 +15,16 @@ error() {
 build() {
 case $1 in 
   debug)
-    EXTRA_FLAGS="-O0"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -O0"
     ;;
   sanitizer)
-    EXTRA_FLAGS="-fsanitize=undefined -fsanitize-trap=all"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -fsanitize=undefined -fsanitize-trap=all"
     ;;
   release)
-    EXTRA_FLAGS="-O3 -march=native"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -O3 -march=native"
     ;;
   release_sanitizer)
-    EXTRA_FLAGS="-O1 -march=native -fsanitize=undefined -fsanitize-trap=all"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -O1 -march=native -fsanitize=undefined -fsanitize-trap=all"
     ;;
 	*)
 		error "Build mode \"$1\" unsupported!"

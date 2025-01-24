@@ -349,7 +349,7 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
-                                                u32 begin, PgString data) {
+                                                u32 begin, u32 data_len) {
   PieceDownload *pd = peer_find_piece_download(peer, piece);
   if (nullptr == pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
@@ -371,17 +371,17 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data.len", data.len),
+         PG_L("begin", begin), PG_L("data_len", data_len),
          PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
   // Bounds check.
   u64 end = 0;
-  if (ckd_add(&end, begin, data.len) || end > peer->download->piece_length) {
+  if (ckd_add(&end, begin, data_len) || end > peer->download->piece_length) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: begin/data.len invalid in piece message",
            PG_L("address", peer->address), PG_L("piece", piece),
-           PG_L("begin", begin), PG_L("data.len", data.len),
+           PG_L("begin", begin), PG_L("data.len", data_len),
            PG_L("piece_length", peer->download->piece_length));
     return PG_ERR_INVALID_VALUE;
   }
@@ -420,11 +420,12 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   PG_ASSERT(blocks_have_after <= blocks_count_for_piece);
 
   // Actual data copy here, the rest is just metadata bookkeeping.
-  memcpy(pd->data.data + begin, data.data, data.len);
+  PgString block_dst = PG_SLICE_RANGE(pd->data, begin, begin + data_len);
+  PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
          PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data.len", data.len), PG_L("block", block),
+         PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
          PG_L("blocks_count_for_piece", blocks_count_for_piece),
          PG_L("blocks_have_before", blocks_have_before),
          PG_L("blocks_downloading_before", blocks_downloading_before),
@@ -708,7 +709,6 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     goto end;
   }
 
-  PgString data = {0};
   if (pg_ring_read_space(recv_tmp) < length_announced) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
            PG_L("address", peer->address),
@@ -716,14 +716,9 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
            PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
     return res;
   }
-  data = (PgString){
-      .data = pg_arena_new(&arena_tmp, u8, length_announced),
-      .len = length_announced,
-  };
-  // TODO: Optimize by reading directly from ring lazily.
-  PG_ASSERT(true == pg_ring_read_slice(&recv_tmp, data));
+  peer->recv = recv_tmp;
 
-  kind = PG_SLICE_AT(data, 0);
+  PG_ASSERT(pg_ring_read_u8(&peer->recv, &kind));
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
@@ -749,8 +744,8 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    PgString data_msg = PG_SLICE_RANGE_START(data, 1);
-    u32 have = pg_u8x4_be_to_u32(data_msg);
+    u32 have = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &have));
 
     if (have > peer->download->pieces_count) {
       res.err = PG_ERR_INVALID_VALUE;
@@ -777,9 +772,8 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       return res;
     }
 
-    PgString bitfield = PG_SLICE_RANGE_START(data, 1);
     PG_ASSERT(nullptr != peer->remote_bitfield.data);
-    memcpy(peer->remote_bitfield.data, bitfield.data, bitfield.len);
+    PG_ASSERT(pg_ring_read_slice(&peer->recv, peer->remote_bitfield));
     peer->remote_bitfield_received = true;
 
     break;
@@ -789,27 +783,31 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    u32 data_length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
-
-    // TODO
-    (void)index;
-    (void)begin;
-    (void)data_length;
+    u32 index = 0, begin = 0, data_length = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
+    index = ntohl(index);
+    begin = ntohl(index);
+    data_length = ntohl(index);
 
     break;
   }
   case PEER_MSG_KIND_PIECE: {
-    if (1 + 2 * sizeof(u32) + BLOCK_SIZE != length_announced) {
+    if (sizeof(kind) + 2 * sizeof(u32) + BLOCK_SIZE != length_announced) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 piece = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    PgString piece_data = PG_SLICE_RANGE_START(data, 9);
+    u32 piece = 0, begin = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &piece));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    piece = htonl(piece);
+    begin = htonl(begin);
 
-    res.err = peer_receive_block(peer, piece, begin, piece_data);
+    u32 data_len =
+        length_announced - (sizeof(kind) + sizeof(piece) + sizeof(begin));
+    PG_ASSERT(data_len <= BLOCK_SIZE);
+    res.err = peer_receive_block(peer, piece, begin, data_len);
 
     break;
   }
@@ -818,14 +816,14 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    u32 data_length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
-    // TODO
-    (void)index;
-    (void)begin;
-    (void)data_length;
+    u32 index = 0, begin = 0, data_length = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
+    index = ntohl(index);
+    begin = ntohl(index);
+    data_length = ntohl(index);
 
     break;
   }
@@ -845,7 +843,6 @@ end:
          PG_L("kind", peer_message_kind_to_string(kind)));
 
   res.present = true;
-  peer->recv = recv_tmp;
   return res;
 }
 

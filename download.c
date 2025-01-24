@@ -9,6 +9,7 @@ typedef struct {
   u32 blocks_per_piece_count;
   u64 piece_length;
   u64 total_file_size;
+  PgFile file;
 } Download;
 
 [[maybe_unused]] [[nodiscard]] static bool
@@ -117,24 +118,25 @@ download_verify_piece_hash(PgString data, PgString hash_expected) {
   return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgError
+[[maybe_unused]] [[nodiscard]] static PgFileResult
 download_file_create_if_not_exists(PgString path, u64 size, PgArena arena) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
   PgFileFlags flags =
       PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
-  PgError err = pg_file_create(filename, flags, arena);
-  if (err) {
-    return err;
+  PgFileResult res = pg_file_open(filename, flags, arena);
+  if (res.err) {
+    return res;
   }
 
-  err = pg_file_set_size(filename, size, arena);
-  if (err) {
-    return err;
+  res.err = pg_file_set_size(filename, size, arena);
+  if (res.err) {
+    (void)pg_file_close(res.res);
+    return res;
   }
 
-  return 0;
+  return res;
 }
 
 typedef struct {

@@ -30,12 +30,12 @@ int main(int argc, char *argv[]) {
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file",
          PG_L("path", torrent_file_path));
 
-  PgError err_file_create = download_file_create_if_not_exists(
+  PgFileResult target_file_res = download_file_create_if_not_exists(
       res_decode_metainfo.res.name, res_decode_metainfo.res.length, arena);
-  if (err_file_create) {
+  if (target_file_res.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
            PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", err_file_create));
+           PG_L("err", target_file_res.err));
     return 1;
   }
 
@@ -73,6 +73,7 @@ int main(int argc, char *argv[]) {
           res_decode_metainfo.res.piece_length),
       .piece_length = res_decode_metainfo.res.piece_length,
       .total_file_size = res_decode_metainfo.res.length,
+      .file = target_file_res.res,
   };
   PG_ASSERT(download.blocks_per_piece_count > 0);
 

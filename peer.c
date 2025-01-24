@@ -88,8 +88,9 @@ typedef struct {
   PgString piece_hashes;
 
   PgEventLoop *loop;
-  u64 os_handle;
+  u64 os_handle_socket;
   PgRing recv;
+  PgFile file; // TODO: Support multiple files.
 } Peer;
 
 PG_DYN(Peer) PeerDyn;
@@ -151,11 +152,10 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer
-peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, PgEventLoop *loop,
-          u64 concurrent_pieces_download_max,
-          u64 concurrent_blocks_download_max, PgString piece_hashes) {
+[[maybe_unused]] [[nodiscard]] static Peer peer_make(
+    PgIpv4Address address, PgString info_hash, PgLogger *logger,
+    Download *download, PgEventLoop *loop, u64 concurrent_pieces_download_max,
+    u64 concurrent_blocks_download_max, PgString piece_hashes, PgFile file) {
   PG_ASSERT(20 == info_hash.len);
   PG_ASSERT(piece_hashes.len == 20 * download->pieces_count);
 
@@ -168,6 +168,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.concurrent_pieces_download_max = concurrent_pieces_download_max;
   peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
   peer.piece_hashes = piece_hashes;
+  peer.file = file;
 
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.
@@ -198,7 +199,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->arena_tmp);
-  (void)pg_event_loop_handle_close(peer->loop, peer->os_handle);
+  (void)pg_event_loop_handle_close(peer->loop, peer->os_handle_socket);
   free(peer);
 }
 
@@ -250,6 +251,13 @@ static void peer_release(Peer *peer) {
   PgString hash_expected =
       PG_SLICE_RANGE(pieces_hash, 20 * pd->piece, 20 * (pd->piece + 1));
   return download_verify_piece_hash(pd->data, hash_expected);
+}
+
+[[nodiscard]] static PgError peer_save_piece_to_disk(PgFile file, u32 piece,
+                                                     u64 piece_length,
+                                                     PgString data) {
+  u64 file_offset = piece * piece_length;
+  return pg_file_write_data_at_offset_from_start(file, file_offset, data);
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
@@ -346,7 +354,17 @@ static void peer_release(Peer *peer) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: completed piece download and hash verification succeeded",
            PG_L("address", peer->address), PG_L("piece", piece));
-    // TODO: Save data to disk.
+
+    PgError err_file = peer_save_piece_to_disk(
+        peer->file, piece, peer->download->piece_length, pd->data);
+    if (err_file) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+             "peer: failed to save piece data to disk",
+             PG_L("address", peer->address), PG_L("piece", piece),
+             PG_L("err", err_file));
+      return err_file;
+    }
+
     // TODO: Start downloading new piece.
   }
 
@@ -523,8 +541,8 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
   PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
-  PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
-                                    peer_on_write);
+  PgError err = pg_event_loop_write(peer->loop, peer->os_handle_socket,
+                                    msg_encoded, peer_on_write);
   if (err) {
     return err;
   }
@@ -949,10 +967,10 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
     peer_release(peer);
     return res_tcp.err;
   }
-  peer->os_handle = res_tcp.res;
+  peer->os_handle_socket = res_tcp.res;
 
   PgError err_connect = pg_event_loop_tcp_connect(
-      loop, peer->os_handle, peer->address, peer_on_connect);
+      loop, peer->os_handle_socket, peer->address, peer_on_connect);
   if (err_connect) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
            PG_L("err", err_connect), PG_L("address", peer->address));

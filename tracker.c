@@ -368,7 +368,7 @@ tracker_read_http_response_body(Tracker *tracker) {
                           tracker->download, tracker->loop,
                           tracker->concurrent_pieces_download_max,
                           tracker->concurrent_blocks_download_max,
-                          tracker->piece_hashes);
+                          tracker->piece_hashes, tracker->download->file);
 
         PgError err_peer = peer_start(tracker->loop, peer);
         if (err_peer) {

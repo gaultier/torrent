@@ -261,6 +261,9 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
              TrackerMetadata metadata, Download *download, PgEventLoop *loop,
              u64 concurrent_pieces_download_max,
              u64 concurrent_blocks_download_max, PgString piece_hashes) {
+  PG_ASSERT(20 == metadata.info_hash.len);
+  PG_ASSERT(piece_hashes.len == 20 * download->pieces_count);
+
   Tracker tracker = {0};
   tracker.logger = logger;
   tracker.host = host;

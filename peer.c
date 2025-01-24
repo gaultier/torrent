@@ -156,6 +156,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
           Download *download, PgEventLoop *loop,
           u64 concurrent_pieces_download_max,
           u64 concurrent_blocks_download_max, PgString piece_hashes) {
+  PG_ASSERT(20 == info_hash.len);
+  PG_ASSERT(piece_hashes.len == 20 * download->pieces_count);
+
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
@@ -490,6 +493,8 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
     return 0;
   }
+  PG_ASSERT(true ==
+            pg_bitfield_get(pd->blocks_bitfield_downloading, (u64)block));
 
   u32 block_length =
       download_compute_block_length((u32)block, peer->download->piece_length);

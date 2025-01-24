@@ -192,7 +192,7 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgHttpRequest
+[[nodiscard]] static PgHttpRequest
 tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;

@@ -11,7 +11,6 @@
 #include "submodules/cstd/lib.c"
 
 #define HANDSHAKE_LENGTH 68
-#define LENGTH_LENGTH 4
 
 typedef enum {
   PEER_STATE_NONE,
@@ -682,17 +681,14 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 [[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
   PeerMessageReadResult res = {0};
 
-  PgArena arena_tmp = peer->arena_tmp;
   PgRing recv_tmp = peer->recv;
 
-  PgString length = {
-      .data = pg_arena_new(&arena_tmp, u8, LENGTH_LENGTH),
-      .len = LENGTH_LENGTH,
-  };
-  if (!pg_ring_read_slice(&recv_tmp, length)) {
+  u32 length_announced = 0;
+  if (!pg_ring_read_u32(&recv_tmp, &length_announced)) {
     return res;
   }
-  u32 length_announced = pg_u8x4_be_to_u32(length);
+  length_announced = htonl(length_announced);
+
   u32 length_announced_max = 16 + BLOCK_SIZE;
   if (length_announced > length_announced_max) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",

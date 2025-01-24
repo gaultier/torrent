@@ -757,6 +757,8 @@ static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
          PG_L("address", peer->address), PG_L("data", data));
 
+  // FIXME: The write callback could starve the read callback here without
+  // 'fair' scheduling, and fill the ring buffer.
   if (!pg_ring_write_slice(&peer->recv, data)) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: read too much data",
            PG_L("address", peer->address),

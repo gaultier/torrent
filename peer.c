@@ -156,8 +156,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
     PgIpv4Address address, PgString info_hash, PgLogger *logger,
     Download *download, PgEventLoop *loop, u64 concurrent_pieces_download_max,
     u64 concurrent_blocks_download_max, PgString piece_hashes, PgFile file) {
-  PG_ASSERT(20 == info_hash.len);
-  PG_ASSERT(piece_hashes.len == 20 * download->pieces_count);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
+  PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Peer peer = {0};
   peer.address = address;
@@ -217,22 +217,25 @@ static void peer_release(Peer *peer) {
   pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received handshake",
          PG_L("address", peer->address), PG_L("handshake", handshake));
 
-  PgString prefix = PG_SLICE_RANGE(handshake, 0, 20);
+  PgString prefix = PG_SLICE_RANGE(handshake, 0, PG_SHA1_DIGEST_LENGTH);
   PgString prefix_expected = PG_S("\x13"
                                   "BitTorrent protocol");
   if (!pg_string_eq(prefix, prefix_expected)) {
     return PG_ERR_INVALID_VALUE;
   }
 
-  PgString reserved_bytes = PG_SLICE_RANGE(handshake, 20, 28);
+  PgString reserved_bytes =
+      PG_SLICE_RANGE(handshake, PG_SHA1_DIGEST_LENGTH, 28);
   (void)reserved_bytes; // Ignore.
 
-  PgString info_hash_received = PG_SLICE_RANGE(handshake, 28, 28 + 20);
+  PgString info_hash_received =
+      PG_SLICE_RANGE(handshake, 28, 28 + PG_SHA1_DIGEST_LENGTH);
   if (!pg_string_eq(info_hash_received, peer->info_hash)) {
     return PG_ERR_INVALID_VALUE;
   }
 
-  PgString remote_peer_id = PG_SLICE_RANGE_START(handshake, 28 + 20);
+  PgString remote_peer_id =
+      PG_SLICE_RANGE_START(handshake, 28 + PG_SHA1_DIGEST_LENGTH);
   PG_ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
@@ -246,10 +249,11 @@ static void peer_release(Peer *peer) {
 
 [[nodiscard]] static bool piece_download_verify_piece(PieceDownload *pd,
                                                       PgString pieces_hash) {
-  PG_ASSERT(pieces_hash.len >= 20 * (pd->piece + 1));
+  PG_ASSERT(pieces_hash.len >= PG_SHA1_DIGEST_LENGTH * (pd->piece + 1));
 
   PgString hash_expected =
-      PG_SLICE_RANGE(pieces_hash, 20 * pd->piece, 20 * (pd->piece + 1));
+      PG_SLICE_RANGE(pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece,
+                     PG_SHA1_DIGEST_LENGTH * (pd->piece + 1));
   return download_verify_piece_hash(pd->data, hash_expected);
 }
 
@@ -958,7 +962,7 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
                       arena);
   PG_ASSERT(1 + 19 + 8 == sb.len);
 
-  PG_ASSERT(20 == info_hash.len);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_DYN_APPEND_SLICE(&sb, info_hash, arena);
 
   PgString peer_id = PG_S("00000000000000000000");

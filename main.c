@@ -45,8 +45,8 @@ int main(int argc, char *argv[]) {
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
-      .info_hash =
-          pg_string_make(20, &arena), // FIXME: Should use tracker's arena?
+      .info_hash = pg_string_make(PG_SHA1_DIGEST_LENGTH,
+                                  &arena), // FIXME: Should use tracker's arena?
       .peer_id =
           pg_string_make(20, &arena), // FIXME: Should use tracker's arena?
   };

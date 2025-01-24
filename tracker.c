@@ -72,7 +72,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
   PG_ASSERT(0 == bencode_encode(value, &w, &arena));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
 
-  u8 pg_sha1_hash[20] = {0};
+  u8 pg_sha1_hash[PG_SHA1_DIGEST_LENGTH] = {0};
   pg_sha1(encoded, pg_sha1_hash);
   PG_ASSERT(sizeof(pg_sha1_hash) == hash.len);
   memcpy(hash.data, pg_sha1_hash, hash.len);
@@ -261,8 +261,8 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
              TrackerMetadata metadata, Download *download, PgEventLoop *loop,
              u64 concurrent_pieces_download_max,
              u64 concurrent_blocks_download_max, PgString piece_hashes) {
-  PG_ASSERT(20 == metadata.info_hash.len);
-  PG_ASSERT(piece_hashes.len == 20 * download->pieces_count);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
+  PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Tracker tracker = {0};
   tracker.logger = logger;

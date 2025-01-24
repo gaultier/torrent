@@ -111,9 +111,9 @@ download_pick_next_piece(Download *download, PgString remote_bitfield_have) {
 // TODO: use.
 [[maybe_unused]] [[nodiscard]] static bool
 download_verify_piece_hash(PgString data, PgString hash_expected) {
-  PG_ASSERT(20 == hash_expected.len);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
 
-  u8 hash_got[20] = {0};
+  u8 hash_got[PG_SHA1_DIGEST_LENGTH] = {0};
   pg_sha1(data, hash_got);
   return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
 }
@@ -154,7 +154,8 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   PG_ASSERT(d->piece_i < d->pieces_count);
 
   PgString sha_expected =
-      PG_SLICE_RANGE(d->info_hash, 20 * d->piece_i, 20 * (d->piece_i + 1));
+      PG_SLICE_RANGE(d->info_hash, PG_SHA1_DIGEST_LENGTH * d->piece_i,
+                     PG_SHA1_DIGEST_LENGTH * (d->piece_i + 1));
   bool eq = download_verify_piece_hash(chunk, sha_expected);
 
   pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len),

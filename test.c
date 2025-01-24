@@ -271,12 +271,12 @@ static void test_tracker_compute_info_hash() {
   PG_ASSERT(0 == res.err);
 
   PgString hash = {
-      .data = pg_arena_new(&arena, u8, 20),
-      .len = 20,
+      .data = pg_arena_new(&arena, u8, PG_SHA1_DIGEST_LENGTH),
+      .len = PG_SHA1_DIGEST_LENGTH,
   };
   tracker_compute_info_hash(res.res, hash, arena);
 
-  u8 expected_hash[20] = {
+  u8 expected_hash[PG_SHA1_DIGEST_LENGTH] = {
       0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,
       0x90, 0xe8, 0x7d, 0x3a, 0x01, 0x4f, 0x8a, 0x07, 0x2d, 0x7a,
   };
@@ -340,7 +340,7 @@ static void test_peer_receive_handshake() {
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
   peer.info_hash = PG_S("abcdefghijklmnopqrst");
-  PG_ASSERT(20 == peer.info_hash.len);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == peer.info_hash.len);
 
   PgError err = peer_receive_handshake(&peer);
   PG_ASSERT(0 == err);
@@ -387,7 +387,7 @@ static void test_peer_send_message() {
   peer.arena = arena;
   peer.tmp_arena = tmp_arena;
   peer.info_hash = PG_S("abcdefghijklmnopqrst");
-  PG_ASSERT(20 == peer.info_hash.len);
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == peer.info_hash.len);
 
   PeerMessage msg = {
       .kind = PEER_MSG_KIND_REQUEST,

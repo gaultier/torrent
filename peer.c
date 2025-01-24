@@ -247,7 +247,10 @@ static void peer_release(Peer *peer) {
            PG_L("address", peer->address), PG_L("piece", piece));
     return PG_ERR_INVALID_VALUE;
   }
+
+  // TODO: Should be a validation error, not an assert.
   PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),
          PG_L("begin", begin), PG_L("data.len", data.len),
@@ -420,12 +423,15 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 
 [[nodiscard]] [[maybe_unused]] static PgError
 peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <
+  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
             peer->concurrent_blocks_download_max);
 
   PgArena arena_tmp = peer->arena_tmp;
   i64 block = piece_download_pick_next_block(
       pd, peer->download, peer->concurrent_blocks_download_max);
+  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
+            peer->concurrent_blocks_download_max);
+
   if (-1 == block) {
     // TODO: Verify piece hash, reset counters, etc.
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",

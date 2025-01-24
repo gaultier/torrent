@@ -279,8 +279,7 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
   return tracker;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-tracker_try_parse_http_response(Tracker *tracker) {
+[[nodiscard]] static PgError tracker_try_parse_http_response(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_HTTP_RESPONSE == tracker->state);
 
   PgHttpResponseReadResult res_http =
@@ -325,7 +324,7 @@ tracker_try_parse_http_response(Tracker *tracker) {
   return 0;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgBoolResult
+[[nodiscard]] static PgBoolResult
 tracker_read_http_response_body(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_BODY == tracker->state);
 

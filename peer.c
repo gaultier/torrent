@@ -389,10 +389,17 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   // TODO: This be a validation error instead of an assert.
   PG_ASSERT(block < blocks_count_for_piece);
 
-  // TODO: This be a validation error instead of an assert.
-  PG_ASSERT(true == pg_bitfield_get(pd->blocks_bitfield_downloading, block));
-
-  PG_ASSERT(false == pg_bitfield_get(pd->blocks_bitfield_have, block));
+  // From the spec:
+  //
+  // > It's possible for an unexpected piece to arrive if choke and unchoke
+  // messages are sent in quick succession and/or transfer is going very slowly.
+  //
+  // In this case, ignore, if we have the block already.
+  // Otherwise, just keep it.
+  if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block) &&
+      pg_bitfield_get(pd->blocks_bitfield_have, block)) {
+    return 0;
+  }
 
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
   pg_bitfield_set(pd->blocks_bitfield_downloading, block, false);

@@ -169,14 +169,9 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.piece_hashes = piece_hashes;
   peer.file = file;
 
-  // At most one block is held in memory at any time, plus a bit of temporary
-  // data for encoding/decoding messages.
-  // TODO: Check if this still holds if we use async I/O for file rw.
   peer.arena = pg_arena_make_from_virtual_mem(
-      32 * PG_KiB +
-      BLOCK_SIZE * concurrent_pieces_download_max *
-          concurrent_blocks_download_max +
-      peer.concurrent_pieces_download_max * download->piece_length);
+      4 * PG_KiB + (peer.concurrent_pieces_download_max) *
+                       (download->piece_length + 4 * PG_KiB));
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.remote_choked = true;
   peer.remote_interested = false;
@@ -483,7 +478,12 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
                                                   PgArena *arena) {
 
   Pgu8Dyn sb = {0};
-  u64 cap = 16 + (PEER_MSG_KIND_BITFIELD == msg.kind ? (msg.bitfield.len) : 0);
+  u64 cap = 16;
+  if (msg.kind == PEER_MSG_KIND_BITFIELD) {
+    cap += msg.bitfield.len;
+  } else if (msg.kind == PEER_MSG_KIND_PIECE) {
+    cap += BLOCK_SIZE;
+  }
   PG_DYN_ENSURE_CAP(&sb, cap, arena);
 
   switch (msg.kind) {

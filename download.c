@@ -12,15 +12,6 @@ typedef struct {
   PgFile file;
 } Download;
 
-[[maybe_unused]] [[nodiscard]] static bool
-download_is_piece_length_valid(u64 piece_length) {
-  if (0 == piece_length) {
-    return false;
-  }
-
-  return true;
-}
-
 [[maybe_unused]] [[nodiscard]] static u32
 download_compute_blocks_per_piece_count(u64 piece_length) {
   u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);

@@ -96,10 +96,10 @@ typedef struct {
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_block_maybe(Peer *peer, PieceDownload *pd);
+[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
+                                                      PieceDownload *pd);
 
-[[nodiscard]] [[maybe_unused]] static PieceDownload
+[[nodiscard]] static PieceDownload
 piece_download_make(u32 piece, u64 piece_length, u32 blocks_per_piece_count,
                     PgArena *arena) {
   PieceDownload res = {0};
@@ -124,7 +124,7 @@ piece_download_make(u32 piece, u64 piece_length, u32 blocks_per_piece_count,
   return nullptr;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgString
+[[nodiscard]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -195,7 +195,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 // TODO: Principled peer lifetime. Perhaps with a pool?
 // Need to be careful when the peer is released, and handling double release.
-[[maybe_unused]]
+
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->arena_tmp);
@@ -440,7 +440,7 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   }
 }
 
-[[nodiscard]] [[maybe_unused]] static i64
+[[nodiscard]] static i64
 piece_download_pick_next_block(PieceDownload *pd, Download *download,
                                u64 concurrent_blocks_download_max) {
   PG_ASSERT(pd->piece <= download->pieces_count);
@@ -478,8 +478,8 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   return -1;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
-peer_encode_message(PeerMessage msg, PgArena *arena) {
+[[nodiscard]] static PgString peer_encode_message(PeerMessage msg,
+                                                  PgArena *arena) {
 
   Pgu8Dyn sb = {0};
   u64 cap = 16 + (PEER_MSG_KIND_BITFIELD == msg.kind ? (msg.bitfield.len) : 0);
@@ -544,8 +544,8 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   return s;
 }
 
-[[maybe_unused]] static void peer_on_write(PgEventLoop *loop, u64 os_handle,
-                                           void *ctx, PgError err) {
+static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
+                          PgError err) {
   (void)loop;
   (void)os_handle;
 
@@ -563,8 +563,8 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
          PG_L("address", peer->address));
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
+[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
+                                                      PieceDownload *pd) {
   PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
             peer->concurrent_blocks_download_max);
 
@@ -619,8 +619,7 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   return 0;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_remote_data_maybe(Peer *peer) {
+[[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(0 != peer->concurrent_pieces_download_max);
   PG_ASSERT(0 != peer->concurrent_blocks_download_max);
 
@@ -846,8 +845,7 @@ end:
   return res;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_handle_recv_data(Peer *peer) {
+[[nodiscard]] static PgError peer_handle_recv_data(Peer *peer) {
   for (u64 _i = 0; _i < 8; _i++) {
     switch (peer->state) {
     case PEER_STATE_NONE: {
@@ -873,7 +871,6 @@ peer_handle_recv_data(Peer *peer) {
   return 0;
 }
 
-[[maybe_unused]]
 static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
                          PgError err, PgString data) {
   PG_ASSERT(nullptr != ctx);
@@ -919,7 +916,6 @@ static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   }
 }
 
-[[maybe_unused]]
 static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
                               PgError err) {
   PG_ASSERT(nullptr != ctx);
@@ -945,8 +941,8 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
-peer_make_handshake(PgString info_hash, PgArena *arena) {
+[[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
+                                                  PgArena *arena) {
   Pgu8Dyn sb = {0};
   PG_DYN_APPEND_SLICE(&sb,
                       PG_S("\x13"

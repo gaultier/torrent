@@ -969,7 +969,6 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   return PG_DYN_SLICE(PgString, sb);
 }
 
-[[maybe_unused]]
 static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
                             PgError err) {
   Peer *peer = ctx;

@@ -383,7 +383,6 @@ tracker_read_http_response_body(Tracker *tracker) {
   return res;
 }
 
-[[maybe_unused]]
 static void tracker_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
 
   Tracker *tracker = ctx;
@@ -394,7 +393,6 @@ static void tracker_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
   (void)loop;
 }
 
-[[maybe_unused]]
 static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
                                 PgError io_err, PgString data) {
   PG_ASSERT(nullptr != ctx);

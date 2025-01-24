@@ -85,6 +85,7 @@ typedef struct {
   PieceDownloadDyn downloading_pieces;
   u64 concurrent_pieces_download_max;
   u64 concurrent_blocks_download_max;
+  PgString piece_hashes;
 
   PgEventLoop *loop;
   u64 os_handle;
@@ -154,7 +155,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
           Download *download, PgEventLoop *loop,
           u64 concurrent_pieces_download_max,
-          u64 concurrent_blocks_download_max) {
+          u64 concurrent_blocks_download_max, PgString piece_hashes) {
   Peer peer = {0};
   peer.address = address;
   peer.info_hash = info_hash;
@@ -163,6 +164,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.loop = loop;
   peer.concurrent_pieces_download_max = concurrent_pieces_download_max;
   peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
+  peer.piece_hashes = piece_hashes;
 
   // At most one block is held in memory at any time, plus a bit of temporary
   // data for encoding/decoding messages.

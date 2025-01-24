@@ -361,10 +361,11 @@ tracker_read_http_response_body(Tracker *tracker) {
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         Peer *peer = calloc(sizeof(Peer), 1);
-        *peer = peer_make(addr, tracker->piece_hashes, tracker->logger,
+        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
                           tracker->download, tracker->loop,
                           tracker->concurrent_pieces_download_max,
-                          tracker->concurrent_blocks_download_max);
+                          tracker->concurrent_blocks_download_max,
+                          tracker->piece_hashes);
 
         PgError err_peer = peer_start(tracker->loop, peer);
         if (err_peer) {

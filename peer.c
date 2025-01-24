@@ -66,7 +66,6 @@ typedef struct {
   PgString data; // Piece data.
   PgString blocks_bitfield_have;
   PgString blocks_bitfield_downloading;
-  u64 concurrent_blocks_download_count;
 } PieceDownload;
 PG_DYN(PieceDownload) PieceDownloadDyn;
 
@@ -248,14 +247,12 @@ static void peer_release(Peer *peer) {
            PG_L("address", peer->address), PG_L("piece", piece));
     return PG_ERR_INVALID_VALUE;
   }
-  PG_ASSERT(pd->concurrent_blocks_download_count > 0);
+  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),
          PG_L("begin", begin), PG_L("data.len", data.len),
          PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
-
-  // TODO: Check that this particular block was requested?
 
   // Bounds check.
   u64 end = 0;
@@ -274,15 +271,16 @@ static void peer_release(Peer *peer) {
       piece, peer->download->piece_length, peer->download->total_file_size);
   PG_ASSERT(block < blocks_count_for_piece);
 
+  // TODO: This be a validation error instead of an assert.
   PG_ASSERT(true == pg_bitfield_get(pd->blocks_bitfield_downloading, block));
+
   PG_ASSERT(false == pg_bitfield_get(pd->blocks_bitfield_have, block));
 
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
+  pg_bitfield_set(pd->blocks_bitfield_downloading, block, false);
 
   // Actual data copy here, the rest is just metadata bookkeeping.
   memcpy(pd->data.data + begin, data.data, data.len);
-
-  pd->concurrent_blocks_download_count -= 1;
 
   u64 blocks_have_count_for_piece = pg_bitfield_count(pd->blocks_bitfield_have);
 
@@ -292,7 +290,7 @@ static void peer_release(Peer *peer) {
          PG_L("block_have_count_for_piece", blocks_have_count_for_piece),
          PG_L("blocks_count_for_piece", blocks_count_for_piece),
          PG_L("piece_download_concurrent_blocks_download_count",
-              pd->concurrent_blocks_download_count),
+              pg_bitfield_count(pd->blocks_bitfield_downloading)),
          PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
@@ -308,8 +306,15 @@ static void peer_release(Peer *peer) {
 }
 
 [[nodiscard]] [[maybe_unused]] static i64
-piece_download_pick_next_block(PieceDownload *pd, Download *download) {
+piece_download_pick_next_block(PieceDownload *pd, Download *download,
+                               u64 concurrent_blocks_download_max) {
   PG_ASSERT(pd->piece <= download->pieces_count);
+  u64 blocks_downloading = pg_bitfield_count(pd->blocks_bitfield_downloading);
+  PG_ASSERT(blocks_downloading <= concurrent_blocks_download_max);
+
+  if (blocks_downloading > concurrent_blocks_download_max) {
+    return -1;
+  }
 
   u32 blocks_count = download_compute_blocks_count_for_piece(
       pd->piece, download->piece_length, download->total_file_size);
@@ -415,11 +420,12 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 
 [[nodiscard]] [[maybe_unused]] static PgError
 peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
-  PG_ASSERT(pd->concurrent_blocks_download_count <
+  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <
             peer->concurrent_blocks_download_max);
 
   PgArena arena_tmp = peer->arena_tmp;
-  i64 block = piece_download_pick_next_block(pd, peer->download);
+  i64 block = piece_download_pick_next_block(
+      pd, peer->download, peer->concurrent_blocks_download_max);
   if (-1 == block) {
     // TODO: Verify piece hash, reset counters, etc.
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
@@ -444,7 +450,9 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
          PG_L("address", peer->address), PG_L("block", (u32)block),
          PG_L("piece", pd->piece), PG_L("begin", msg.request.begin),
-         PG_L("block_length", block_length));
+         PG_L("block_length", block_length),
+         PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
+         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
   PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
   PgError err = pg_event_loop_write(peer->loop, peer->os_handle, msg_encoded,
@@ -453,7 +461,6 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
     return err;
   }
 
-  pd->concurrent_blocks_download_count += 1;
   return 0;
 }
 
@@ -503,28 +510,29 @@ peer_request_remote_data_maybe(Peer *peer) {
 
   for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
     PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
-    PG_ASSERT(pd->concurrent_blocks_download_count <=
-              peer->concurrent_blocks_download_max);
+    u64 blocks_downloading_count =
+        pg_bitfield_count(pd->blocks_bitfield_downloading);
+    PG_ASSERT(blocks_downloading_count <= peer->concurrent_blocks_download_max);
 
-    if (pd->concurrent_blocks_download_count ==
+    if (pg_bitfield_count(pd->blocks_bitfield_downloading) ==
         peer->concurrent_blocks_download_max) {
       continue;
     }
-    u64 blocks_to_queue_count = peer->concurrent_blocks_download_max -
-                                pd->concurrent_blocks_download_count;
+    u64 blocks_to_queue_count =
+        peer->concurrent_blocks_download_max - blocks_downloading_count;
     PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);
 
     for (u64 j = 0; j < blocks_to_queue_count; j++) {
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing block download",
              PG_L("address", peer->address), PG_L("piece", pd->piece),
              PG_L("piece_download_concurrent_blocks_download_count",
-                  pd->concurrent_blocks_download_count));
+                  blocks_downloading_count));
       PgError err = peer_request_block_maybe(peer, pd);
       if (err) {
         return err;
       }
     }
-    PG_ASSERT(pd->concurrent_blocks_download_count <=
+    PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
               peer->concurrent_blocks_download_max);
   }
   PG_ASSERT(peer->downloading_pieces.len <=

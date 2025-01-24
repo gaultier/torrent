@@ -248,8 +248,18 @@ static void peer_release(Peer *peer) {
     return PG_ERR_INVALID_VALUE;
   }
 
-  // TODO: Should be a validation error, not an assert.
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
+  // Sanity checks.
+  {
+    u64 blocks_downloading = pg_bitfield_count(pd->blocks_bitfield_downloading);
+    PG_ASSERT(blocks_downloading <= peer->concurrent_blocks_download_max);
+    u32 blocks_count = download_compute_blocks_count_for_piece(
+        pd->piece, peer->download->piece_length,
+        peer->download->total_file_size);
+    u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
+    PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
+    // TODO: Should be a validation error, not an assert.
+    PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
+  }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),
@@ -272,6 +282,8 @@ static void peer_release(Peer *peer) {
   u32 block = begin / BLOCK_SIZE;
   u64 blocks_count_for_piece = download_compute_blocks_count_for_piece(
       piece, peer->download->piece_length, peer->download->total_file_size);
+
+  // TODO: This be a validation error instead of an assert.
   PG_ASSERT(block < blocks_count_for_piece);
 
   // TODO: This be a validation error instead of an assert.
@@ -281,6 +293,19 @@ static void peer_release(Peer *peer) {
 
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
   pg_bitfield_set(pd->blocks_bitfield_downloading, block, false);
+
+  // Sanity checks.
+  {
+    u64 blocks_downloading = pg_bitfield_count(pd->blocks_bitfield_downloading);
+    PG_ASSERT(blocks_downloading <= peer->concurrent_blocks_download_max);
+    u32 blocks_count = download_compute_blocks_count_for_piece(
+        pd->piece, peer->download->piece_length,
+        peer->download->total_file_size);
+    u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
+    PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
+    // TODO: Should be a validation error, not an assert.
+    PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
+  }
 
   // Actual data copy here, the rest is just metadata bookkeeping.
   memcpy(pd->data.data + begin, data.data, data.len);
@@ -321,6 +346,9 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
 
   u32 blocks_count = download_compute_blocks_count_for_piece(
       pd->piece, download->piece_length, download->total_file_size);
+  u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
+  PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
+
   u64 start = pg_rand_u32(0, blocks_count);
 
   for (u64 i = 0; i < blocks_count; i++) {

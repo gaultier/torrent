@@ -315,7 +315,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   u64 blocks_downloading = pg_bitfield_count(pd->blocks_bitfield_downloading);
   PG_ASSERT(blocks_downloading <= concurrent_blocks_download_max);
 
-  if (blocks_downloading > concurrent_blocks_download_max) {
+  if (blocks_downloading >= concurrent_blocks_download_max) {
     return -1;
   }
 
@@ -329,7 +329,14 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
         !pg_bitfield_get(pd->blocks_bitfield_downloading, idx)) {
       PG_ASSERT(idx <= UINT32_MAX);
       PG_ASSERT(idx < blocks_count);
+      PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <
+                concurrent_blocks_download_max);
+
       pg_bitfield_set(pd->blocks_bitfield_downloading, idx, true);
+
+      PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
+                concurrent_blocks_download_max);
+
       return (i32)idx;
     }
   }

@@ -169,7 +169,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   // data for encoding/decoding messages.
   // TODO: Check if this still holds if we use async I/O for file rw.
   peer.arena = pg_arena_make_from_virtual_mem(
-      32 * PG_KiB + BLOCK_SIZE +
+      32 * PG_KiB +
+      BLOCK_SIZE * concurrent_pieces_download_max *
+          concurrent_blocks_download_max +
       peer.concurrent_pieces_download_max * download->piece_length);
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.remote_choked = true;
@@ -844,7 +846,10 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-  peer->recv = pg_ring_make(4 * PG_KiB + BLOCK_SIZE, &peer->arena);
+  peer->recv = pg_ring_make(
+      4 * PG_KiB + BLOCK_SIZE * peer->concurrent_blocks_download_max *
+                       peer->concurrent_pieces_download_max,
+      &peer->arena);
   {
     PgArena arena_tmp = peer->arena_tmp;
     PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);

@@ -396,10 +396,10 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   //
   // In this case, ignore.
   // TODO: Keep it if we do not have it.
+  bool expected_block = true;
   if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block)) {
     pg_log(
-        peer->logger, PG_LOG_LEVEL_DEBUG,
-        "peer: received unexpected block, ignoring",
+        peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received unexpected block",
         PG_L("address", peer->address), PG_L("piece", piece),
         PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
         PG_L("blocks_count_for_piece", blocks_count_for_piece),
@@ -407,12 +407,13 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
         PG_L("blocks_downloading_before", blocks_downloading_before),
         PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
-    {
+    if (pg_bitfield_get(pd->blocks_bitfield_have, block)) {
       PgArena arena_tmp = peer->arena_tmp;
       PgString block_dst = pg_string_make(data_len, &arena_tmp);
       PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
+      return 0;
     }
-    return 0;
+    expected_block = false;
   }
 
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
@@ -425,7 +426,8 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
   PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
 
-  PG_ASSERT(blocks_downloading_after == blocks_downloading_before - 1);
+  PG_ASSERT(blocks_downloading_after ==
+            blocks_downloading_before - expected_block);
   PG_ASSERT(blocks_have_after == blocks_have_before + 1);
   PG_ASSERT(blocks_have_after <= blocks_count_for_piece);
 

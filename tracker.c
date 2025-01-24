@@ -252,14 +252,15 @@ typedef struct {
   // TODO: Decouple from tracker.
   u64 concurrent_pieces_download_max;
   u64 concurrent_blocks_download_max;
+  PgString piece_hashes;
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
-static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
-                            TrackerMetadata metadata, Download *download,
-                            PgEventLoop *loop,
-                            u64 concurrent_pieces_download_max,
-                            u64 concurrent_blocks_download_max) {
+static Tracker
+tracker_make(PgLogger *logger, PgString host, u16 port,
+             TrackerMetadata metadata, Download *download, PgEventLoop *loop,
+             u64 concurrent_pieces_download_max,
+             u64 concurrent_blocks_download_max, PgString piece_hashes) {
   Tracker tracker = {0};
   tracker.logger = logger;
   tracker.host = host;
@@ -269,6 +270,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.loop = loop;
   tracker.concurrent_pieces_download_max = concurrent_pieces_download_max;
   tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
+  tracker.piece_hashes = piece_hashes;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
@@ -359,7 +361,7 @@ tracker_read_http_response_body(Tracker *tracker) {
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         Peer *peer = calloc(sizeof(Peer), 1);
-        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
+        *peer = peer_make(addr, tracker->piece_hashes, tracker->logger,
                           tracker->download, tracker->loop,
                           tracker->concurrent_pieces_download_max,
                           tracker->concurrent_blocks_download_max);

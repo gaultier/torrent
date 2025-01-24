@@ -94,7 +94,8 @@ int main(int argc, char *argv[]) {
   u64 concurrent_blocks_download_max = 5;
   Tracker tracker = tracker_make(
       &logger, announce.host, announce.port, tracker_metadata, &download, &loop,
-      concurrent_pieces_download_max, concurrent_blocks_download_max);
+      concurrent_pieces_download_max, concurrent_blocks_download_max,
+      res_decode_metainfo.res.pieces);
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
            PG_L("host", announce.host));

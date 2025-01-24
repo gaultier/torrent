@@ -10,7 +10,6 @@
 -Wno-covered-switch-default
 -Wno-class-varargs 
 -Wno-pre-c23-compat
--Wno-pre-c11-compat
 -Wno-cast-qual
 -Wno-disabled-macro-expansion
 -Werror

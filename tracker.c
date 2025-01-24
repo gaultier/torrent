@@ -22,7 +22,7 @@ typedef struct {
   PgUrl announce;
 } TrackerMetadata;
 
-[[maybe_unused]] [[nodiscard]] static PgString
+[[nodiscard]] static PgString
 tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
@@ -36,7 +36,6 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   }
 }
 
-[[maybe_unused]]
 static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       PgArena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
@@ -133,7 +132,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static TrackerResponseResult
+[[nodiscard]] static TrackerResponseResult
 tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
   TrackerResponseResult res = {0};
 

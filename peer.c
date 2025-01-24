@@ -293,35 +293,31 @@ static void peer_release(Peer *peer) {
   pg_bitfield_set(pd->blocks_bitfield_downloading, block, false);
 
   // Sanity checks.
-  {
-    u64 blocks_downloading_after =
-        pg_bitfield_count(pd->blocks_bitfield_downloading);
-    PG_ASSERT(blocks_downloading_after <= peer->concurrent_blocks_download_max);
-    u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
-    PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
+  u64 blocks_downloading_after =
+      pg_bitfield_count(pd->blocks_bitfield_downloading);
+  PG_ASSERT(blocks_downloading_after <= peer->concurrent_blocks_download_max);
+  u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
+  PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
 
-    PG_ASSERT(blocks_downloading_after == blocks_downloading_before - 1);
-    PG_ASSERT(blocks_have_after == blocks_have_before + 1);
-  }
+  PG_ASSERT(blocks_downloading_after == blocks_downloading_before - 1);
+  PG_ASSERT(blocks_have_after == blocks_have_before + 1);
+  PG_ASSERT(blocks_have_after <= blocks_count_for_piece);
 
   // Actual data copy here, the rest is just metadata bookkeeping.
   memcpy(pd->data.data + begin, data.data, data.len);
 
-  u64 blocks_have_count_for_piece = pg_bitfield_count(pd->blocks_bitfield_have);
-
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
          PG_L("address", peer->address), PG_L("piece", piece),
          PG_L("begin", begin), PG_L("data.len", data.len), PG_L("block", block),
-         PG_L("block_have_count_for_piece", blocks_have_count_for_piece),
          PG_L("blocks_count_for_piece", blocks_count_for_piece),
-         PG_L("piece_download_concurrent_blocks_download_count",
-              pg_bitfield_count(pd->blocks_bitfield_downloading)),
+         PG_L("blocks_have_before", blocks_have_before),
+         PG_L("blocks_downloading_before", blocks_downloading_before),
+         PG_L("blocks_have_after", blocks_have_after),
+         PG_L("blocks_downloading_after", blocks_downloading_after),
          PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
-  PG_ASSERT(blocks_have_count_for_piece <= blocks_count_for_piece);
-
-  if (blocks_have_count_for_piece < blocks_count_for_piece) {
+  if (blocks_have_after < blocks_count_for_piece) {
     return peer_request_block_maybe(peer, pd);
   } else {
     // TODO: Handle having all blocks for piece.

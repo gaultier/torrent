@@ -244,9 +244,11 @@ static void peer_release(Peer *peer) {
 }
 
 [[nodiscard]] static bool piece_download_verify_piece(PieceDownload *pd,
-                                                      PgString info_hash) {
+                                                      PgString pieces_hash) {
+  PG_ASSERT(pieces_hash.len >= 20 * (pd->piece + 1));
+
   PgString hash_expected =
-      PG_SLICE_RANGE(info_hash, 20 * pd->piece, 20 * (pd->piece + 1));
+      PG_SLICE_RANGE(pieces_hash, 20 * pd->piece, 20 * (pd->piece + 1));
   return download_verify_piece_hash(pd->data, hash_expected);
 }
 
@@ -333,7 +335,7 @@ static void peer_release(Peer *peer) {
     return peer_request_block_maybe(peer, pd);
   } else {
     PG_ASSERT(blocks_have_after == blocks_count_for_piece);
-    bool verified = piece_download_verify_piece(pd, peer->info_hash);
+    bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
     if (!verified) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "peer: completed piece download but hash verification failed",

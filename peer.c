@@ -482,10 +482,11 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
             peer->concurrent_blocks_download_max);
 
   PgArena arena_tmp = peer->arena_tmp;
+  u64 blocks_downloading_before =
+      pg_bitfield_count(pd->blocks_bitfield_downloading);
   i64 block = piece_download_pick_next_block(
       pd, peer->download, peer->concurrent_blocks_download_max);
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
-            peer->concurrent_blocks_download_max);
+  PG_ASSERT(blocks_downloading_before <= peer->concurrent_blocks_download_max);
 
   if (-1 == block) {
     pg_log(
@@ -497,6 +498,8 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   }
   PG_ASSERT(true ==
             pg_bitfield_get(pd->blocks_bitfield_downloading, (u64)block));
+  PG_ASSERT(blocks_downloading_before + 1 ==
+            pg_bitfield_count(pd->blocks_bitfield_downloading));
 
   u32 block_length =
       download_compute_block_length((u32)block, peer->download->piece_length);

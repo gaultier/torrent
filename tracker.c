@@ -286,7 +286,8 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
       pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
   if (res_http.err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to parse http response", PG_L("err", res_http.err));
+           "tracker: failed to parse http response", PG_L("err", res_http.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
     return res_http.err;
   }
 
@@ -308,7 +309,8 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
   if (res_content_length.err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to parse http response content type",
-           PG_L("err", res_http.err));
+           PG_L("err", res_http.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
     return res_content_length.err;
   }
 
@@ -344,7 +346,9 @@ tracker_read_http_response_body(Tracker *tracker) {
       if (res_bencode.err) {
         pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                "tracker: failed to decode bencode response",
-               PG_L("err", res_bencode.err), PG_L("bencoded", s));
+               PG_L("err", res_bencode.err),
+               PG_L("err_s", pg_cstr_to_string(strerror((i32)res_bencode.err))),
+               PG_L("bencoded", s));
 
         res.err = res_bencode.err;
         return res;
@@ -400,7 +404,8 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (io_err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
-           PG_L("err", io_err));
+           PG_L("err", io_err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)io_err))));
     // TODO: stop event loop?
     (void)pg_event_loop_handle_close(loop, os_handle);
     return;
@@ -442,7 +447,8 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
         tracker_on_timer);
     if (res_timer.err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to start timer", PG_L("err", err));
+             "tracker: failed to start timer", PG_L("err", err),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
     }
   } break;
   default:
@@ -459,7 +465,8 @@ static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
-           PG_L("err", err));
+           PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
     // TODO: stop event loop?
     (void)pg_event_loop_handle_close(loop, os_handle);
     return;
@@ -469,7 +476,8 @@ static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       pg_event_loop_read_start(loop, os_handle, tracker_on_tcp_read);
   if (err_read) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to start tcp read", PG_L("err", err_read));
+           "tracker: failed to start tcp read", PG_L("err", err_read),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_read))));
     // TODO: stop event loop?
     (void)pg_event_loop_handle_close(loop, os_handle);
     return;
@@ -486,7 +494,8 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to dns resolve the announce url", PG_L("err", err));
+           "tracker: failed to dns resolve the announce url", PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
 
     (void)pg_event_loop_handle_close(loop, os_handle);
     // TODO: Maybe stop the event loop?
@@ -508,7 +517,8 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
         pg_event_loop_write(loop, os_handle, http_req_s, tracker_on_tcp_write);
     if (err_write) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to start tcp write", PG_L("err", err_write));
+             "tracker: failed to start tcp write", PG_L("err", err_write),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)err_write))));
       (void)pg_event_loop_handle_close(loop, os_handle);
       // TODO: Maybe stop the event loop?
     }

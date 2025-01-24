@@ -323,7 +323,8 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: failed to save piece data to disk",
            PG_L("address", peer->address), PG_L("piece", pd->piece),
-           PG_L("err", err_file));
+           PG_L("err", err_file),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_file))));
     return err_file;
   }
 
@@ -554,7 +555,9 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
-           PG_L("err", err), PG_L("address", peer->address));
+           PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return;
   }
@@ -838,6 +841,7 @@ end:
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
          PG_L("address", peer->address),
          PG_L("length_announced", length_announced), PG_L("err", res.err),
+         PG_L("err_s", pg_cstr_to_string(strerror((i32)res.err))),
          PG_L("kind", peer_message_kind_to_string(kind)));
 
   res.present = true;
@@ -925,7 +929,8 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address), PG_L("err", err));
+           PG_L("address", peer->address), PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
     peer_release(peer);
     return;
   }
@@ -937,7 +942,8 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
   if (err_read) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
-           PG_L("address", peer->address), PG_L("err", err_read));
+           PG_L("address", peer->address), PG_L("err", err_read),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_read))));
     peer_release(peer);
     return;
   }
@@ -998,7 +1004,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
         pg_event_loop_write(loop, os_handle, handshake, peer_on_tcp_write);
     if (err_write) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-             PG_L("err", err_write), PG_L("address", peer->address));
+             PG_L("err", err_write),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)err_write))),
+             PG_L("address", peer->address));
       peer_release(peer);
       return;
     }
@@ -1010,7 +1018,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   Pgu64Result res_tcp = pg_event_loop_tcp_init(loop, peer);
   if (res_tcp.err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
-           PG_L("err", res_tcp.err), PG_L("address", peer->address));
+           PG_L("err", res_tcp.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tcp.err))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return res_tcp.err;
   }
@@ -1020,7 +1030,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
       loop, peer->os_handle_socket, peer->address, peer_on_connect);
   if (err_connect) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
-           PG_L("err", err_connect), PG_L("address", peer->address));
+           PG_L("err", err_connect),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_connect))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return err_connect;
   }

@@ -238,6 +238,13 @@ static void peer_release(Peer *peer) {
   return 0;
 }
 
+[[nodiscard]] static bool piece_download_verify_piece(PieceDownload *pd,
+                                                      PgString info_hash) {
+  PgString hash_expected =
+      PG_SLICE_RANGE(info_hash, 20 * pd->piece, 20 * (pd->piece + 1));
+  return download_verify_piece_hash(pd->data, hash_expected);
+}
+
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
                                                 u32 begin, PgString data) {
   PieceDownload *pd = peer_find_piece_download(peer, piece);
@@ -320,7 +327,20 @@ static void peer_release(Peer *peer) {
   if (blocks_have_after < blocks_count_for_piece) {
     return peer_request_block_maybe(peer, pd);
   } else {
-    // TODO: Handle having all blocks for piece.
+    PG_ASSERT(blocks_have_after == blocks_count_for_piece);
+    bool verified = piece_download_verify_piece(pd, peer->info_hash);
+    if (!verified) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+             "peer: completed piece download but hash verification failed",
+             PG_L("address", peer->address), PG_L("piece", piece));
+      return PG_ERR_INVALID_VALUE;
+    }
+
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: completed piece download and hash verification succeeded",
+           PG_L("address", peer->address), PG_L("piece", piece));
+    // TODO: Save data to disk.
+    // TODO: Start downloading new piece.
   }
 
   return 0;
@@ -461,9 +481,11 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
             peer->concurrent_blocks_download_max);
 
   if (-1 == block) {
-    // TODO: Verify piece hash, reset counters, etc.
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
-           PG_L("address", peer->address), PG_L("piece", pd->piece));
+    pg_log(
+        peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
+        PG_L("address", peer->address), PG_L("piece", pd->piece),
+        PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
+        PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
     return 0;
   }
 

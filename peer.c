@@ -394,10 +394,9 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   // > It's possible for an unexpected piece to arrive if choke and unchoke
   // messages are sent in quick succession and/or transfer is going very slowly.
   //
-  // In this case, ignore, if we have the block already.
-  // Otherwise, just keep it.
-  if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block) &&
-      pg_bitfield_get(pd->blocks_bitfield_have, block)) {
+  // In this case, ignore.
+  // TODO: Keep it if we do not have it.
+  if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block)) {
     return 0;
   }
 

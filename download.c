@@ -69,27 +69,6 @@ download_compute_block_length(u32 block, u64 piece_length) {
   return res;
 }
 
-// TODO: use.
-[[maybe_unused]] [[nodiscard]] static bool
-download_has_all_blocks_for_piece(PgString bitfield_blocks,
-                                  u32 blocks_per_piece, u32 pieces_count,
-                                  u32 piece) {
-  PG_ASSERT(piece < pieces_count);
-  PG_ASSERT(bitfield_blocks.len ==
-            pieces_count * blocks_per_piece); // TODO: round up?
-
-  u32 idx_first_block = piece * blocks_per_piece;
-  u32 idx_last_block = idx_first_block + blocks_per_piece - 1;
-
-  bool res = true;
-
-  for (u64 i = idx_first_block; i < idx_last_block; i++) {
-    res &= pg_bitfield_get(bitfield_blocks, i);
-  }
-
-  return res;
-}
-
 // Pick a random piece that the remote claimed they have.
 [[maybe_unused]] [[nodiscard]] static i32
 download_pick_next_piece(Download *download, PgString remote_bitfield_have) {

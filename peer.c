@@ -299,8 +299,6 @@ static void peer_release(Peer *peer) {
     PG_ASSERT(blocks_downloading_after <= peer->concurrent_blocks_download_max);
     u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
     PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
-    // TODO: Should be a validation error, not an assert.
-    PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
 
     PG_ASSERT(blocks_downloading_after == blocks_downloading_before - 1);
     PG_ASSERT(blocks_have_after == blocks_have_before + 1);

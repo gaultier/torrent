@@ -260,6 +260,39 @@ static void peer_release(Peer *peer) {
   return pg_file_write_data_at_offset_from_start(file, file_offset, data);
 }
 
+[[nodiscard]] static PgError peer_complete_piece_download(Peer *peer,
+                                                          PieceDownload *pd) {
+  bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
+  if (!verified) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+           "peer: completed piece download but hash verification failed",
+           PG_L("address", peer->address), PG_L("piece", pd->piece));
+    return PG_ERR_INVALID_VALUE;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+         "peer: completed piece download and hash verification succeeded",
+         PG_L("address", peer->address), PG_L("piece", pd->piece));
+
+  // TODO: Async disk I/O.
+  PgError err_file = peer_save_piece_to_disk(
+      peer->file, pd->piece, peer->download->piece_length, pd->data);
+  if (err_file) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+           "peer: failed to save piece data to disk",
+           PG_L("address", peer->address), PG_L("piece", pd->piece),
+           PG_L("err", err_file));
+    return err_file;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved piece data to disk",
+         PG_L("address", peer->address), PG_L("piece", pd->piece));
+
+  // TODO: Start downloading new piece.
+
+  return 0;
+}
+
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
                                                 u32 begin, PgString data) {
   PieceDownload *pd = peer_find_piece_download(peer, piece);
@@ -343,32 +376,8 @@ static void peer_release(Peer *peer) {
     return peer_request_block_maybe(peer, pd);
   } else {
     PG_ASSERT(blocks_have_after == blocks_count_for_piece);
-    bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
-    if (!verified) {
-      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-             "peer: completed piece download but hash verification failed",
-             PG_L("address", peer->address), PG_L("piece", piece));
-      return PG_ERR_INVALID_VALUE;
-    }
-
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
-           "peer: completed piece download and hash verification succeeded",
-           PG_L("address", peer->address), PG_L("piece", piece));
-
-    PgError err_file = peer_save_piece_to_disk(
-        peer->file, piece, peer->download->piece_length, pd->data);
-    if (err_file) {
-      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-             "peer: failed to save piece data to disk",
-             PG_L("address", peer->address), PG_L("piece", piece),
-             PG_L("err", err_file));
-      return err_file;
-    }
-
-    // TODO: Start downloading new piece.
+    return peer_complete_piece_download(peer, pd);
   }
-
-  return 0;
 }
 
 [[nodiscard]] [[maybe_unused]] static i64
@@ -604,6 +613,7 @@ peer_request_remote_data_maybe(Peer *peer) {
         peer->concurrent_blocks_download_max) {
       continue;
     }
+
     u64 blocks_to_queue_count =
         peer->concurrent_blocks_download_max - blocks_downloading_count;
     PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);

@@ -687,7 +687,7 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   if (!pg_ring_read_u32(&recv_tmp, &length_announced)) {
     return res;
   }
-  length_announced = htonl(length_announced);
+  length_announced = ntohl(length_announced);
 
   u32 length_announced_max = 16 + BLOCK_SIZE;
   if (length_announced > length_announced_max) {
@@ -797,8 +797,8 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     u32 piece = 0, begin = 0;
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &piece));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
-    piece = htonl(piece);
-    begin = htonl(begin);
+    piece = ntohl(piece);
+    begin = ntohl(begin);
 
     u32 data_len =
         length_announced - (sizeof(kind) + sizeof(piece) + sizeof(begin));

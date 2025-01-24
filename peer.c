@@ -260,6 +260,44 @@ static void peer_release(Peer *peer) {
   return pg_file_write_data_at_offset_from_start(file, file_offset, data);
 }
 
+static void piece_download_reuse_for_piece(PieceDownload *pd, u32 piece) {
+  pd->piece = piece;
+  memset(pd->blocks_bitfield_downloading.data, 0,
+         pd->blocks_bitfield_downloading.len);
+  memset(pd->blocks_bitfield_have.data, 0, pd->blocks_bitfield_have.len);
+}
+
+[[nodiscard]] static PgError
+peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
+  u64 blocks_downloading_count =
+      pg_bitfield_count(pd->blocks_bitfield_downloading);
+  PG_ASSERT(blocks_downloading_count <= peer->concurrent_blocks_download_max);
+
+  if (pg_bitfield_count(pd->blocks_bitfield_downloading) ==
+      peer->concurrent_blocks_download_max) {
+    return 0;
+  }
+
+  u64 blocks_to_queue_count =
+      peer->concurrent_blocks_download_max - blocks_downloading_count;
+  PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);
+
+  for (u64 j = 0; j < blocks_to_queue_count; j++) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing block download",
+           PG_L("address", peer->address), PG_L("piece", pd->piece),
+           PG_L("piece_download_concurrent_blocks_download_count",
+                blocks_downloading_count));
+    PgError err = peer_request_block_maybe(peer, pd);
+    if (err) {
+      return err;
+    }
+  }
+  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
+            peer->concurrent_blocks_download_max);
+
+  return 0;
+}
+
 [[nodiscard]] static PgError peer_complete_piece_download(Peer *peer,
                                                           PieceDownload *pd) {
   bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
@@ -285,10 +323,22 @@ static void peer_release(Peer *peer) {
     return err_file;
   }
 
+  pg_bitfield_set(peer->download->pieces_have, pd->piece, true);
+
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved piece data to disk",
          PG_L("address", peer->address), PG_L("piece", pd->piece));
 
-  // TODO: Start downloading new piece.
+  i64 piece_new =
+      download_pick_next_piece(peer->download, peer->remote_bitfield);
+  if (-1 == piece_new) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no new piece to pick",
+           PG_L("address", peer->address),
+           PG_L("pieces_have", peer->download->pieces_have));
+  } else {
+    PG_ASSERT(piece_new <= UINT32_MAX);
+    piece_download_reuse_for_piece(pd, (u32)piece_new);
+    return peer_request_blocks_for_piece_download(peer, pd);
+  }
 
   return 0;
 }
@@ -605,31 +655,10 @@ peer_request_remote_data_maybe(Peer *peer) {
 
   for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
     PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
-    u64 blocks_downloading_count =
-        pg_bitfield_count(pd->blocks_bitfield_downloading);
-    PG_ASSERT(blocks_downloading_count <= peer->concurrent_blocks_download_max);
-
-    if (pg_bitfield_count(pd->blocks_bitfield_downloading) ==
-        peer->concurrent_blocks_download_max) {
-      continue;
+    PgError err = peer_request_blocks_for_piece_download(peer, pd);
+    if (err) {
+      return err;
     }
-
-    u64 blocks_to_queue_count =
-        peer->concurrent_blocks_download_max - blocks_downloading_count;
-    PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);
-
-    for (u64 j = 0; j < blocks_to_queue_count; j++) {
-      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing block download",
-             PG_L("address", peer->address), PG_L("piece", pd->piece),
-             PG_L("piece_download_concurrent_blocks_download_count",
-                  blocks_downloading_count));
-      PgError err = peer_request_block_maybe(peer, pd);
-      if (err) {
-        return err;
-      }
-    }
-    PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
-              peer->concurrent_blocks_download_max);
   }
   PG_ASSERT(peer->downloading_pieces.len <=
             peer->concurrent_pieces_download_max);
@@ -727,12 +756,11 @@ peer_request_remote_data_maybe(Peer *peer) {
     }
 
     u64 bitfield_len = length_announced - 1;
-    if (0 == bitfield_len ||
-        peer->download->local_bitfield_have.len != bitfield_len) {
+    if (0 == bitfield_len || peer->download->pieces_have.len != bitfield_len) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "invalid bitfield length received", PG_L("address", peer->address),
              PG_L("len_actual", bitfield_len),
-             PG_L("len_expected", peer->download->local_bitfield_have.len));
+             PG_L("len_expected", peer->download->pieces_have.len));
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }

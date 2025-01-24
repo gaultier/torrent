@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
   }
 
   Download download = {
-      .local_bitfield_have = res_bitfield_pieces.res,
+      .pieces_have = res_bitfield_pieces.res,
       .pieces_count = pieces_count,
       .blocks_per_piece_count = download_compute_blocks_per_piece_count(
           res_decode_metainfo.res.piece_length),
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),
          PG_L("local_bitfield_have_count",
-              pg_bitfield_count(download.local_bitfield_have)));
+              pg_bitfield_count(download.pieces_have)));
 
   PgUrl announce = res_decode_metainfo.res.announce;
   PgEventLoopResult res_loop =

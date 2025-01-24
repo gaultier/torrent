@@ -436,9 +436,10 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
     (void)res_body;
     (void)pg_event_loop_handle_close(loop, os_handle);
 
-    Pgu64Result res_timer =
-        pg_event_loop_timer_start(loop, PG_CLOCK_KIND_MONOTONIC,
-                                  10 * PG_Seconds, tracker, tracker_on_timer);
+    // TODO.
+    Pgu64Result res_timer = pg_event_loop_timer_start(
+        loop, PG_CLOCK_KIND_MONOTONIC, 10 * PG_Seconds, 0 * PG_Seconds, tracker,
+        tracker_on_timer);
     if (res_timer.err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
              "tracker: failed to start timer", PG_L("err", err));

@@ -1,5 +1,14 @@
 #include "tracker.c"
 
+static void download_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
+  (void)loop;
+  (void)os_handle;
+
+  Download *download = ctx;
+  pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
+         PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
+}
+
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
@@ -74,6 +83,7 @@ int main(int argc, char *argv[]) {
       .piece_length = res_decode_metainfo.res.piece_length,
       .total_file_size = res_decode_metainfo.res.length,
       .file = target_file_res.res,
+      .logger = &logger,
   };
   PG_ASSERT(download.blocks_per_piece_count > 0);
 
@@ -106,6 +116,16 @@ int main(int argc, char *argv[]) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to create an event loop dns request for the tracker",
              PG_L("err", res_tracker.err));
+      return 1;
+    }
+  }
+  {
+    Pgu64Result res_timer = pg_event_loop_timer_start(
+        &loop, PG_CLOCK_KIND_MONOTONIC, 10 * PG_Seconds, 10 * PG_Seconds,
+        &download, download_on_timer);
+    if (res_timer.err) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to start metrics timer",
+             PG_L("err", res_timer.err));
       return 1;
     }
   }

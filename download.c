@@ -10,6 +10,7 @@ typedef struct {
   u64 piece_length;
   u64 total_file_size;
   PgFile file;
+  PgLogger *logger;
 } Download;
 
 [[maybe_unused]] [[nodiscard]] static u32

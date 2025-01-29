@@ -328,15 +328,15 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved piece data to disk",
          PG_L("address", peer->address), PG_L("piece", pd->piece));
 
-  i64 piece_new =
-      download_pick_next_piece(peer->download, peer->remote_bitfield);
-  if (-1 == piece_new) {
+  Pgu32Ok piece_new = download_pick_next_piece(peer->download->pieces_have,
+                                               peer->remote_bitfield,
+                                               peer->download->pieces_count);
+  if (!piece_new.ok) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no new piece to pick",
            PG_L("address", peer->address),
            PG_L("pieces_have", peer->download->pieces_have));
   } else {
-    PG_ASSERT(piece_new <= UINT32_MAX);
-    piece_download_reuse_for_piece(pd, (u32)piece_new);
+    piece_download_reuse_for_piece(pd, piece_new.res);
     return peer_request_blocks_for_piece_download(peer, pd);
   }
 
@@ -664,9 +664,10 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     PG_ASSERT(pieces_to_queue_count <= peer->concurrent_pieces_download_max);
 
     for (u64 i = 0; i < pieces_to_queue_count; i++) {
-      i64 piece =
-          download_pick_next_piece(peer->download, peer->remote_bitfield);
-      if (-1 == piece) {
+      Pgu32Ok piece = download_pick_next_piece(peer->download->pieces_have,
+                                               peer->remote_bitfield,
+                                               peer->download->pieces_count);
+      if (!piece.ok) {
         pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no piece left to pick",
                PG_L("address", peer->address));
 
@@ -676,11 +677,11 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
       PG_ASSERT(peer->downloading_pieces.len <
                 peer->concurrent_pieces_download_max);
       *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) =
-          piece_download_make((u32)piece, peer->download->piece_length,
+          piece_download_make(piece.res, peer->download->piece_length,
                               peer->download->max_blocks_per_piece_count,
                               &peer->arena);
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing piece download",
-             PG_L("address", peer->address), PG_L("piece", (u32)piece),
+             PG_L("address", peer->address), PG_L("piece", piece.res),
              PG_L("downloading_pieces_count", peer->downloading_pieces.len));
 
       PG_ASSERT(peer->downloading_pieces.len <=

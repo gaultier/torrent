@@ -454,6 +454,11 @@ static void test_download_compute_block_length() {
   PG_ASSERT(1 == download_compute_block_length(32, BLOCK_SIZE * 32 + 1));
 }
 
+static void test_download_pick_next_piece() {
+  {
+  }
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -471,4 +476,5 @@ int main() {
 #endif
   test_download_compute_blocks_count_for_piece();
   test_download_compute_block_length();
+  test_download_pick_next_piece();
 }

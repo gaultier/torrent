@@ -62,21 +62,25 @@ download_compute_block_length(u32 block, u64 piece_length) {
 }
 
 // Pick a random piece that the remote claimed they have.
-[[maybe_unused]] [[nodiscard]] static i32
-download_pick_next_piece(Download *download, PgString remote_bitfield_have) {
-  PG_ASSERT(download->pieces_have.len == remote_bitfield_have.len);
+[[maybe_unused]] [[nodiscard]] static Pgu32Ok
+download_pick_next_piece(PgString local_bitfield_have,
+                         PgString remote_bitfield_have, u32 pieces_count) {
+  Pgu32Ok res = {0};
 
-  u64 start = pg_rand_u32(0, download->pieces_count);
-  for (u64 i = 0; i < download->pieces_count; i++) {
-    u64 idx = (start + i) % download->pieces_count;
-    if (!pg_bitfield_get(download->pieces_have, idx) &&
+  PG_ASSERT(local_bitfield_have.len == remote_bitfield_have.len);
+
+  u32 start = pg_rand_u32(0, pieces_count);
+  for (u32 i = 0; i < pieces_count; i++) {
+    u32 idx = (start + i) % pieces_count;
+    if (!pg_bitfield_get(local_bitfield_have, idx) &&
         pg_bitfield_get(remote_bitfield_have, idx)) {
 
-      PG_ASSERT(idx <= UINT32_MAX);
-      return (i32)idx;
+      res.res = idx;
+      res.ok = true;
+      return res;
     }
   }
-  return -1;
+  return res;
 }
 
 // TODO: use.

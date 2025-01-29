@@ -441,6 +441,11 @@ static void test_download_compute_max_blocks_per_piece_count() {
   PG_ASSERT(32 == download_compute_max_blocks_per_piece_count(524288));
 }
 
+static void test_download_compute_blocks_count_for_piece() {
+  PG_ASSERT(27 == download_compute_blocks_count_for_piece(1244, 32 * BLOCK_SIZE,
+                                                          652652544));
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -456,4 +461,5 @@ int main() {
   test_peer_receive_any_message_bitfield();
   test_peer_send_message();
 #endif
+  test_download_compute_blocks_count_for_piece();
 }

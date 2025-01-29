@@ -21,7 +21,7 @@ case $1 in
     EXTRA_FLAGS="${EXTRA_FLAGS} -fsanitize=undefined -fsanitize-trap=all"
     ;;
   release)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O3 -march=native"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -O3 -march=native -flto"
     ;;
   release_sanitizer)
     EXTRA_FLAGS="${EXTRA_FLAGS} -O1 -march=native -fsanitize=undefined -fsanitize-trap=all"

@@ -11,7 +11,6 @@
 #include "submodules/cstd/lib.c"
 
 #define HANDSHAKE_LENGTH 68
-#define LENGTH_LENGTH 4
 
 typedef enum {
   PEER_STATE_NONE,
@@ -96,8 +95,8 @@ typedef struct {
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_block_maybe(Peer *peer, PieceDownload *pd);
+[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
+                                                      PieceDownload *pd);
 
 [[nodiscard]] [[maybe_unused]] static PieceDownload
 piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
@@ -124,7 +123,7 @@ piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
   return nullptr;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgString
+[[nodiscard]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -170,14 +169,10 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.piece_hashes = piece_hashes;
   peer.file = file;
 
-  // At most one block is held in memory at any time, plus a bit of temporary
-  // data for encoding/decoding messages.
-  // TODO: Check if this still holds if we use async I/O for file rw.
-  peer.arena = pg_arena_make_from_virtual_mem(
-      32 * PG_KiB +
-      BLOCK_SIZE * concurrent_pieces_download_max *
-          concurrent_blocks_download_max +
-      peer.concurrent_pieces_download_max * download->piece_length);
+  peer.arena =
+      pg_arena_make_from_virtual_mem(4 * PG_KiB + 2 * BLOCK_SIZE +
+                                     (peer.concurrent_pieces_download_max) *
+                                         (download->piece_length + 4 * PG_KiB));
   peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
   peer.remote_choked = true;
   peer.remote_interested = false;
@@ -195,7 +190,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 // TODO: Principled peer lifetime. Perhaps with a pool?
 // Need to be careful when the peer is released, and handling double release.
-[[maybe_unused]]
+
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->arena_tmp);
@@ -214,7 +209,7 @@ static void peer_release(Peer *peer) {
     return 0;
   }
 
-  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received handshake",
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received handshake",
          PG_L("address", peer->address), PG_L("handshake", handshake));
 
   PgString prefix = PG_SLICE_RANGE(handshake, 0, PG_SHA1_DIGEST_LENGTH);
@@ -239,7 +234,7 @@ static void peer_release(Peer *peer) {
   PG_ASSERT(20 == remote_peer_id.len);
   // Ignore remote_peer_id for now.
 
-  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: received valid handshake",
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received valid handshake",
          PG_L("address", peer->address));
 
   peer->state = PEER_STATE_HANDSHAKED;
@@ -323,7 +318,8 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: failed to save piece data to disk",
            PG_L("address", peer->address), PG_L("piece", pd->piece),
-           PG_L("err", err_file));
+           PG_L("err", err_file),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_file))));
     return err_file;
   }
 
@@ -348,7 +344,7 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
-                                                u32 begin, PgString data) {
+                                                u32 begin, u32 data_len) {
   PieceDownload *pd = peer_find_piece_download(peer, piece);
   if (nullptr == pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
@@ -370,17 +366,17 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data.len", data.len),
+         PG_L("begin", begin), PG_L("data_len", data_len),
          PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
          PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
 
   // Bounds check.
   u64 end = 0;
-  if (ckd_add(&end, begin, data.len) || end > peer->download->piece_length) {
+  if (ckd_add(&end, begin, data_len) || end > peer->download->piece_length) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: begin/data.len invalid in piece message",
            PG_L("address", peer->address), PG_L("piece", piece),
-           PG_L("begin", begin), PG_L("data.len", data.len),
+           PG_L("begin", begin), PG_L("data.len", data_len),
            PG_L("piece_length", peer->download->piece_length));
     return PG_ERR_INVALID_VALUE;
   }
@@ -400,8 +396,24 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   //
   // In this case, ignore.
   // TODO: Keep it if we do not have it.
+  bool expected_block = true;
   if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block)) {
-    return 0;
+    pg_log(
+        peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received unexpected block",
+        PG_L("address", peer->address), PG_L("piece", piece),
+        PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
+        PG_L("blocks_count_for_piece", blocks_count_for_piece),
+        PG_L("blocks_have_before", blocks_have_before),
+        PG_L("blocks_downloading_before", blocks_downloading_before),
+        PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
+        PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
+    if (pg_bitfield_get(pd->blocks_bitfield_have, block)) {
+      PgArena arena_tmp = peer->arena_tmp;
+      PgString block_dst = pg_string_make(data_len, &arena_tmp);
+      PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
+      return 0;
+    }
+    expected_block = false;
   }
 
   pg_bitfield_set(pd->blocks_bitfield_have, block, true);
@@ -414,16 +426,18 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
   PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
 
-  PG_ASSERT(blocks_downloading_after == blocks_downloading_before - 1);
+  PG_ASSERT(blocks_downloading_after ==
+            blocks_downloading_before - expected_block);
   PG_ASSERT(blocks_have_after == blocks_have_before + 1);
   PG_ASSERT(blocks_have_after <= blocks_count_for_piece);
 
   // Actual data copy here, the rest is just metadata bookkeeping.
-  memcpy(pd->data.data + begin, data.data, data.len);
+  PgString block_dst = PG_SLICE_RANGE(pd->data, begin, begin + data_len);
+  PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
          PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data.len", data.len), PG_L("block", block),
+         PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
          PG_L("blocks_count_for_piece", blocks_count_for_piece),
          PG_L("blocks_have_before", blocks_have_before),
          PG_L("blocks_downloading_before", blocks_downloading_before),
@@ -440,7 +454,7 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   }
 }
 
-[[nodiscard]] [[maybe_unused]] static i64
+[[nodiscard]] static i64
 piece_download_pick_next_block(PieceDownload *pd, Download *download,
                                u64 concurrent_blocks_download_max) {
   PG_ASSERT(pd->piece <= download->pieces_count);
@@ -478,11 +492,16 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   return -1;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
-peer_encode_message(PeerMessage msg, PgArena *arena) {
+[[nodiscard]] static PgString peer_encode_message(PeerMessage msg,
+                                                  PgArena *arena) {
 
   Pgu8Dyn sb = {0};
-  u64 cap = 16 + (PEER_MSG_KIND_BITFIELD == msg.kind ? (msg.bitfield.len) : 0);
+  u64 cap = 16;
+  if (msg.kind == PEER_MSG_KIND_BITFIELD) {
+    cap += msg.bitfield.len;
+  } else if (msg.kind == PEER_MSG_KIND_PIECE) {
+    cap += BLOCK_SIZE;
+  }
   PG_DYN_ENSURE_CAP(&sb, cap, arena);
 
   switch (msg.kind) {
@@ -544,8 +563,8 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   return s;
 }
 
-[[maybe_unused]] static void peer_on_write(PgEventLoop *loop, u64 os_handle,
-                                           void *ctx, PgError err) {
+static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
+                          PgError err) {
   (void)loop;
   (void)os_handle;
 
@@ -554,7 +573,9 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
-           PG_L("err", err), PG_L("address", peer->address));
+           PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return;
   }
@@ -563,8 +584,8 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
          PG_L("address", peer->address));
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
+[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
+                                                      PieceDownload *pd) {
   PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
             peer->concurrent_blocks_download_max);
 
@@ -619,8 +640,7 @@ peer_request_block_maybe(Peer *peer, PieceDownload *pd) {
   return 0;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_request_remote_data_maybe(Peer *peer) {
+[[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(0 != peer->concurrent_pieces_download_max);
   PG_ASSERT(0 != peer->concurrent_blocks_download_max);
 
@@ -653,6 +673,8 @@ peer_request_remote_data_maybe(Peer *peer) {
         break;
       }
 
+      PG_ASSERT(peer->downloading_pieces.len <
+                peer->concurrent_pieces_download_max);
       *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) =
           piece_download_make((u32)piece, peer->download->piece_length,
                               peer->download->max_blocks_per_piece_count,
@@ -660,6 +682,9 @@ peer_request_remote_data_maybe(Peer *peer) {
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing piece download",
              PG_L("address", peer->address), PG_L("piece", (u32)piece),
              PG_L("downloading_pieces_count", peer->downloading_pieces.len));
+
+      PG_ASSERT(peer->downloading_pieces.len <=
+                peer->concurrent_pieces_download_max);
     }
   }
 
@@ -679,25 +704,37 @@ peer_request_remote_data_maybe(Peer *peer) {
 [[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
   PeerMessageReadResult res = {0};
 
-  PgArena arena_tmp = peer->arena_tmp;
-  PgRing recv_tmp = peer->recv;
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: reading any message",
+         PG_L("address", peer->address),
+         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
+         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
 
-  PgString length = {
-      .data = pg_arena_new(&arena_tmp, u8, LENGTH_LENGTH),
-      .len = LENGTH_LENGTH,
-  };
-  if (!pg_ring_read_slice(&recv_tmp, length)) {
-    return res;
-  }
-  u32 length_announced = pg_u8x4_be_to_u32(length);
-  u32 length_announced_max = 16 + BLOCK_SIZE;
-  if (length_announced > length_announced_max) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
-           PG_L("address", peer->address),
-           PG_L("length_announced", length_announced),
-           PG_L("length_announced_max", length_announced_max));
-    res.err = PG_ERR_INVALID_VALUE;
-    return res;
+  u32 length_announced = 0;
+  {
+    PgRing recv_tmp = peer->recv;
+    if (!pg_ring_read_u32(&recv_tmp, &length_announced)) {
+      return res;
+    }
+    length_announced = ntohl(length_announced);
+
+    u32 length_announced_max = 16 + BLOCK_SIZE;
+    if (length_announced > length_announced_max) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
+             PG_L("address", peer->address),
+             PG_L("length_announced", length_announced),
+             PG_L("length_announced_max", length_announced_max));
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+
+    if (pg_ring_read_space(recv_tmp) < length_announced) {
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
+             PG_L("address", peer->address),
+             PG_L("length_announced", length_announced),
+             PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
+      return res;
+    }
+    peer->recv = recv_tmp;
   }
 
   u8 kind = PEER_MSG_KIND_KEEP_ALIVE;
@@ -706,22 +743,7 @@ peer_request_remote_data_maybe(Peer *peer) {
     goto end;
   }
 
-  PgString data = {0};
-  if (pg_ring_read_space(recv_tmp) < length_announced) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
-           PG_L("address", peer->address),
-           PG_L("length_announced", length_announced),
-           PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
-    return res;
-  }
-  data = (PgString){
-      .data = pg_arena_new(&arena_tmp, u8, length_announced),
-      .len = length_announced,
-  };
-  // TODO: Optimize by reading directly from ring lazily.
-  PG_ASSERT(true == pg_ring_read_slice(&recv_tmp, data));
-
-  kind = PG_SLICE_AT(data, 0);
+  PG_ASSERT(pg_ring_read_u8(&peer->recv, &kind));
 
   switch (kind) {
   case PEER_MSG_KIND_CHOKE: {
@@ -747,8 +769,8 @@ peer_request_remote_data_maybe(Peer *peer) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    PgString data_msg = PG_SLICE_RANGE_START(data, 1);
-    u32 have = pg_u8x4_be_to_u32(data_msg);
+    u32 have = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &have));
 
     if (have > peer->download->pieces_count) {
       res.err = PG_ERR_INVALID_VALUE;
@@ -775,9 +797,8 @@ peer_request_remote_data_maybe(Peer *peer) {
       return res;
     }
 
-    PgString bitfield = PG_SLICE_RANGE_START(data, 1);
     PG_ASSERT(nullptr != peer->remote_bitfield.data);
-    memcpy(peer->remote_bitfield.data, bitfield.data, bitfield.len);
+    PG_ASSERT(pg_ring_read_slice(&peer->recv, peer->remote_bitfield));
     peer->remote_bitfield_received = true;
 
     break;
@@ -787,27 +808,32 @@ peer_request_remote_data_maybe(Peer *peer) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    u32 data_length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
-
-    // TODO
-    (void)index;
-    (void)begin;
-    (void)data_length;
+    u32 index = 0, begin = 0, data_length = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
+    index = ntohl(index);
+    begin = ntohl(index);
+    data_length = ntohl(index);
 
     break;
   }
   case PEER_MSG_KIND_PIECE: {
-    if (1 + 2 * sizeof(u32) + BLOCK_SIZE != length_announced) {
+    if (length_announced < sizeof(kind) + 2 * sizeof(u32) ||
+        length_announced > sizeof(kind) + 2 * sizeof(u32) + BLOCK_SIZE) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 piece = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    PgString piece_data = PG_SLICE_RANGE_START(data, 9);
+    u32 piece = 0, begin = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &piece));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    piece = ntohl(piece);
+    begin = ntohl(begin);
 
-    res.err = peer_receive_block(peer, piece, begin, piece_data);
+    u32 data_len =
+        length_announced - (sizeof(kind) + sizeof(piece) + sizeof(begin));
+    PG_ASSERT(data_len <= BLOCK_SIZE);
+    res.err = peer_receive_block(peer, piece, begin, data_len);
 
     break;
   }
@@ -816,14 +842,14 @@ peer_request_remote_data_maybe(Peer *peer) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 index = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 1, 5));
-    u32 begin = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 5, 9));
-    u32 data_length = pg_u8x4_be_to_u32(PG_SLICE_RANGE(data, 9, 13));
 
-    // TODO
-    (void)index;
-    (void)begin;
-    (void)data_length;
+    u32 index = 0, begin = 0, data_length = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
+    index = ntohl(index);
+    begin = ntohl(index);
+    data_length = ntohl(index);
 
     break;
   }
@@ -839,16 +865,17 @@ end:
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
          PG_L("address", peer->address),
          PG_L("length_announced", length_announced), PG_L("err", res.err),
-         PG_L("kind", peer_message_kind_to_string(kind)));
+         PG_L("err_s", pg_cstr_to_string(strerror((i32)res.err))),
+         PG_L("kind", peer_message_kind_to_string(kind)),
+         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
+         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
 
   res.present = true;
-  peer->recv = recv_tmp;
   return res;
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
-peer_handle_recv_data(Peer *peer) {
-  for (u64 _i = 0; _i < 8; _i++) {
+[[nodiscard]] static PgError peer_handle_recv_data(Peer *peer) {
+  for (u64 _i = 0; _i < 128; _i++) {
     switch (peer->state) {
     case PEER_STATE_NONE: {
       PgError err = peer_read_handshake(peer);
@@ -873,9 +900,8 @@ peer_handle_recv_data(Peer *peer) {
   return 0;
 }
 
-[[maybe_unused]]
-static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
-                         PgError err, PgString data) {
+static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
+                             PgError err, PgString data) {
   PG_ASSERT(nullptr != ctx);
   (void)loop;
   (void)os_handle;
@@ -884,7 +910,8 @@ static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
-           PG_L("address", peer->address), PG_L("err", err));
+           PG_L("address", peer->address), PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
     peer_release(peer);
     return;
   }
@@ -899,10 +926,17 @@ static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
-         PG_L("address", peer->address), PG_L("data", data));
+         PG_L("address", peer->address), PG_L("data", data),
+         PG_L("data.len", data.len),
+         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
+         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
 
-  // FIXME: The write callback could starve the read callback here without
-  // 'fair' scheduling, and fill the ring buffer.
+  PgError err_handle = peer_handle_recv_data(peer);
+  if (err_handle) {
+    peer_release(peer);
+    return;
+  }
+
   if (!pg_ring_write_slice(&peer->recv, data)) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: read too much data",
            PG_L("address", peer->address),
@@ -912,14 +946,13 @@ static void peer_on_read(PgEventLoop *loop, u64 os_handle, void *ctx,
     return;
   }
 
-  PgError err_handle = peer_handle_recv_data(peer);
+  err_handle = peer_handle_recv_data(peer);
   if (err_handle) {
     peer_release(peer);
     return;
   }
 }
 
-[[maybe_unused]]
 static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
                               PgError err) {
   PG_ASSERT(nullptr != ctx);
@@ -928,7 +961,8 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address), PG_L("err", err));
+           PG_L("address", peer->address), PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
     peer_release(peer);
     return;
   }
@@ -936,17 +970,19 @@ static void peer_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: wrote",
          PG_L("address", peer->address));
 
-  PgError err_read = pg_event_loop_read_start(loop, os_handle, peer_on_read);
+  PgError err_read =
+      pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
   if (err_read) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
-           PG_L("address", peer->address), PG_L("err", err_read));
+           PG_L("address", peer->address), PG_L("err", err_read),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_read))));
     peer_release(peer);
     return;
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
-peer_make_handshake(PgString info_hash, PgArena *arena) {
+[[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
+                                                  PgArena *arena) {
   Pgu8Dyn sb = {0};
   PG_DYN_APPEND_SLICE(&sb,
                       PG_S("\x13"
@@ -973,14 +1009,15 @@ peer_make_handshake(PgString info_hash, PgArena *arena) {
   return PG_DYN_SLICE(PgString, sb);
 }
 
-[[maybe_unused]]
 static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
                             PgError err) {
   Peer *peer = ctx;
 
   if (err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to connect",
-           PG_L("err", err), PG_L("address", peer->address));
+           PG_L("err", err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return;
   }
@@ -988,10 +1025,7 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-  peer->recv = pg_ring_make(
-      4 * PG_KiB + BLOCK_SIZE * peer->concurrent_blocks_download_max *
-                       peer->concurrent_pieces_download_max,
-      &peer->arena);
+  peer->recv = pg_ring_make(4 * PG_KiB + 2 * BLOCK_SIZE, &peer->arena);
   {
     PgArena arena_tmp = peer->arena_tmp;
     PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
@@ -999,7 +1033,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
         pg_event_loop_write(loop, os_handle, handshake, peer_on_tcp_write);
     if (err_write) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-             PG_L("err", err_write), PG_L("address", peer->address));
+             PG_L("err", err_write),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)err_write))),
+             PG_L("address", peer->address));
       peer_release(peer);
       return;
     }
@@ -1011,7 +1047,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
   Pgu64Result res_tcp = pg_event_loop_tcp_init(loop, peer);
   if (res_tcp.err) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
-           PG_L("err", res_tcp.err), PG_L("address", peer->address));
+           PG_L("err", res_tcp.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tcp.err))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return res_tcp.err;
   }
@@ -1021,7 +1059,9 @@ static void peer_on_connect(PgEventLoop *loop, u64 os_handle, void *ctx,
       loop, peer->os_handle_socket, peer->address, peer_on_connect);
   if (err_connect) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
-           PG_L("err", err_connect), PG_L("address", peer->address));
+           PG_L("err", err_connect),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_connect))),
+           PG_L("address", peer->address));
     peer_release(peer);
     return err_connect;
   }
@@ -1046,7 +1086,7 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
     *PG_DYN_PUSH(peers_active, arena) = peer;
     PG_SLICE_SWAP_REMOVE(addresses_all, idx);
 
-    pg_log(PG_LOG_LEVEL_INFO, "peer_pick_random", &peer.arena,
+    pg_log(PG_LOG_LEVEL_DEBUG, "peer_pick_random", &peer.arena,
            PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
   }
 }

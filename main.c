@@ -1,17 +1,29 @@
 #include "tracker.c"
 
+static void download_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
+  (void)loop;
+  (void)os_handle;
+
+  Download *download = ctx;
+  pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
+         PG_L("pieces_count", download->pieces_count),
+         PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
+}
+
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
 
-  PgString torrent_file_path = cstr_to_string(argv[1]);
+  PgString torrent_file_path = pg_cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
       pg_file_read_full(torrent_file_path, &arena);
   if (0 != res_torrent_file_read.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
            PG_L("err", res_torrent_file_read.err),
+           PG_L("err_s",
+                pg_cstr_to_string(strerror((i32)res_torrent_file_read.err))),
            PG_L("path", torrent_file_path));
     return 1;
   }
@@ -23,7 +35,9 @@ int main(int argc, char *argv[]) {
       bencode_decode_metainfo(res_torrent_file_read.res, &arena);
   if (res_decode_metainfo.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
-           PG_L("err", res_decode_metainfo.err));
+           PG_L("err", res_decode_metainfo.err),
+           PG_L("err_s",
+                pg_cstr_to_string(strerror((i32)res_decode_metainfo.err))));
     return 1;
   }
 
@@ -33,9 +47,11 @@ int main(int argc, char *argv[]) {
   PgFileResult target_file_res = download_file_create_if_not_exists(
       res_decode_metainfo.res.name, res_decode_metainfo.res.length, arena);
   if (target_file_res.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
-           PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", target_file_res.err));
+    pg_log(
+        &logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
+        PG_L("path", res_decode_metainfo.res.name),
+        PG_L("err", target_file_res.err),
+        PG_L("err_s", pg_cstr_to_string(strerror((i32)target_file_res.err))));
     return 1;
   }
 
@@ -62,7 +78,9 @@ int main(int argc, char *argv[]) {
   if (res_bitfield_pieces.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
            PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", res_bitfield_pieces.err));
+           PG_L("err", res_bitfield_pieces.err),
+           PG_L("err_s",
+                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
     return 1;
   }
 
@@ -74,6 +92,7 @@ int main(int argc, char *argv[]) {
       .piece_length = res_decode_metainfo.res.piece_length,
       .total_file_size = res_decode_metainfo.res.length,
       .file = target_file_res.res,
+      .logger = &logger,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
 
@@ -87,7 +106,8 @@ int main(int argc, char *argv[]) {
       pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
   if (res_loop.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create event loop",
-           PG_L("err", res_loop.err));
+           PG_L("err", res_loop.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_loop.err))));
     return 1;
   }
   PgEventLoop loop = res_loop.res;
@@ -105,7 +125,19 @@ int main(int argc, char *argv[]) {
     if (res_tracker.err) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to create an event loop dns request for the tracker",
-             PG_L("err", res_tracker.err));
+             PG_L("err", res_tracker.err),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tracker.err))));
+      return 1;
+    }
+  }
+  {
+    Pgu64Result res_timer = pg_event_loop_timer_start(
+        &loop, PG_CLOCK_KIND_MONOTONIC, 3 * PG_Seconds, 5 * PG_Seconds,
+        &download, download_on_timer);
+    if (res_timer.err) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to start metrics timer",
+             PG_L("err", res_timer.err),
+             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_timer.err))));
       return 1;
     }
   }
@@ -113,7 +145,8 @@ int main(int argc, char *argv[]) {
   PgError err_loop = pg_event_loop_run(&loop, -1);
   if (err_loop) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to run the event loop",
-           PG_L("err", err_loop));
+           PG_L("err", err_loop),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_loop))));
     return 1;
   }
 }

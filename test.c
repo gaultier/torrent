@@ -564,6 +564,32 @@ static void test_piece_download_pick_next_block() {
       PG_ASSERT(!res.ok);
     }
   }
+
+  // One block left to download.
+  {
+    PgArena arena =
+        pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
+
+    PieceDownload pd = piece_download_make(0, BLOCK_SIZE * 32, 32, &arena);
+    Download download = {
+        .max_blocks_per_piece_count = 32,
+        .piece_length = 32 * BLOCK_SIZE,
+        .pieces_count = 3,
+        .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
+        .pieces_have = pg_string_make(1, &arena),
+    };
+
+    for (u32 i = 0; i < 32; i++) {
+      pg_bitfield_set(pd.blocks_bitfield_have, i, true);
+    }
+    pg_bitfield_set(pd.blocks_bitfield_have, 10, false);
+
+    {
+      Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
+      PG_ASSERT(res.ok);
+      PG_ASSERT(10 == res.res);
+    }
+  }
 }
 
 int main() {

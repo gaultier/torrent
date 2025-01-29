@@ -492,6 +492,23 @@ static void test_download_pick_next_piece() {
   }
 }
 
+static void test_piece_download_pick_next_block() {
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
+  {
+    PieceDownload pd = piece_download_make(0, BLOCK_SIZE * 32, 32, &arena);
+    Download download = {
+        .max_blocks_per_piece_count = 32,
+        .piece_length = 32 * BLOCK_SIZE,
+        .pieces_count = 3,
+        .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
+        .pieces_have = pg_string_make(1, &arena),
+    };
+    Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
+    PG_ASSERT(res.ok);
+    PG_ASSERT(res.res < 32);
+  }
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -510,4 +527,5 @@ int main() {
   test_download_compute_blocks_count_for_piece();
   test_download_compute_block_length();
   test_download_pick_next_piece();
+  test_piece_download_pick_next_block();
 }

@@ -455,7 +455,40 @@ static void test_download_compute_block_length() {
 }
 
 static void test_download_pick_next_piece() {
+  // We have everything, remote has nothing.
   {
+    PgString local_bitfield_have = PG_S("\xff");
+    PgString remote_bitfield_have = PG_S("\x00");
+    Pgu32Ok res =
+        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    PG_ASSERT(!res.ok);
+  }
+  // Remote has everything, local has nothing.
+  {
+    PgString local_bitfield_have = PG_S("\x00");
+    PgString remote_bitfield_have = PG_S("\xff");
+    Pgu32Ok res =
+        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    PG_ASSERT(res.ok);
+    PG_ASSERT(res.res < 8);
+  }
+
+  // Only one choice.
+  {
+    PgString local_bitfield_have = PG_S("\x03");
+    PgString remote_bitfield_have = PG_S("\x04");
+    Pgu32Ok res =
+        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    PG_ASSERT(res.ok);
+    PG_ASSERT(2 == res.res);
+  }
+  // Number of pieces smaller than 8.
+  {
+    PgString local_bitfield_have = PG_S("\x07");
+    PgString remote_bitfield_have = PG_S("\x07");
+    Pgu32Ok res =
+        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 3);
+    PG_ASSERT(!res.ok);
   }
 }
 

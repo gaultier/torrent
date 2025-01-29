@@ -3,8 +3,7 @@
 
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
-// TODO: Requesting & storing pieces.
-// TODO: Verify piece data hash.
+// TODO: Requesting pieces.
 // TODO: Serve piece data.
 // TODO: Retry on failure (with exp backoff?).
 

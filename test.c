@@ -438,12 +438,14 @@ static void test_download_compute_max_blocks_per_piece_count() {
   PG_ASSERT(1 == download_compute_max_blocks_per_piece_count(1));
   PG_ASSERT(1 == download_compute_max_blocks_per_piece_count(BLOCK_SIZE));
   PG_ASSERT(2 == download_compute_max_blocks_per_piece_count(BLOCK_SIZE + 1));
-  PG_ASSERT(32 == download_compute_max_blocks_per_piece_count(524288));
+  PG_ASSERT(32 == download_compute_max_blocks_per_piece_count(BLOCK_SIZE * 32));
 }
 
 static void test_download_compute_blocks_count_for_piece() {
-  PG_ASSERT(27 == download_compute_blocks_count_for_piece(1244, 32 * BLOCK_SIZE,
+  PG_ASSERT(32 == download_compute_blocks_count_for_piece(1243, 32 * BLOCK_SIZE,
                                                           652652544));
+  PG_ASSERT(27 == download_compute_blocks_count_for_piece(
+                      1244 /* Last piece */, 32 * BLOCK_SIZE, 652652544));
 }
 
 int main() {

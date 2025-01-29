@@ -448,6 +448,12 @@ static void test_download_compute_blocks_count_for_piece() {
                       1244 /* Last piece */, 32 * BLOCK_SIZE, 652652544));
 }
 
+static void test_download_compute_block_length() {
+  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(0, BLOCK_SIZE * 32));
+  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(1, BLOCK_SIZE * 32));
+  PG_ASSERT(1 == download_compute_block_length(32, BLOCK_SIZE * 32 + 1));
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -464,4 +470,5 @@ int main() {
   test_peer_send_message();
 #endif
   test_download_compute_blocks_count_for_piece();
+  test_download_compute_block_length();
 }

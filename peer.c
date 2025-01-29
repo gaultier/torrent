@@ -808,8 +808,10 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     }
     peer->remote_bitfield_received = true;
 
-    for (u64 i = peer->remote_bitfield.len * 8 - peer->download->pieces_count;
-         i < peer->remote_bitfield.len * 8; i++) {
+    // Check that padding bits in the remote bitfield are 0.
+    for (u64 i = 0;
+         i < peer->remote_bitfield.len * 8 - peer->download->pieces_count;
+         i++) {
       PG_ASSERT(0 == pg_bitfield_get(peer->remote_bitfield,
                                      peer->download->pieces_count + i));
     }

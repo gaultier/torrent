@@ -83,9 +83,8 @@ download_pick_next_piece(PgString local_bitfield_have,
   return res;
 }
 
-// TODO: use.
-[[maybe_unused]] [[nodiscard]] static bool
-download_verify_piece_hash(PgString data, PgString hash_expected) {
+[[nodiscard]] static bool download_verify_piece_hash(PgString data,
+                                                     PgString hash_expected) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
 
   u8 hash_got[PG_SHA1_DIGEST_LENGTH] = {0};

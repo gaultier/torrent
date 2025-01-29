@@ -802,7 +802,16 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
     PG_ASSERT(nullptr != peer->remote_bitfield.data);
     PG_ASSERT(pg_ring_read_slice(&peer->recv, peer->remote_bitfield));
+    for (u64 i = 0; i < peer->remote_bitfield.len; i++) {
+      u8 *ptr = PG_SLICE_AT_PTR(&peer->remote_bitfield, i);
+      *ptr = __builtin_bitreverse8(*ptr);
+    }
     peer->remote_bitfield_received = true;
+
+    for (u64 i = peer->remote_bitfield.len * 8 - peer->download->pieces_count;
+         i < peer->remote_bitfield.len * 8; i++) {
+      PG_ASSERT(0 == pg_bitfield_get(peer->remote_bitfield, i));
+    }
 
     break;
   }

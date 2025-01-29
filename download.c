@@ -12,7 +12,7 @@ typedef struct {
   PgFile file;
 } Download;
 
-[[maybe_unused]] [[nodiscard]] static u32
+[[nodiscard]] static u32
 download_compute_max_blocks_per_piece_count(u64 piece_length) {
   u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);

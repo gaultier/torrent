@@ -810,7 +810,8 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 
     for (u64 i = peer->remote_bitfield.len * 8 - peer->download->pieces_count;
          i < peer->remote_bitfield.len * 8; i++) {
-      PG_ASSERT(0 == pg_bitfield_get(peer->remote_bitfield, i));
+      PG_ASSERT(0 == pg_bitfield_get(peer->remote_bitfield,
+                                     peer->download->pieces_count + i));
     }
 
     break;

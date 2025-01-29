@@ -493,8 +493,11 @@ static void test_download_pick_next_piece() {
 }
 
 static void test_piece_download_pick_next_block() {
-  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
+
+  // Trivial case: pick first block.
   {
+    PgArena arena =
+        pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
     PieceDownload pd = piece_download_make(0, BLOCK_SIZE * 32, 32, &arena);
     Download download = {
         .max_blocks_per_piece_count = 32,
@@ -506,6 +509,37 @@ static void test_piece_download_pick_next_block() {
     Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
     PG_ASSERT(res.ok);
     PG_ASSERT(res.res < 32);
+
+    PG_ASSERT(1 == pg_bitfield_count(pd.blocks_bitfield_downloading));
+  }
+
+  // Max concurrent downloads reached.
+  {
+    PgArena arena =
+        pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
+
+    PieceDownload pd = piece_download_make(0, BLOCK_SIZE * 32, 32, &arena);
+    Download download = {
+        .max_blocks_per_piece_count = 32,
+        .piece_length = 32 * BLOCK_SIZE,
+        .pieces_count = 3,
+        .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
+        .pieces_have = pg_string_make(1, &arena),
+    };
+    {
+      Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
+      PG_ASSERT(res.ok);
+      PG_ASSERT(res.res < 32);
+
+      PG_ASSERT(1 == pg_bitfield_count(pd.blocks_bitfield_downloading));
+    }
+
+    {
+      Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
+      PG_ASSERT(!res.ok);
+
+      PG_ASSERT(1 == pg_bitfield_count(pd.blocks_bitfield_downloading));
+    }
   }
 }
 

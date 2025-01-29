@@ -434,6 +434,13 @@ static void test_peer_send_message() {
 }
 #endif
 
+static void test_download_compute_max_blocks_per_piece_count() {
+  PG_ASSERT(1 == download_compute_max_blocks_per_piece_count(1));
+  PG_ASSERT(1 == download_compute_max_blocks_per_piece_count(BLOCK_SIZE));
+  PG_ASSERT(2 == download_compute_max_blocks_per_piece_count(BLOCK_SIZE + 1));
+  PG_ASSERT(32 == download_compute_max_blocks_per_piece_count(524288));
+}
+
 int main() {
   test_bencode_decode_u64();
   test_bencode_decode_string();
@@ -443,6 +450,7 @@ int main() {
   test_bencode_decode_encode();
   test_tracker_compute_info_hash();
   test_peer_make_handshake();
+  test_download_compute_max_blocks_per_piece_count();
 #if 0
   test_peer_receive_handshake();
   test_peer_receive_any_message_bitfield();

@@ -6,23 +6,14 @@
 typedef struct {
   PgString pieces_have;
   u32 pieces_count;
-  u32 blocks_per_piece_count;
+  u32 max_blocks_per_piece_count;
   u64 piece_length;
   u64 total_file_size;
   PgFile file;
 } Download;
 
-[[maybe_unused]] [[nodiscard]] static bool
-download_is_piece_length_valid(u64 piece_length) {
-  if (0 == piece_length) {
-    return false;
-  }
-
-  return true;
-}
-
 [[maybe_unused]] [[nodiscard]] static u32
-download_compute_blocks_per_piece_count(u64 piece_length) {
+download_compute_max_blocks_per_piece_count(u64 piece_length) {
   u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
   return (u32)res;
@@ -45,7 +36,7 @@ download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
   PG_ASSERT(pieces_count > 0);
 
   if (piece < pieces_count - 1) {
-    return download_compute_blocks_per_piece_count(piece_length);
+    return download_compute_max_blocks_per_piece_count(piece_length);
   }
 
   u64 rem = total_file_size - piece * piece_length;

@@ -69,13 +69,13 @@ int main(int argc, char *argv[]) {
   Download download = {
       .pieces_have = res_bitfield_pieces.res,
       .pieces_count = pieces_count,
-      .blocks_per_piece_count = download_compute_blocks_per_piece_count(
+      .max_blocks_per_piece_count = download_compute_max_blocks_per_piece_count(
           res_decode_metainfo.res.piece_length),
       .piece_length = res_decode_metainfo.res.piece_length,
       .total_file_size = res_decode_metainfo.res.length,
       .file = target_file_res.res,
   };
-  PG_ASSERT(download.blocks_per_piece_count > 0);
+  PG_ASSERT(download.max_blocks_per_piece_count > 0);
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),

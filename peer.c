@@ -100,15 +100,15 @@ PG_SLICE(Peer) PeerSlice;
 peer_request_block_maybe(Peer *peer, PieceDownload *pd);
 
 [[nodiscard]] [[maybe_unused]] static PieceDownload
-piece_download_make(u32 piece, u64 piece_length, u32 blocks_per_piece_count,
+piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
                     PgArena *arena) {
   PieceDownload res = {0};
   res.piece = piece;
   res.data = pg_string_make(piece_length, arena);
   res.blocks_bitfield_have =
-      pg_string_make(pg_div_ceil(blocks_per_piece_count, 8), arena);
+      pg_string_make(pg_div_ceil(max_blocks_per_piece_count, 8), arena);
   res.blocks_bitfield_downloading =
-      pg_string_make(pg_div_ceil(blocks_per_piece_count, 8), arena);
+      pg_string_make(pg_div_ceil(max_blocks_per_piece_count, 8), arena);
 
   return res;
 }
@@ -655,7 +655,7 @@ peer_request_remote_data_maybe(Peer *peer) {
 
       *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) =
           piece_download_make((u32)piece, peer->download->piece_length,
-                              peer->download->blocks_per_piece_count,
+                              peer->download->max_blocks_per_piece_count,
                               &peer->arena);
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing piece download",
              PG_L("address", peer->address), PG_L("piece", (u32)piece),

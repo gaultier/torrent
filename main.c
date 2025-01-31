@@ -44,6 +44,15 @@ int main(int argc, char *argv[]) {
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file",
          PG_L("path", torrent_file_path));
 
+  if (pg_string_eq(PG_S("https"), res_decode_metainfo.res.announce.scheme)) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR,
+           "announce url is using https but it is not yet implemented",
+           PG_L("path", torrent_file_path),
+           PG_L("announce.scheme", res_decode_metainfo.res.announce.scheme),
+           PG_L("announce.host", res_decode_metainfo.res.announce.host));
+    return 1;
+  }
+
   PgFileResult target_file_res = download_file_create_if_not_exists(
       res_decode_metainfo.res.name, res_decode_metainfo.res.length, arena);
   if (target_file_res.err) {

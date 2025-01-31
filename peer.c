@@ -932,9 +932,8 @@ static void peer_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
   // TODO: What to do here, maybe `read_stop` and set a timer to `read_start` at
   // a later time?
   if (0 == data.len) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: nothing to read, closing",
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: nothing to read",
            PG_L("address", peer->address));
-    peer_release(peer);
     return;
   }
 

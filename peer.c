@@ -360,8 +360,6 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
       pd->piece, peer->download->piece_length, peer->download->total_file_size);
   u64 blocks_have_before = pg_bitfield_count(pd->blocks_bitfield_have);
   PG_ASSERT(blocks_downloading_before + blocks_have_before <= blocks_count);
-  // TODO: Should be a validation error, not an assert.
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) > 0);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece),

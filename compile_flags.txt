@@ -13,4 +13,5 @@
 -Wno-pre-c11-compat
 -Wno-cast-qual
 -Wno-disabled-macro-expansion
+-Wno-unknown-warning-option
 -Werror

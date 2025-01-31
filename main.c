@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =

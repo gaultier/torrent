@@ -15,6 +15,7 @@ int main(int argc, char *argv[]) {
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  PgRng rng = pg_rand_make();
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
@@ -102,6 +103,7 @@ int main(int argc, char *argv[]) {
       .total_file_size = res_decode_metainfo.res.length,
       .file = target_file_res.res,
       .logger = &logger,
+      .rng = &rng,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
 

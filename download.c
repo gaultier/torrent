@@ -11,6 +11,7 @@ typedef struct {
   u64 total_file_size;
   PgFile file;
   PgLogger *logger;
+  PgRng *rng;
 } Download;
 
 [[nodiscard]] static u32
@@ -63,13 +64,13 @@ download_compute_block_length(u32 block, u64 piece_length) {
 
 // Pick a random piece that the remote claimed they have.
 [[maybe_unused]] [[nodiscard]] static Pgu32Ok
-download_pick_next_piece(PgString local_bitfield_have,
+download_pick_next_piece(PgRng *rng, PgString local_bitfield_have,
                          PgString remote_bitfield_have, u32 pieces_count) {
   Pgu32Ok res = {0};
 
   PG_ASSERT(local_bitfield_have.len == remote_bitfield_have.len);
 
-  u32 start = pg_rand_u32(0, pieces_count);
+  u32 start = pg_rand_u32(rng, 0, pieces_count);
   for (u32 i = 0; i < pieces_count; i++) {
     u32 idx = (start + i) % pieces_count;
     if (!pg_bitfield_get(local_bitfield_have, idx) &&

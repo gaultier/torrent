@@ -327,9 +327,9 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved piece data to disk",
          PG_L("address", peer->address), PG_L("piece", pd->piece));
 
-  Pgu32Ok piece_new = download_pick_next_piece(peer->download->pieces_have,
-                                               peer->remote_bitfield,
-                                               peer->download->pieces_count);
+  Pgu32Ok piece_new = download_pick_next_piece(
+      peer->download->rng, peer->download->pieces_have, peer->remote_bitfield,
+      peer->download->pieces_count);
   if (!piece_new.ok) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no new piece to pick",
            PG_L("address", peer->address),
@@ -469,7 +469,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
   PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
 
-  u32 start = pg_rand_u32(0, blocks_count);
+  u32 start = pg_rand_u32(download->rng, 0, blocks_count);
 
   for (u64 i = 0; i < blocks_count; i++) {
     u32 idx = (start + i) % blocks_count;
@@ -664,9 +664,9 @@ static void peer_on_write(PgEventLoop *loop, u64 os_handle, void *ctx,
     PG_ASSERT(pieces_to_queue_count <= peer->concurrent_pieces_download_max);
 
     for (u64 i = 0; i < pieces_to_queue_count; i++) {
-      Pgu32Ok piece = download_pick_next_piece(peer->download->pieces_have,
-                                               peer->remote_bitfield,
-                                               peer->download->pieces_count);
+      Pgu32Ok piece = download_pick_next_piece(
+          peer->download->rng, peer->download->pieces_have,
+          peer->remote_bitfield, peer->download->pieces_count);
       if (!piece.ok) {
         pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no piece left to pick",
                PG_L("address", peer->address));

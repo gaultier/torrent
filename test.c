@@ -315,20 +315,22 @@ static void test_download_compute_block_length() {
 }
 
 static void test_download_pick_next_piece() {
+  PgRng rng = pg_rand_make();
+
   // We have everything, remote has nothing.
   {
     PgString local_bitfield_have = PG_S("\xff");
     PgString remote_bitfield_have = PG_S("\x00");
-    Pgu32Ok res =
-        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    Pgu32Ok res = download_pick_next_piece(&rng, local_bitfield_have,
+                                           remote_bitfield_have, 8);
     PG_ASSERT(!res.ok);
   }
   // Remote has everything, local has nothing.
   {
     PgString local_bitfield_have = PG_S("\x00");
     PgString remote_bitfield_have = PG_S("\xff");
-    Pgu32Ok res =
-        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    Pgu32Ok res = download_pick_next_piece(&rng, local_bitfield_have,
+                                           remote_bitfield_have, 8);
     PG_ASSERT(res.ok);
     PG_ASSERT(res.res < 8);
   }
@@ -337,8 +339,8 @@ static void test_download_pick_next_piece() {
   {
     PgString local_bitfield_have = PG_S("\x03");
     PgString remote_bitfield_have = PG_S("\x04");
-    Pgu32Ok res =
-        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 8);
+    Pgu32Ok res = download_pick_next_piece(&rng, local_bitfield_have,
+                                           remote_bitfield_have, 8);
     PG_ASSERT(res.ok);
     PG_ASSERT(2 == res.res);
   }
@@ -346,18 +348,20 @@ static void test_download_pick_next_piece() {
   {
     PgString local_bitfield_have = PG_S("\x07");
     PgString remote_bitfield_have = PG_S("\x07");
-    Pgu32Ok res =
-        download_pick_next_piece(local_bitfield_have, remote_bitfield_have, 3);
+    Pgu32Ok res = download_pick_next_piece(&rng, local_bitfield_have,
+                                           remote_bitfield_have, 3);
     PG_ASSERT(!res.ok);
   }
 }
 
 static void test_piece_download_pick_next_block() {
+  PgRng rng = pg_rand_make();
 
   // Trivial case: pick first block.
   {
     PgArena arena =
         pg_arena_make_from_virtual_mem(4 * PG_KiB + 32 * BLOCK_SIZE);
+
     PieceDownload pd = piece_download_make(0, BLOCK_SIZE * 32, 32, &arena);
     Download download = {
         .max_blocks_per_piece_count = 32,
@@ -365,6 +369,7 @@ static void test_piece_download_pick_next_block() {
         .pieces_count = 3,
         .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
         .pieces_have = pg_string_make(1, &arena),
+        .rng = &rng,
     };
     Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
     PG_ASSERT(res.ok);
@@ -385,6 +390,7 @@ static void test_piece_download_pick_next_block() {
         .pieces_count = 3,
         .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
         .pieces_have = pg_string_make(1, &arena),
+        .rng = &rng,
     };
     {
       Pgu32Ok res = piece_download_pick_next_block(&pd, &download, 1);
@@ -414,6 +420,7 @@ static void test_piece_download_pick_next_block() {
         .pieces_count = 3,
         .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
         .pieces_have = pg_string_make(1, &arena),
+        .rng = &rng,
     };
 
     for (u32 i = 0; i < 32; i++) {
@@ -437,6 +444,7 @@ static void test_piece_download_pick_next_block() {
         .pieces_count = 3,
         .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
         .pieces_have = pg_string_make(1, &arena),
+        .rng = &rng,
     };
 
     for (u32 i = 0; i < 32; i++) {
@@ -463,6 +471,7 @@ static void test_piece_download_pick_next_block() {
         .pieces_count = 3,
         .total_file_size = 2 * 32 * BLOCK_SIZE + 1,
         .pieces_have = pg_string_make(1, &arena),
+        .rng = &rng,
     };
 
     {

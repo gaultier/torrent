@@ -1105,8 +1105,12 @@ static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
 #endif
 
 [[maybe_unused]] [[nodiscard]]
-static PgTaskState peer_task_io_run(Peer peer, PgRing *inbox /* Queue<u8> */,
+static PgTaskState peer_task_io_run(void *ctx, PgRing *inbox /* Queue<u8> */,
                                     PgRing *outbox /* Queue<PeerMessage> */) {
+  // TODO: Instead of giving the full peer, we could only give read-only data
+  // that is needed for validation.
+  Peer *peer = ctx;
+
   u32 length_announced = 0;
   {
     PgRing recv_tmp = *inbox;
@@ -1117,16 +1121,16 @@ static PgTaskState peer_task_io_run(Peer peer, PgRing *inbox /* Queue<u8> */,
 
     u32 length_announced_max = 16 + BLOCK_SIZE;
     if (length_announced > length_announced_max) {
-      pg_log(peer.logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
-             PG_L("address", peer.address),
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
+             PG_L("address", peer->address),
              PG_L("length_announced", length_announced),
              PG_L("length_announced_max", length_announced_max));
       return PG_TASK_STATE_STOP;
     }
 
     if (pg_ring_read_space(recv_tmp) < length_announced) {
-      pg_log(peer.logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
-             PG_L("address", peer.address),
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
+             PG_L("address", peer->address),
              PG_L("length_announced", length_announced),
              PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
       return PG_TASK_STATE_RUN;
@@ -1161,41 +1165,42 @@ static PgTaskState peer_task_io_run(Peer peer, PgRing *inbox /* Queue<u8> */,
 
     PG_ASSERT(pg_ring_read_u32(inbox, &msg_out.have));
 
-    if (msg_out.have > peer.download->pieces_count) {
+    if (msg_out.have > peer->download->pieces_count) {
       return PG_TASK_STATE_STOP;
     }
 
-    if (msg_out.have > peer.download->pieces_count) {
+    if (msg_out.have > peer->download->pieces_count) {
       return PG_TASK_STATE_STOP;
     }
 
   } break;
   case PEER_MSG_KIND_BITFIELD: {
-    if (peer.remote_bitfield_received) {
-      pg_log(peer.logger, PG_LOG_LEVEL_ERROR,
+    if (peer->remote_bitfield_received) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "received bitfield message more than once",
-             PG_L("address", peer.address));
+             PG_L("address", peer->address));
       return PG_TASK_STATE_STOP;
     }
 
     u64 bitfield_len = length_announced - 1;
-    if (0 == bitfield_len || peer.download->pieces_have.len != bitfield_len) {
-      pg_log(peer.logger, PG_LOG_LEVEL_ERROR,
-             "invalid bitfield length received", PG_L("address", peer.address),
+    if (0 == bitfield_len || peer->download->pieces_have.len != bitfield_len) {
+      pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+             "invalid bitfield length received", PG_L("address", peer->address),
              PG_L("len_actual", bitfield_len),
-             PG_L("len_expected", peer.download->pieces_have.len));
+             PG_L("len_expected", peer->download->pieces_have.len));
       return PG_TASK_STATE_STOP;
     }
 
-    PG_ASSERT(nullptr != peer.remote_bitfield.data);
-    msg_out.bitfield = pg_string_make(bitfield_len, &peer.arena /* FIXME */);
+    PG_ASSERT(nullptr != peer->remote_bitfield.data);
+    msg_out.bitfield = pg_string_make(bitfield_len, &peer->arena /* FIXME */);
     PG_ASSERT(pg_ring_read_slice(inbox, msg_out.bitfield));
 
     // Check that padding bits in the remote bitfield are 0.
     for (u64 i = 0;
-         i < peer.remote_bitfield.len * 8 - peer.download->pieces_count; i++) {
-      PG_ASSERT(0 == pg_bitfield_get(peer.remote_bitfield,
-                                     peer.download->pieces_count + i));
+         i < peer->remote_bitfield.len * 8 - peer->download->pieces_count;
+         i++) {
+      PG_ASSERT(0 == pg_bitfield_get(peer->remote_bitfield,
+                                     peer->download->pieces_count + i));
     }
 
   } break;

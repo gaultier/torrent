@@ -1,6 +1,7 @@
 #include "tracker.c"
 
-static void download_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
+static void download_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
+                              void *ctx) {
   (void)loop;
   (void)os_handle;
 

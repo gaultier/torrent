@@ -387,7 +387,8 @@ tracker_read_http_response_body(Tracker *tracker) {
   return res;
 }
 
-static void tracker_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
+static void tracker_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
+                             void *ctx) {
 
   Tracker *tracker = ctx;
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: timer triggered",
@@ -397,8 +398,8 @@ static void tracker_on_timer(PgEventLoop *loop, u64 os_handle, void *ctx) {
   (void)loop;
 }
 
-static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
-                                PgError io_err, PgString data) {
+static void tracker_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle,
+                                void *ctx, PgError io_err, PgString data) {
   PG_ASSERT(nullptr != ctx);
   Tracker *tracker = ctx;
 
@@ -458,8 +459,8 @@ static void tracker_on_tcp_read(PgEventLoop *loop, u64 os_handle, void *ctx,
 }
 
 [[maybe_unused]]
-static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
-                                 PgError err) {
+static void tracker_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
+                                 void *ctx, PgError err) {
   PG_ASSERT(nullptr != ctx);
   Tracker *tracker = ctx;
 
@@ -487,8 +488,9 @@ static void tracker_on_tcp_write(PgEventLoop *loop, u64 os_handle, void *ctx,
 }
 
 [[maybe_unused]]
-static void tracker_on_dns_resolve(PgEventLoop *loop, u64 os_handle, void *ctx,
-                                   PgError err, PgIpv4Address address) {
+static void tracker_on_dns_resolve(PgEventLoop *loop, PgOsHandle os_handle,
+                                   void *ctx, PgError err,
+                                   PgIpv4Address address) {
   PG_ASSERT(nullptr != ctx);
   Tracker *tracker = ctx;
 

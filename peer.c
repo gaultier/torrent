@@ -469,7 +469,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
   PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
 
-  u32 start = pg_rand_u32(download->rng, 0, blocks_count);
+  u32 start = pg_rand_u32_min_incl_max_excl(download->rng, 0, blocks_count);
 
   for (u64 i = 0; i < blocks_count; i++) {
     u32 idx = (start + i) % blocks_count;

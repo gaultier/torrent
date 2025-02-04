@@ -70,7 +70,7 @@ download_pick_next_piece(PgRng *rng, PgString local_bitfield_have,
 
   PG_ASSERT(local_bitfield_have.len == remote_bitfield_have.len);
 
-  u32 start = pg_rand_u32(rng, 0, pieces_count);
+  u32 start = pg_rand_u32_min_incl_max_excl(rng, 0, pieces_count);
   for (u32 i = 0; i < pieces_count; i++) {
     u32 idx = (start + i) % pieces_count;
     if (!pg_bitfield_get(local_bitfield_have, idx) &&

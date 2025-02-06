@@ -69,7 +69,6 @@ typedef struct {
 } PieceDownload;
 PG_DYN(PieceDownload) PieceDownloadDyn;
 
-#if 0
 typedef struct {
   PgIpv4Address address;
   PgString info_hash;
@@ -88,8 +87,9 @@ typedef struct {
   u64 concurrent_blocks_download_max;
   PgString piece_hashes;
 
-  PgEventLoop *loop;
-  PgOsHandle os_handle_socket;
+  uv_tcp_t uv_tcp;
+  uv_connect_t uv_req_connect;
+
   PgRing recv;
   PgFile file; // TODO: Support multiple files.
 } Peer;
@@ -97,8 +97,10 @@ typedef struct {
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
 
+#if 0
 [[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
                                                       PieceDownload *pd);
+#endif
 
 [[nodiscard]] [[maybe_unused]] static PieceDownload
 piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
@@ -114,8 +116,8 @@ piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
   return res;
 }
 
-[[nodiscard]] static PieceDownload *peer_find_piece_download(Peer *peer,
-                                                             u32 piece) {
+[[maybe_unused]] [[nodiscard]] static PieceDownload *
+peer_find_piece_download(Peer *peer, u32 piece) {
   for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
     PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
     if (piece == pd->piece) {
@@ -125,7 +127,7 @@ piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
   return nullptr;
 }
 
-[[nodiscard]] static PgString
+[[maybe_unused]] [[nodiscard]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -153,10 +155,11 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer peer_make(
-    PgIpv4Address address, PgString info_hash, PgLogger *logger,
-    Download *download, PgEventLoop *loop, u64 concurrent_pieces_download_max,
-    u64 concurrent_blocks_download_max, PgString piece_hashes, PgFile file) {
+[[maybe_unused]] [[nodiscard]] static Peer
+peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
+          Download *download, u64 concurrent_pieces_download_max,
+          u64 concurrent_blocks_download_max, PgString piece_hashes,
+          PgFile file) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -165,7 +168,6 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   peer.info_hash = info_hash;
   peer.logger = logger;
   peer.download = download;
-  peer.loop = loop;
   peer.concurrent_pieces_download_max = concurrent_pieces_download_max;
   peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
   peer.piece_hashes = piece_hashes;
@@ -190,16 +192,31 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   return peer;
 }
 
+static void peer_on_close(uv_handle_t *handle) {
+  (void)handle;
+  PG_ASSERT(handle->data);
+  Peer *peer = handle->data;
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: closed io handles",
+         PG_L("address", peer->address));
+
+  // TODO: Kick-start a retry here?
+}
+
 // TODO: Principled peer lifetime. Perhaps with a pool?
 // Need to be careful when the peer is released, and handling double release.
-
 static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->arena_tmp);
-  (void)pg_event_loop_handle_close(peer->loop, peer->os_handle_socket);
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: start closing io handles",
+         PG_L("address", peer->address));
+
+  uv_close((uv_handle_t *)&peer->uv_tcp, peer_on_close);
   free(peer);
 }
 
+#if 0
 [[nodiscard]] static PgError peer_read_handshake(Peer *peer) {
   PgArena arena_tmp = peer->arena_tmp;
   PgString handshake = {
@@ -453,8 +470,9 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
     return peer_complete_piece_download(peer, pd);
   }
 }
+#endif
 
-[[nodiscard]] static Pgu32Ok
+[[maybe_unused]] [[nodiscard]] static Pgu32Ok
 piece_download_pick_next_block(PieceDownload *pd, Download *download,
                                u64 concurrent_blocks_download_max) {
   Pgu32Ok res = {0};
@@ -495,8 +513,8 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   return res;
 }
 
-[[nodiscard]] static PgString peer_encode_message(PeerMessage msg,
-                                                  PgArena *arena) {
+[[maybe_unused]] [[nodiscard]] static PgString
+peer_encode_message(PeerMessage msg, PgArena *arena) {
 
   Pgu8Dyn sb = {0};
   u64 cap = 16;
@@ -566,6 +584,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   return s;
 }
 
+#if 0
 static void peer_on_write(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
                           PgError err) {
   (void)loop;
@@ -586,7 +605,9 @@ static void peer_on_write(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: write successful",
          PG_L("address", peer->address));
 }
+#endif
 
+#if 0
 [[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
                                                       PieceDownload *pd) {
   PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
@@ -995,9 +1016,10 @@ static void peer_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
     return;
   }
 }
+#endif
 
-[[nodiscard]] static PgString peer_make_handshake(PgString info_hash,
-                                                  PgArena *arena) {
+[[maybe_unused]] [[nodiscard]] static PgString
+peer_make_handshake(PgString info_hash, PgArena *arena) {
   Pgu8Dyn sb = {0};
   PG_DYN_APPEND_SLICE(&sb,
                       PG_S("\x13"
@@ -1024,14 +1046,14 @@ static void peer_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
   return PG_DYN_SLICE(PgString, sb);
 }
 
-static void peer_on_connect(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
-                            PgError err) {
-  Peer *peer = ctx;
+static void peer_on_tcp_connect(uv_connect_t *req, int status) {
+  PG_ASSERT(req->data);
+  Peer *peer = req->data;
 
-  if (err) {
+  if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to connect",
-           PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))),
+           PG_L("err", status),
+           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))),
            PG_L("address", peer->address));
     peer_release(peer);
     return;
@@ -1040,6 +1062,7 @@ static void peer_on_connect(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
+#if 0
   peer->recv = pg_ring_make(4 * PG_KiB + 2 * BLOCK_SIZE, &peer->arena);
   {
     PgArena arena_tmp = peer->arena_tmp;
@@ -1055,38 +1078,45 @@ static void peer_on_connect(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
       return;
     }
   }
+#endif
 }
 
-[[maybe_unused]] [[nodiscard]] static PgError peer_start(PgEventLoop *loop,
-                                                         Peer *peer) {
-  PgOsHandleResult res_tcp = pg_event_loop_tcp_init(loop, peer);
-  if (res_tcp.err) {
+[[maybe_unused]] [[nodiscard]] static PgError peer_start(Peer *peer) {
+  peer->uv_tcp.data = peer;
+
+  int err_tcp_init = uv_tcp_init(uv_default_loop(), &peer->uv_tcp);
+  if (err_tcp_init < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
-           PG_L("err", res_tcp.err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tcp.err))),
-           PG_L("address", peer->address));
+           PG_L("address", peer->address),
+           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_init))));
     peer_release(peer);
-    return res_tcp.err;
-  }
-  peer->os_handle_socket = res_tcp.res;
-
-  PgError err_connect = pg_event_loop_tcp_connect(
-      loop, peer->os_handle_socket, peer->address, peer_on_connect);
-  if (err_connect) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start connect",
-           PG_L("err", err_connect),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_connect))),
-           PG_L("address", peer->address));
-    peer_release(peer);
-    return err_connect;
+    return (PgError)err_tcp_init;
   }
 
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: started",
+  // TODO: IPV6.
+  struct sockaddr_in sockaddr = {
+      .sin_family = AF_INET,
+      .sin_port = htons(peer->address.port),
+      .sin_addr.s_addr = htonl(peer->address.ip),
+  };
+  peer->uv_req_connect.data = peer;
+  int err_tcp_connect =
+      uv_tcp_connect(&peer->uv_req_connect, &peer->uv_tcp,
+                     (struct sockaddr *)&sockaddr, peer_on_tcp_connect);
+  if (err_tcp_connect < 0) {
+    pg_log(
+        peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp connect",
+        PG_L("address", peer->address), PG_L("err", err_tcp_connect),
+        PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_connect))));
+    peer_release(peer);
+    return (PgError)err_tcp_init;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: started tcp connect",
          PG_L("address", peer->address));
 
   return 0;
 }
-#endif
 
 #if 0
 [[maybe_unused]]

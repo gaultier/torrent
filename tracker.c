@@ -347,19 +347,17 @@ tracker_read_http_response_body(Tracker *tracker) {
         pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: peer announced",
                PG_L("addr", addr), PG_L("host", tracker->host),
                PG_L("port", tracker->port));
-#if 0
         Peer *peer = calloc(sizeof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
-                          tracker->download, tracker->loop,
+                          tracker->download,
                           tracker->concurrent_pieces_download_max,
                           tracker->concurrent_blocks_download_max,
                           tracker->piece_hashes, tracker->download->file);
 
-        PgError err_peer = peer_start(tracker->loop, peer);
+        PgError err_peer = peer_start(peer);
         if (err_peer) {
           continue;
         }
-#endif
       }
 
       return res;

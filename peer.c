@@ -672,6 +672,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   pg_free(peer->allocator, req, sizeof(*req), 1);
 
   if (!peer->recv.data.len) {
+    // TODO: Revisit when file I/O is async.
     peer->recv = pg_ring_make(2 * PG_KiB + 2 * BLOCK_SIZE, peer->allocator);
   }
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,

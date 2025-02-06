@@ -588,6 +588,8 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
       pg_alloc(&allocator_tracing, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
   *buf = string_to_uv_buf(http_req_s);
 
+  tracker->uv_req_write.data = buf;
+
   int err_write =
       uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, buf, 1,
                tracker_on_tcp_write);

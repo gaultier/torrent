@@ -201,19 +201,17 @@ static void peer_on_close(uv_handle_t *handle) {
          PG_L("address", peer->address));
 
   // TODO: Kick-start a retry here?
-}
 
-// TODO: Principled peer lifetime. Perhaps with a pool?
-// Need to be careful when the peer is released, and handling double release.
-static void peer_release(Peer *peer) {
   (void)pg_arena_release(&peer->arena);
   (void)pg_arena_release(&peer->arena_tmp);
+  free(peer);
+}
 
+static void peer_release(Peer *peer) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: start closing io handles",
          PG_L("address", peer->address));
 
   uv_close((uv_handle_t *)&peer->uv_tcp, peer_on_close);
-  free(peer);
 }
 
 #if 0

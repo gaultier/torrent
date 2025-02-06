@@ -660,7 +660,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
          PG_L("host", url.host), PG_L("port", url.port));
 
-  tracker->uv_dns_req.data = &tracker;
+  tracker->uv_dns_req.data = tracker;
 
   struct addrinfo hints = {0};
   hints.ai_socktype = SOCK_STREAM;
@@ -682,7 +682,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   }
 
   (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
-  tracker->uv_tcp_timeout.data = &tracker;
+  tracker->uv_tcp_timeout.data = tracker;
 
   int err_timer =
       uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout, 20'000, 0);

@@ -17,14 +17,15 @@ int main(int argc, char *argv[]) {
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PgTracingAllocator tracing_allocator = pg_make_tracing_heap_allocator();
 
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
-  PgStringResult res_torrent_file_read =
-      pg_file_read_full(torrent_file_path, allocator);
+  PgStringResult res_torrent_file_read = pg_file_read_full(
+      torrent_file_path, pg_arena_allocator_as_allocator(&arena_allocator));
   if (0 != res_torrent_file_read.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
            PG_L("err", res_torrent_file_read.err),
@@ -76,11 +77,13 @@ int main(int argc, char *argv[]) {
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
-      .info_hash =
-          pg_string_make(PG_SHA1_DIGEST_LENGTH,
-                         allocator), // FIXME: Should use tracker's arena?
-      .peer_id =
-          pg_string_make(20, allocator), // FIXME: Should use tracker's arena?
+      .info_hash = pg_string_make(
+          PG_SHA1_DIGEST_LENGTH,
+          pg_arena_allocator_as_allocator(
+              &arena_allocator)), // FIXME: Should use tracker's arena?
+      .peer_id = pg_string_make(
+          20, pg_arena_allocator_as_allocator(
+                  &arena_allocator)), // FIXME: Should use tracker's arena?
   };
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);
@@ -125,7 +128,8 @@ int main(int argc, char *argv[]) {
   Tracker tracker = tracker_make(
       &logger, announce.host, announce.port, tracker_metadata, &download,
       concurrent_pieces_download_max, concurrent_blocks_download_max,
-      res_decode_metainfo.res.pieces);
+      res_decode_metainfo.res.pieces,
+      pg_tracing_allocator_as_allocator(&tracing_allocator));
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

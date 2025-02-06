@@ -82,7 +82,7 @@ typedef struct {
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
-  PgAllocator allocator;
+  PgAllocator *allocator;
   /* PgArena arena; */
   /* PgArena arena_tmp; */
   PgString remote_bitfield;
@@ -173,7 +173,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
           Download *download, u64 concurrent_pieces_download_max,
           u64 concurrent_blocks_download_max, PgString piece_hashes,
-          PgFile file) {
+          PgFile file, PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -186,16 +186,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
   peer.piece_hashes = piece_hashes;
   peer.file = file;
-
-  peer.allocator = pg_make_tracing_heap_allocator();
-  /* peer.arena = */
-  /*     pg_arena_make_from_virtual_mem(4 * PG_KiB + 2 * BLOCK_SIZE + */
-  /*                                    (peer.concurrent_pieces_download_max) *
-   */
-  /*                                        (download->piece_length + 4 *
-   * PG_KiB)); */
-  /* peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
-   */
+  peer.allocator = allocator;
   peer.remote_choked = true;
   peer.remote_interested = false;
   /* peer.remote_bitfield = */
@@ -221,8 +212,7 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Kick-start a retry here?
 
-  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
-  pg_free(&allocator_tracing, peer);
+  pg_free(peer->allocator, peer);
 }
 
 static void peer_release(Peer *peer) {
@@ -609,8 +599,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   Peer *peer = req->handle->data;
 
   uv_buf_t *buf = req->data;
-  pg_free(&peer->allocator, buf->base);
-  pg_free(&peer->allocator, buf);
+  pg_free(peer->allocator, buf->base);
+  pg_free(peer->allocator, buf);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
@@ -623,7 +613,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
          PG_L("address", peer->address));
 
-  pg_free(&peer->allocator, req);
+  pg_free(peer->allocator, req);
 #if 0
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
                                peer_on_tcp_read);
@@ -1091,13 +1081,13 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-  PgString handshake = peer_make_handshake(peer->info_hash, &peer->allocator);
+  PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);
   uv_buf_t *buf =
-      pg_alloc(&peer->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
+      pg_alloc(peer->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
   *buf = string_to_uv_buf(handshake);
 
   uv_write_t *req_write =
-      pg_alloc(&peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
+      pg_alloc(peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
   req_write->data = buf;
   PG_ASSERT(req_write->data);
 

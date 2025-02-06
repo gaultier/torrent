@@ -272,6 +272,8 @@ typedef struct {
   u64 concurrent_pieces_download_max;
   u64 concurrent_blocks_download_max;
   PgString piece_hashes;
+
+  PgAllocator *allocator;
 } Tracker;
 
 static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
@@ -279,9 +281,10 @@ static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   PG_ASSERT(handle);
   PG_ASSERT(handle->data);
   PG_ASSERT(buf);
+  Tracker *tracker = handle->data;
 
-  PgAllocator allocator = pg_make_tracing_heap_allocator();
-  buf->base = pg_alloc(&allocator, sizeof(u8), _Alignof(u8), suggested_size);
+  buf->base =
+      pg_alloc(tracker->allocator, sizeof(u8), _Alignof(u8), suggested_size);
   buf->len = suggested_size;
 }
 
@@ -290,7 +293,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata, Download *download,
                             u64 concurrent_pieces_download_max,
                             u64 concurrent_blocks_download_max,
-                            PgString piece_hashes) {
+                            PgString piece_hashes, PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -303,12 +306,13 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.concurrent_pieces_download_max = concurrent_pieces_download_max;
   tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
   tracker.piece_hashes = piece_hashes;
+  tracker.allocator = allocator;
 
   // Need to hold the HTTP request and response simultaneously (currently).
   tracker.arena = pg_arena_make_from_virtual_mem(32 * PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker.arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
-  tracker.http_recv = pg_ring_make(16 * PG_KiB, allocator);
+  tracker.http_recv = pg_ring_make(
+      16 * PG_KiB, pg_arena_allocator_as_allocator(&arena_allocator));
 
   return tracker;
 }
@@ -352,19 +356,18 @@ tracker_read_http_response_body(Tracker *tracker) {
       PgIpv4AddressSlice peers =
           PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
 
-      PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: peer announced",
                PG_L("addr", addr), PG_L("host", tracker->host),
                PG_L("port", tracker->port));
         Peer *peer =
-            pg_alloc(&allocator_tracing, sizeof(Peer), _Alignof(Peer), 1);
-        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
-                          tracker->download,
-                          tracker->concurrent_pieces_download_max,
-                          tracker->concurrent_blocks_download_max,
-                          tracker->piece_hashes, tracker->download->file);
+            pg_alloc(tracker->allocator, sizeof(Peer), _Alignof(Peer), 1);
+        *peer = peer_make(
+            addr, tracker->metadata.info_hash, tracker->logger,
+            tracker->download, tracker->concurrent_pieces_download_max,
+            tracker->concurrent_blocks_download_max, tracker->piece_hashes,
+            tracker->download->file, tracker->allocator);
 
         PgError err_peer = peer_start(peer);
         if (err_peer) {
@@ -534,9 +537,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
   Tracker *tracker = req->handle->data;
 
   uv_buf_t *buf = req->data;
-  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
-  // pg_free(&allocator_tracing, buf->base);
-  pg_free(&allocator_tracing, buf);
+  pg_free(tracker->allocator, buf->base);
+  pg_free(tracker->allocator, buf);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
@@ -563,8 +565,6 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
 static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
   PG_ASSERT(req->data);
   Tracker *tracker = req->data;
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
@@ -579,13 +579,12 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   PgHttpRequest http_req =
       tracker_make_http_request(tracker->metadata, &tracker->arena);
-  PgString http_req_s = pg_http_request_to_string(http_req, allocator);
+  PgString http_req_s = pg_http_request_to_string(http_req, tracker->allocator);
 
   // TODO: Consider if we can send the http request as multiple buffers to spare
   // an allocation?
-  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
   uv_buf_t *buf =
-      pg_alloc(&allocator_tracing, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
+      pg_alloc(tracker->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
   *buf = string_to_uv_buf(http_req_s);
 
   tracker->uv_req_write.data = buf;

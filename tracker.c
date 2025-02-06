@@ -511,10 +511,12 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     tracker_close_io_handles(tracker);
     return;
   }
+  PgString data = uv_buf_to_string(*buf);
+  data.len = (u64)nread;
 
   if (0 == nread) {
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
-           PG_L("port", tracker->port), PG_L("data", uv_buf_to_string(*buf)));
+           PG_L("port", tracker->port), PG_L("data", data));
     PgError err_http = tracker_try_parse_http_response(tracker);
     if (err_http) {
       // TODO?
@@ -526,12 +528,12 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   if (nread > 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
            PG_L("port", tracker->port), PG_L("nread", (u64)nread),
-           PG_L("data", uv_buf_to_string(*buf)));
-    if (!pg_ring_write_slice(&tracker->http_recv, uv_buf_to_string(*buf))) {
+           PG_L("data", data));
+    if (!pg_ring_write_slice(&tracker->http_recv, data)) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: tcp read too big",
              PG_L("port", tracker->port), PG_L("nread", (u64)nread),
              PG_L("recv_write_space", pg_ring_write_space(tracker->http_recv)),
-             PG_L("data", uv_buf_to_string(*buf)));
+             PG_L("data", data));
 
       tracker_close_io_handles(tracker);
       return;

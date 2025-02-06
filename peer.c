@@ -1098,8 +1098,8 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
 
   uv_write_t *req_write =
       pg_alloc(&peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
-  req->data = buf;
-  PG_ASSERT(req->data);
+  req_write->data = buf;
+  PG_ASSERT(req_write->data);
 
   int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, buf, 1,
                            peer_on_tcp_write);

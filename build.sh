@@ -3,7 +3,7 @@ set -e
 set -f # disable globbing.
 
 CFLAGS="${CFLAGS}"
-EXTRA_FLAGS="-fpie ./submodules/libuv/.libs/libuv.a"
+EXTRA_FLAGS="-fpie ./submodules/libuv/.libs/libuv.a -flto -fno-omit-frame-pointer -gsplit-dwarf"
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 
@@ -32,7 +32,7 @@ case $1 in
 esac
 
 # shellcheck disable=SC2086
-"$CC" $WARNINGS -g3 main.c -o main.bin $EXTRA_FLAGS $CFLAGS -Wl,--gc-sections
+$CC $WARNINGS -g3 main.c -o main.bin $EXTRA_FLAGS $CFLAGS -Wl,--gc-sections
 }
 
 if [ $# -eq 0 ]; then

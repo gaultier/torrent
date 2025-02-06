@@ -453,6 +453,8 @@ static void tracker_close_io_handles(Tracker *tracker) {
          "tracker: start closing io handles", PG_L("port", tracker->port));
 
   uv_close((uv_handle_t *)&tracker->uv_tcp, tracker_on_close);
+  uv_timer_stop(&tracker->uv_tcp_timeout);
+  uv_cancel((uv_req_t *)&tracker->uv_dns_req);
   return;
 }
 

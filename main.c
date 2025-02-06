@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
   }
 
   PgFileResult target_file_res = download_file_create_if_not_exists(
-      res_decode_metainfo.res.name, res_decode_metainfo.res.length, arena);
+      res_decode_metainfo.res.name, res_decode_metainfo.res.length);
   if (target_file_res.err) {
     pg_log(
         &logger, PG_LOG_LEVEL_ERROR, "failed to create download file",

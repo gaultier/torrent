@@ -94,18 +94,18 @@ download_pick_next_piece(PgRng *rng, PgString local_bitfield_have,
 }
 
 [[maybe_unused]] [[nodiscard]] static PgFileResult
-download_file_create_if_not_exists(PgString path, u64 size, PgArena arena) {
+download_file_create_if_not_exists(PgString path, u64 size) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
   PgFileFlags flags =
       PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
-  PgFileResult res = pg_file_open(filename, flags, arena);
+  PgFileResult res = pg_file_open(filename, flags);
   if (res.err) {
     return res;
   }
 
-  res.err = pg_file_set_size(filename, size, arena);
+  res.err = pg_file_set_size(filename, size);
   if (res.err) {
     (void)pg_file_close(res.res);
     return res;

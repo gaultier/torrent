@@ -85,9 +85,9 @@ typedef struct {
   PgAllocator allocator;
   /* PgArena arena; */
   /* PgArena arena_tmp; */
+  PgString remote_bitfield;
   bool remote_choked, remote_interested;
   bool local_choked, local_interested;
-  PgString remote_bitfield;
   bool remote_bitfield_received;
   Download *download;
   PeerState state;
@@ -97,6 +97,8 @@ typedef struct {
   u64 concurrent_blocks_download_max;
   PgString piece_hashes;
 
+  // TODO: Consider making libuv structs a pointer to reduce the size of the
+  // Peer.
   uv_tcp_t uv_tcp;
   uv_connect_t uv_req_connect;
 

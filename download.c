@@ -151,8 +151,11 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
   DownloadLoadBitfieldFromDiskCtx ctx = {
-      .bitfield = pg_string_make(pg_div_ceil(pieces_count, 8), arena),
+      .bitfield = pg_string_make(pg_div_ceil(pieces_count, 8), allocator),
       .info_hash = info_hash,
       .logger = logger,
       .pieces_count = pieces_count,

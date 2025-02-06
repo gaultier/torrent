@@ -39,28 +39,30 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
 [[maybe_unused]]
 static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       PgArena arena) {
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
 
-  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("length");
-  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("length");
+  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.length,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("name");
-  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("name");
+  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.name,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("piece length");
-  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("piece length");
+  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.piece_length,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, &arena) = PG_S("pieces");
-  *PG_DYN_PUSH(&value.dict.values, &arena) = (BencodeValue){
+  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("pieces");
+  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.pieces,
   };
@@ -68,7 +70,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
   // TODO: Add unknown keys in `info`?
 
   Pgu8Dyn sb = {0};
-  PgWriter w = pg_writer_make_from_string_builder(&sb, &arena);
+  PgWriter w = pg_writer_make_from_string_builder(&sb, allocator);
   PG_ASSERT(0 == bencode_encode(value, &w, &arena));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
 
@@ -94,6 +96,9 @@ typedef struct {
 [[nodiscard]] static ParseCompactPeersResult
 tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
   ParseCompactPeersResult res = {0};
+
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   if (s.len % 6 != 0) {
     res.err = TORR_ERR_COMPACT_PEERS_INVALID;
@@ -127,7 +132,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
              PG_L("res.peer_addresses.len", res.peer_addresses.len),
              PG_L("address", address));
     }
-    *PG_DYN_PUSH(&res.peer_addresses, arena) = address;
+    *PG_DYN_PUSH(&res.peer_addresses, allocator) = address;
   }
 
   return res;
@@ -198,31 +203,37 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
   res.url = req_tracker.announce;
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PG_DYN_ENSURE_CAP(&res.url.query_parameters, 7, allocator);
+
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("info_hash"),
       .value = req_tracker.info_hash,
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("peer_id"),
       .value = req_tracker.peer_id,
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("port"),
-      .value = pg_u64_to_string(req_tracker.port, arena),
+      .value = pg_u64_to_string(req_tracker.port, allocator),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("uploaded"),
-      .value = pg_u64_to_string(req_tracker.uploaded, arena),
+      .value = pg_u64_to_string(req_tracker.uploaded, allocator),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("downloaded"),
-      .value = pg_u64_to_string(req_tracker.downloaded, arena),
+      .value = pg_u64_to_string(req_tracker.downloaded, allocator),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("left"),
-      .value = pg_u64_to_string(req_tracker.left, arena),
+      .value = pg_u64_to_string(req_tracker.left, allocator),
   };
-  *PG_DYN_PUSH(&res.url.query_parameters, arena) = (PgKeyValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("event"),
       .value = tracker_metadata_event_to_string(req_tracker.event),
   };
@@ -296,7 +307,9 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
 
   // Need to hold the HTTP request and response simultaneously (currently).
   tracker.arena = pg_arena_make_from_virtual_mem(32 * PG_KiB);
-  tracker.http_recv = pg_ring_make(16 * PG_KiB, &tracker.arena);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker.arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+  tracker.http_recv = pg_ring_make(16 * PG_KiB, allocator);
 
   return tracker;
 }
@@ -306,14 +319,16 @@ tracker_read_http_response_body(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_BODY == tracker->state);
 
   PgBoolResult res = {0};
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   if (tracker->http_response_content_length != 0) {
     if (pg_ring_read_space(tracker->http_recv) ==
         tracker->http_response_content_length) {
       res.res = true;
 
-      PgString s = pg_string_make(pg_ring_read_space(tracker->http_recv),
-                                  &tracker->arena);
+      PgString s =
+          pg_string_make(pg_ring_read_space(tracker->http_recv), allocator);
       PG_ASSERT(true == pg_ring_read_slice(&tracker->http_recv, s));
 
       TrackerResponseResult res_bencode =
@@ -366,10 +381,13 @@ tracker_read_http_response_body(Tracker *tracker) {
 }
 
 [[nodiscard]] static PgError tracker_try_parse_http_response(Tracker *tracker) {
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
   switch (tracker->state) {
   case TRACKER_STATE_WILL_READ_HTTP_RESPONSE: {
     PgHttpResponseReadResult res_http =
-        pg_http_read_response(&tracker->http_recv, 128, &tracker->arena);
+        pg_http_read_response(&tracker->http_recv, 128, allocator);
     if (res_http.err) {
       pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
              "tracker: failed to parse http response",
@@ -538,6 +556,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
 static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
   PG_ASSERT(req->data);
   Tracker *tracker = req->data;
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
@@ -552,7 +572,7 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   PgHttpRequest http_req =
       tracker_make_http_request(tracker->metadata, &tracker->arena);
-  PgString http_req_s = pg_http_request_to_string(http_req, &tracker->arena);
+  PgString http_req_s = pg_http_request_to_string(http_req, allocator);
 
   // TODO: Consider if we can send the http request as multiple buffers to spare
   // an allocation?
@@ -658,15 +678,16 @@ static void tracker_on_timeout(uv_timer_t *timer) {
          PG_L("host", url.host), PG_L("port", url.port));
 
   tracker->uv_dns_req.data = tracker;
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   struct addrinfo hints = {0};
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
   int err_getaddrinfo = uv_getaddrinfo(
       uv_default_loop(), &tracker->uv_dns_req, tracker_on_dns_resolve,
-      pg_string_to_cstr(url.host, &tracker->arena),
-      pg_string_to_cstr(pg_u64_to_string(url.port, &tracker->arena),
-                        &tracker->arena),
+      pg_string_to_cstr(url.host, allocator),
+      pg_string_to_cstr(pg_u64_to_string(url.port, allocator), allocator),
       &hints);
 
   if (err_getaddrinfo < 0) {

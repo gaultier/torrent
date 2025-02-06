@@ -122,6 +122,8 @@ typedef struct {
 [[nodiscard]] static BencodeDictionaryDecodeResult
 bencode_decode_dictionary(PgString s, PgArena *arena) {
   BencodeDictionaryDecodeResult res = {0};
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.ok) {
@@ -156,7 +158,7 @@ bencode_decode_dictionary(PgString s, PgArena *arena) {
       }
     }
 
-    *PG_DYN_PUSH(&res.dict.keys, arena) = res_key.s;
+    *PG_DYN_PUSH(&res.dict.keys, allocator) = res_key.s;
 
     // TODO: Address stack overflow.
     BencodeValueDecodeResult res_value = bencode_decode_value(remaining, arena);
@@ -165,7 +167,7 @@ bencode_decode_dictionary(PgString s, PgArena *arena) {
       return res;
     }
 
-    *PG_DYN_PUSH(&res.dict.values, arena) = res_value.value;
+    *PG_DYN_PUSH(&res.dict.values, allocator) = res_value.value;
 
     remaining = res_value.remaining;
   }
@@ -191,6 +193,8 @@ typedef struct {
 [[nodiscard]] static BencodeListDecodeResult
 bencode_decode_list(PgString s, PgArena *arena) {
   BencodeListDecodeResult res = {0};
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.ok) {
@@ -215,7 +219,7 @@ bencode_decode_list(PgString s, PgArena *arena) {
       return res;
     }
 
-    *PG_DYN_PUSH(&res.values, arena) = res_value.value;
+    *PG_DYN_PUSH(&res.values, allocator) = res_value.value;
 
     remaining = res_value.remaining;
   }
@@ -415,6 +419,8 @@ PG_RESULT(Metainfo) DecodeMetaInfoResult;
 [[maybe_unused]] [[nodiscard]] static DecodeMetaInfoResult
 bencode_decode_metainfo(PgString s, PgArena *arena) {
   DecodeMetaInfoResult res = {0};
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);
   if (res_dict.err) {
@@ -436,7 +442,7 @@ bencode_decode_metainfo(PgString s, PgArena *arena) {
         return res;
       }
 
-      PgUrlResult pg_url_parse_res = pg_url_parse(value->s, arena);
+      PgUrlResult pg_url_parse_res = pg_url_parse(value->s, allocator);
       if (pg_url_parse_res.err) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;

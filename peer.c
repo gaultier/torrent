@@ -11,6 +11,7 @@
 
 #include "submodules/cstd/lib.c"
 
+[[maybe_unused]]
 static PgString uv_buf_to_string(uv_buf_t buf) {
   return (PgString){.data = (u8 *)buf.base, .len = buf.len};
 }
@@ -81,8 +82,9 @@ typedef struct {
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
-  PgArena arena;
-  PgArena arena_tmp;
+  PgAllocator allocator;
+  /* PgArena arena; */
+  /* PgArena arena_tmp; */
   bool remote_choked, remote_interested;
   bool local_choked, local_interested;
   PgString remote_bitfield;
@@ -110,6 +112,7 @@ PG_SLICE(Peer) PeerSlice;
                                                       PieceDownload *pd);
 #endif
 
+#if 0
 [[nodiscard]] [[maybe_unused]] static PieceDownload
 piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
                     PgArena *arena) {
@@ -123,6 +126,7 @@ piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
 
   return res;
 }
+#endif
 
 [[maybe_unused]] [[nodiscard]] static PieceDownload *
 peer_find_piece_download(Peer *peer, u32 piece) {
@@ -181,21 +185,26 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.piece_hashes = piece_hashes;
   peer.file = file;
 
-  peer.arena =
-      pg_arena_make_from_virtual_mem(4 * PG_KiB + 2 * BLOCK_SIZE +
-                                     (peer.concurrent_pieces_download_max) *
-                                         (download->piece_length + 4 * PG_KiB));
-  peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
+  peer.allocator = pg_make_tracing_heap_allocator();
+  /* peer.arena = */
+  /*     pg_arena_make_from_virtual_mem(4 * PG_KiB + 2 * BLOCK_SIZE + */
+  /*                                    (peer.concurrent_pieces_download_max) *
+   */
+  /*                                        (download->piece_length + 4 *
+   * PG_KiB)); */
+  /* peer.arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB + BLOCK_SIZE);
+   */
   peer.remote_choked = true;
   peer.remote_interested = false;
-  peer.remote_bitfield =
-      pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena);
+  /* peer.remote_bitfield = */
+  /*     pg_string_make(pg_div_ceil(download->pieces_count, 8), &peer.arena); */
 
   peer.local_choked = true;
   peer.local_interested = false;
 
-  PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
-                    &peer.arena);
+  /* PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
+   */
+  /*                   &peer.arena); */
 
   return peer;
 }
@@ -210,8 +219,8 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Kick-start a retry here?
 
-  (void)pg_arena_release(&peer->arena);
-  (void)pg_arena_release(&peer->arena_tmp);
+  /* (void)pg_arena_release(&peer->arena); */
+  /* (void)pg_arena_release(&peer->arena_tmp); */
   free(peer);
 }
 
@@ -519,6 +528,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
   return res;
 }
 
+#if 0
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_encode_message(PeerMessage msg, PgArena *arena) {
 
@@ -589,6 +599,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   PgString s = PG_DYN_SLICE(PgString, sb);
   return s;
 }
+#endif
 
 static void peer_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(req->handle);
@@ -1032,28 +1043,27 @@ static void peer_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
 #endif
 
 [[maybe_unused]] [[nodiscard]] static PgString
-peer_make_handshake(PgString info_hash, PgArena *arena) {
+peer_make_handshake(PgString info_hash, PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
-  PG_DYN_APPEND_SLICE(&sb,
-                      PG_S("\x13"
-                           "BitTorrent protocol"
-                           "\x00"
-                           "\x00"
-                           "\x00"
-                           "\x00"
-                           "\x00"
-                           "\x00"
-                           "\x00"
-                           "\x00"),
-                      arena);
+  PG_DYN_ENSURE_CAP(&sb, HANDSHAKE_LENGTH, allocator);
+  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, PG_S("\x13"
+                                                "BitTorrent protocol"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"
+                                                "\x00"));
   PG_ASSERT(1 + 19 + 8 == sb.len);
 
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
-  PG_DYN_APPEND_SLICE(&sb, info_hash, arena);
+  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, info_hash);
 
   PgString peer_id = PG_S("00000000000000000000");
   PG_ASSERT(20 == peer_id.len);
-  PG_DYN_APPEND_SLICE(&sb, peer_id, arena);
+  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, peer_id);
 
   PG_ASSERT(HANDSHAKE_LENGTH == sb.len);
   return PG_DYN_SLICE(PgString, sb);
@@ -1075,7 +1085,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-  PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
+  PgString handshake = peer_make_handshake(peer->info_hash, &peer->allocator);
   uv_buf_t buf = string_to_uv_buf(handshake);
 
   uv_write_t *req_write = calloc(1, sizeof(uv_write_t));

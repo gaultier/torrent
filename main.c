@@ -126,23 +126,26 @@ int main(int argc, char *argv[]) {
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;
-  int err_timer_init =
-      uv_timer_init(uv_default_loop(), &download_metrics_timer);
-  if (err_timer_init < 0) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to init download metrics timer",
-           PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", err_timer_init));
-    return 1;
-  }
+  {
+    int err_timer_init =
+        uv_timer_init(uv_default_loop(), &download_metrics_timer);
+    if (err_timer_init < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR,
+             "failed to init download metrics timer",
+             PG_L("path", res_decode_metainfo.res.name),
+             PG_L("err", err_timer_init));
+      return 1;
+    }
 
-  int err_timer_start =
-      uv_timer_start(&download_metrics_timer, download_on_timer, 1'000, 1'000);
-  if (err_timer_start < 0) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR,
-           "failed to start download metrics timer",
-           PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", err_timer_start));
-    return 1;
+    int err_timer_start = uv_timer_start(&download_metrics_timer,
+                                         download_on_timer, 1'000, 1'000);
+    if (err_timer_start < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR,
+             "failed to start download metrics timer",
+             PG_L("path", res_decode_metainfo.res.name),
+             PG_L("err", err_timer_start));
+      return 1;
+    }
   }
 
   {
@@ -168,26 +171,6 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
-#if 0
-  {
-    Pgu64Result res_timer = pg_event_loop_timer_start(
-        &loop, PG_CLOCK_KIND_MONOTONIC, 3 * PG_Seconds, 5 * PG_Seconds,
-        &download, download_on_timer);
-    if (res_timer.err) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to start metrics timer",
-             PG_L("err", res_timer.err),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_timer.err))));
-      return 1;
-    }
-  }
 
-  PgError err_loop = pg_event_loop_run(&loop, -1);
-  if (err_loop) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to run the event loop",
-           PG_L("err", err_loop),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_loop))));
-    return 1;
-  }
-#endif
   uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 }

@@ -339,12 +339,15 @@ tracker_read_http_response_body(Tracker *tracker) {
              PG_L("peers.len", res_bencode.res.peer_addresses.len),
              PG_L("interval_secs", res_bencode.res.interval_secs));
 
-#if 0
       PgIpv4AddressSlice peers =
           PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
       // TODO
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
+        pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: peer announced",
+               PG_L("addr", addr), PG_L("host", tracker->host),
+               PG_L("port", tracker->port));
+#if 0
         Peer *peer = calloc(sizeof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
                           tracker->download, tracker->loop,
@@ -356,8 +359,8 @@ tracker_read_http_response_body(Tracker *tracker) {
         if (err_peer) {
           continue;
         }
-      }
 #endif
+      }
 
       return res;
     }

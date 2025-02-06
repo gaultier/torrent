@@ -248,11 +248,13 @@ typedef struct {
   TrackerMetadata metadata;
   Download *download;
 
+  // libuv.
   uv_tcp_t uv_tcp;
   uv_connect_t uv_req_connect;
   uv_write_t uv_req_write;
 
-  PgRing http_response_recv;
+  // HTTP response.
+  PgRing http_recv;
   u64 http_response_content_length;
 
   // Options to spawn peers.
@@ -268,9 +270,9 @@ static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   PG_ASSERT(handle->data);
   PG_ASSERT(buf);
 
-  Tracker *tracker = handle->data;
-
-  buf->base = (char *)pg_try_arena_new(&tracker->arena, u8, suggested_size);
+  // TODO: Maybe there is a clever way to hand out to libuv the correct part of
+  // the ring buffer `http_recv` directly instead of allocating + copying.
+  buf->base = malloc(suggested_size);
   buf->len = suggested_size;
 }
 
@@ -293,7 +295,9 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
   tracker.piece_hashes = piece_hashes;
 
-  tracker.arena = pg_arena_make_from_virtual_mem(68 * PG_KiB);
+  // Need to hold the HTTP request and response simultaneously (currently).
+  tracker.arena = pg_arena_make_from_virtual_mem(32 * PG_KiB);
+  tracker.http_recv = pg_ring_make(16 * PG_KiB, &tracker.arena);
 
   return tracker;
 }
@@ -303,7 +307,7 @@ tracker_try_parse_http_response(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_HTTP_RESPONSE == tracker->state);
 
   PgHttpResponseReadResult res_http =
-      pg_http_read_response(&tracker->http_response_recv, 128, &tracker->arena);
+      pg_http_read_response(&tracker->http_recv, 128, &tracker->arena);
   if (res_http.err) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to parse http response", PG_L("err", res_http.err),
@@ -353,13 +357,13 @@ tracker_read_http_response_body(Tracker *tracker) {
   PgBoolResult res = {0};
 
   if (tracker->http_response_content_length != 0) {
-    if (pg_ring_read_space(tracker->http_response_recv) ==
+    if (pg_ring_read_space(tracker->http_recv) ==
         tracker->http_response_content_length) {
       res.res = true;
 
-      PgString s = pg_string_make(
-          pg_ring_read_space(tracker->http_response_recv), &tracker->arena);
-      PG_ASSERT(true == pg_ring_read_slice(&tracker->http_response_recv, s));
+      PgString s = pg_string_make(pg_ring_read_space(tracker->http_recv),
+                                  &tracker->arena);
+      PG_ASSERT(true == pg_ring_read_slice(&tracker->http_recv, s));
 
       TrackerResponseResult res_bencode =
           tracker_parse_bencode_response(s, tracker->logger, &tracker->arena);
@@ -408,19 +412,6 @@ tracker_read_http_response_body(Tracker *tracker) {
 
   return res;
 }
-
-#if 0
-static void tracker_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
-                             void *ctx) {
-
-  Tracker *tracker = ctx;
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: timer triggered",
-         PG_L("os_handle", os_handle));
-
-  // TODO
-  (void)loop;
-}
-#endif
 
 #if 0
 static void tracker_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle,
@@ -482,35 +473,6 @@ static void tracker_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle,
     break;
   }
 }
-
-[[maybe_unused]]
-static void tracker_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
-                                 void *ctx, PgError err) {
-  PG_ASSERT(nullptr != ctx);
-  Tracker *tracker = ctx;
-
-  if (err) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
-           PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-
-  PgError err_read =
-      pg_event_loop_read_start(loop, os_handle, tracker_on_tcp_read);
-  if (err_read) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to start tcp read", PG_L("err", err_read),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_read))));
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-
-  tracker->http_response_recv = pg_ring_make(4096, &tracker->arena);
-}
 #endif
 
 static void tracker_on_close(uv_handle_t *handle) {
@@ -553,6 +515,10 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   if (0 == nread) {
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
            PG_L("port", tracker->port), PG_L("data", uv_buf_to_string(*buf)));
+    PgError err_http = tracker_try_parse_http_response(tracker);
+    if (err_http) {
+      // TODO?
+    }
     tracker_close_io_handles(tracker);
     return;
   }
@@ -561,8 +527,23 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
            PG_L("port", tracker->port), PG_L("nread", (u64)nread),
            PG_L("data", uv_buf_to_string(*buf)));
-    tracker_close_io_handles(tracker);
-    return;
+    if (!pg_ring_write_slice(&tracker->http_recv, uv_buf_to_string(*buf))) {
+      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: tcp read too big",
+             PG_L("port", tracker->port), PG_L("nread", (u64)nread),
+             PG_L("recv_write_space", pg_ring_write_space(tracker->http_recv)),
+             PG_L("data", uv_buf_to_string(*buf)));
+
+      tracker_close_io_handles(tracker);
+      return;
+    }
+
+    PgError err_http = tracker_try_parse_http_response(tracker);
+    if (err_http) {
+      tracker_close_io_handles(tracker);
+      return;
+    }
+
+    // TODO: read body.
   }
 }
 

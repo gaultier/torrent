@@ -16,12 +16,15 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
   PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read =
-      pg_file_read_full(torrent_file_path, &arena);
+      pg_file_read_full(torrent_file_path, allocator);
   if (0 != res_torrent_file_read.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
            PG_L("err", res_torrent_file_read.err),
@@ -73,10 +76,11 @@ int main(int argc, char *argv[]) {
       .left = res_decode_metainfo.res.length,
       .event = TRACKER_EVENT_STARTED,
       .announce = res_decode_metainfo.res.announce,
-      .info_hash = pg_string_make(PG_SHA1_DIGEST_LENGTH,
-                                  &arena), // FIXME: Should use tracker's arena?
+      .info_hash =
+          pg_string_make(PG_SHA1_DIGEST_LENGTH,
+                         allocator), // FIXME: Should use tracker's arena?
       .peer_id =
-          pg_string_make(20, &arena), // FIXME: Should use tracker's arena?
+          pg_string_make(20, allocator), // FIXME: Should use tracker's arena?
   };
   tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
                             arena);

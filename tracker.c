@@ -495,28 +495,37 @@ static void tracker_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
 
   tracker->http_response_recv = pg_ring_make(4096, &tracker->arena);
 }
+#endif
 
 [[maybe_unused]]
-static void tracker_on_dns_resolve(PgEventLoop *loop, PgOsHandle os_handle,
-                                   void *ctx, PgError err,
-                                   PgIpv4Address address) {
-  PG_ASSERT(nullptr != ctx);
-  Tracker *tracker = ctx;
+static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
+                                   struct addrinfo *res) {
+  PG_ASSERT(req);
+  PG_ASSERT(req->data);
+  Tracker *tracker = req->data;
 
-  if (err) {
+  if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to dns resolve the announce url", PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
+           "tracker: failed to dns resolve the announce url",
+           PG_L("err", status),
+           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))));
 
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    // TODO: Maybe stop the event loop?
+    uv_freeaddrinfo(res);
+    // TODO: More graceful. Retry?
+    uv_stop(req->loop);
 
     return;
   }
 
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
-         PG_L("address", address));
+  char human_readable_ip[256] = {0};
+  uv_ip_name(res->ai_addr, human_readable_ip,
+             PG_STATIC_ARRAY_LEN(human_readable_ip));
+  uv_freeaddrinfo(res);
 
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
+         PG_L("address", pg_cstr_to_string(human_readable_ip)));
+
+#if 0
   {
     PgArena arena_tmp = tracker->arena;
     PgHttpRequest http_req =
@@ -534,5 +543,5 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, PgOsHandle os_handle,
       // TODO: Maybe stop the event loop?
     }
   }
-}
 #endif
+}

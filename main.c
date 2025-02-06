@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
@@ -145,21 +145,30 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
-#if 0
   {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
            PG_L("host", announce.host));
-    Pgu64Result res_tracker = pg_event_loop_dns_resolve_ipv4_tcp_start(
-        &loop, announce.host, announce.port, tracker_on_dns_resolve, &tracker);
-    if (res_tracker.err) {
+
+    uv_getaddrinfo_t dns_req = {0};
+    dns_req.data = &tracker;
+    struct addrinfo hints = {0};
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    int err_getaddrinfo = uv_getaddrinfo(
+        uv_default_loop(), &dns_req, tracker_on_dns_resolve,
+        pg_string_to_cstr(announce.host, &arena),
+        pg_string_to_cstr(pg_u64_to_string(announce.port, &arena), &arena),
+        &hints);
+    if (err_getaddrinfo < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to create an event loop dns request for the tracker",
-             PG_L("err", res_tracker.err),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tracker.err))));
+             PG_L("err", err_getaddrinfo),
+             PG_L("err_s",
+                  pg_cstr_to_string((char *)uv_strerror(err_getaddrinfo))));
       return 1;
     }
   }
+#if 0
   {
     Pgu64Result res_timer = pg_event_loop_timer_start(
         &loop, PG_CLOCK_KIND_MONOTONIC, 3 * PG_Seconds, 5 * PG_Seconds,
@@ -180,4 +189,5 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 #endif
+  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 }

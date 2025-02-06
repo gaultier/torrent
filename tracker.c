@@ -277,7 +277,8 @@ tracker_make(uv_loop_t *loop, PgLogger *logger, PgString host, u16 port,
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
-  uv_tcp_init(loop, &tracker.tcp);
+  int err_tcp_init = uv_tcp_init(loop, &tracker.tcp);
+  PG_ASSERT(err_tcp_init >= 0);
 
   return tracker;
 }

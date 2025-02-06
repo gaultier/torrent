@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
       uv_default_loop(), &logger, announce.host, announce.port,
       tracker_metadata, &download, concurrent_pieces_download_max,
       concurrent_blocks_download_max, res_decode_metainfo.res.pieces);
-  (void)tracker;
+  tracker.tcp.data = &tracker;
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

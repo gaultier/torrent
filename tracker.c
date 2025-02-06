@@ -245,6 +245,7 @@ typedef struct {
   Download *download;
 
   uv_tcp_t tcp;
+  uv_connect_t req_connect;
 
   PgRing http_response_recv;
   u64 http_response_content_length;
@@ -257,11 +258,11 @@ typedef struct {
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
-static Tracker
-tracker_make(uv_loop_t *loop, PgLogger *logger, PgString host, u16 port,
-             TrackerMetadata metadata, Download *download,
-             u64 concurrent_pieces_download_max,
-             u64 concurrent_blocks_download_max, PgString piece_hashes) {
+static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
+                            TrackerMetadata metadata, Download *download,
+                            u64 concurrent_pieces_download_max,
+                            u64 concurrent_blocks_download_max,
+                            PgString piece_hashes) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -276,9 +277,6 @@ tracker_make(uv_loop_t *loop, PgLogger *logger, PgString host, u16 port,
   tracker.piece_hashes = piece_hashes;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
-
-  int err_tcp_init = uv_tcp_init(loop, &tracker.tcp);
-  PG_ASSERT(err_tcp_init >= 0);
 
   return tracker;
 }
@@ -510,7 +508,7 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp connect ok",
-         PG_L("foo", 1));
+         PG_L("port", tracker->port));
 }
 
 static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
@@ -549,15 +547,23 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
 
     return;
   }
+  tracker->tcp.data = tracker;
+  tracker->req_connect.data = tracker;
 
-  uv_connect_t req_connect = {0};
-  req_connect.data = tracker;
-  int err_tcp_connect = uv_tcp_connect(&req_connect, &tracker->tcp,
+  if (res->ai_addr->sa_family == AF_INET) {
+    struct sockaddr_in *addr = (struct sockaddr_in *)(void *)res->ai_addr;
+    addr->sin_port = htons(tracker->port);
+  } else {
+    struct sockaddr_in6 *addr = (struct sockaddr_in6 *)(void *)res->ai_addr;
+    addr->sin6_port = htons(tracker->port);
+  }
+  int err_tcp_connect = uv_tcp_connect(&tracker->req_connect, &tracker->tcp,
                                        res->ai_addr, tracker_on_tcp_connect);
   if (err_tcp_connect < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start tcp connect",
-           PG_L("address", pg_cstr_to_string(human_readable_ip)));
+           PG_L("address", pg_cstr_to_string(human_readable_ip)),
+           PG_L("port", tracker->port));
     uv_freeaddrinfo(res);
     // TODO: More graceful. Retry?
     uv_stop(req->loop);

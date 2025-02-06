@@ -119,10 +119,9 @@ int main(int argc, char *argv[]) {
   u64 concurrent_pieces_download_max = 5;
   u64 concurrent_blocks_download_max = 5;
   Tracker tracker = tracker_make(
-      uv_default_loop(), &logger, announce.host, announce.port,
-      tracker_metadata, &download, concurrent_pieces_download_max,
-      concurrent_blocks_download_max, res_decode_metainfo.res.pieces);
-  tracker.tcp.data = &tracker;
+      &logger, announce.host, announce.port, tracker_metadata, &download,
+      concurrent_pieces_download_max, concurrent_blocks_download_max,
+      res_decode_metainfo.res.pieces);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;
@@ -137,8 +136,8 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    int err_timer_start = uv_timer_start(&download_metrics_timer,
-                                         download_on_timer, 1'000, 1'000);
+    int err_timer_start = uv_timer_start(
+        &download_metrics_timer, download_on_timer, 1'000, 0 /* 1'000*/);
     if (err_timer_start < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to start download metrics timer",

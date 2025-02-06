@@ -6,6 +6,10 @@
 #include "bencode.c"
 #include "peer.c"
 
+static PgString uv_buf_to_string(uv_buf_t buf) {
+  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
+}
+
 typedef enum {
   TRACKER_EVENT_STARTED,
   TRACKER_EVENT_STOPPED,
@@ -258,6 +262,18 @@ typedef struct {
   PgString piece_hashes;
 } Tracker;
 
+static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
+                             uv_buf_t *buf) {
+  PG_ASSERT(handle);
+  PG_ASSERT(handle->data);
+  PG_ASSERT(buf);
+
+  Tracker *tracker = handle->data;
+
+  buf->base = (char *)pg_try_arena_new(&tracker->arena, u8, suggested_size);
+  buf->len = suggested_size;
+}
+
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata, Download *download,
@@ -277,7 +293,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
   tracker.piece_hashes = piece_hashes;
 
-  tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
+  tracker.arena = pg_arena_make_from_virtual_mem(68 * PG_KiB);
 
   return tracker;
 }
@@ -307,7 +323,7 @@ tracker_try_parse_http_response(Tracker *tracker) {
          PG_L("resp.version_minor", (u64)resp.version_minor),
          PG_L("resp.headers.len", resp.headers.len));
 
-  Pgu64Result res_content_length = pg_http_headers_parse_content_length(
+  PgU64Result res_content_length = pg_http_headers_parse_content_length(
       PG_DYN_SLICE(PgKeyValueSlice, resp.headers), tracker->arena);
 
   if (res_content_length.err) {
@@ -518,6 +534,38 @@ static void tracker_close_io_handles(Tracker *tracker) {
   return;
 }
 
+static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
+                                const uv_buf_t *buf) {
+  PG_ASSERT(stream);
+  PG_ASSERT(stream->data);
+  PG_ASSERT(buf);
+
+  Tracker *tracker = stream->data;
+
+  if (nread < 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
+           PG_L("port", tracker->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
+    tracker_close_io_handles(tracker);
+    return;
+  }
+
+  if (0 == nread) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
+           PG_L("port", tracker->port), PG_L("data", uv_buf_to_string(*buf)));
+    tracker_close_io_handles(tracker);
+    return;
+  }
+
+  if (nread > 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
+           PG_L("port", tracker->port), PG_L("nread", (u64)nread),
+           PG_L("data", uv_buf_to_string(*buf)));
+    tracker_close_io_handles(tracker);
+    return;
+  }
+}
+
 static void tracker_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(req->handle);
   PG_ASSERT(req->handle->data);
@@ -533,6 +581,16 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp write ok",
          PG_L("port", tracker->port));
+
+  int err_read = uv_read_start((uv_stream_t *)&tracker->uv_tcp,
+                               tracker_uv_alloc, tracker_on_tcp_read);
+  if (err_read < 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to start tcp read", PG_L("port", tracker->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    tracker_close_io_handles(tracker);
+    return;
+  }
 }
 
 static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
@@ -554,6 +612,8 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
       tracker_make_http_request(tracker->metadata, &tracker->arena);
   PgString http_req_s = pg_http_request_to_string(http_req, &tracker->arena);
 
+  // TODO: Consider if we can send the http request as multiple buffers to spare
+  // an allocation?
   const uv_buf_t buf = {.base = (char *)http_req_s.data, .len = http_req_s.len};
 
   int err_write =

@@ -253,6 +253,8 @@ typedef struct {
   uv_tcp_t uv_tcp;
   uv_connect_t uv_req_connect;
   uv_write_t uv_req_write;
+  uv_timer_t uv_tcp_timeout;
+  uv_getaddrinfo_t uv_dns_req;
 
   // HTTP response.
   PgRing http_recv;
@@ -434,68 +436,6 @@ tracker_read_http_response_body(Tracker *tracker) {
 
   return 0;
 }
-
-#if 0
-static void tracker_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle,
-                                void *ctx, PgError io_err, PgString data) {
-  PG_ASSERT(nullptr != ctx);
-  Tracker *tracker = ctx;
-
-  if (io_err) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
-           PG_L("err", io_err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)io_err))));
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-
-  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read",
-         PG_L("data", data));
-
-  if (!pg_ring_write_slice(&tracker->http_response_recv, data)) {
-    pg_log(
-        tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: http response too big",
-        PG_L("data.len", data.len),
-        PG_L("write_space", pg_ring_write_space(tracker->http_response_recv)));
-    // TODO: stop event loop?
-    (void)pg_event_loop_handle_close(loop, os_handle);
-    return;
-  }
-
-  PgError err = 0;
-  switch (tracker->state) {
-  case TRACKER_STATE_WILL_READ_HTTP_RESPONSE:
-    err = tracker_try_parse_http_response(tracker);
-    if (err) {
-      // TODO: stop event loop?
-      (void)pg_event_loop_handle_close(loop, os_handle);
-    }
-    break;
-  case TRACKER_STATE_WILL_READ_BODY: {
-    PgBoolResult res_body = tracker_read_http_response_body(tracker);
-    // TODO: Reset the tracker to the initial state, setup a timer for X minutes
-    // to re-trigger the tracker fetch state machine.
-
-    (void)res_body;
-    (void)pg_event_loop_handle_close(loop, os_handle);
-
-    // TODO.
-    Pgu64Result res_timer = pg_event_loop_timer_start(
-        loop, PG_CLOCK_KIND_MONOTONIC, 10 * PG_Seconds, 0 * PG_Seconds, tracker,
-        tracker_on_timer);
-    if (res_timer.err) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to start timer", PG_L("err", err),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
-    }
-  } break;
-  default:
-    PG_ASSERT(0);
-    break;
-  }
-}
-#endif
 
 static void tracker_on_close(uv_handle_t *handle) {
   (void)handle;
@@ -692,4 +632,65 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
          PG_L("port", tracker->port),
          PG_L("address", pg_cstr_to_string(human_readable_ip)));
   uv_freeaddrinfo(res);
+}
+
+static void tracker_on_timeout(uv_timer_t *timer) {
+  PG_ASSERT(timer);
+  PG_ASSERT(timer->data);
+  Tracker *tracker = timer->data;
+
+  // If all operations are finished in time, ok.
+  if (TRACKER_STATE_READ_BODY == tracker->state) {
+    uv_timer_stop(timer);
+    return;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: timed out",
+         PG_L("host", tracker->host), PG_L("port", tracker->port),
+         PG_L("state", tracker->state));
+  tracker_close_io_handles(tracker);
+
+  // TODO: Start another timer to retry in X seconds?
+}
+
+[[maybe_unused]] static PgError tracker_start_dns_resolve(Tracker *tracker,
+                                                          PgUrl url) {
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
+         PG_L("host", url.host), PG_L("port", url.port));
+
+  tracker->uv_dns_req.data = &tracker;
+
+  struct addrinfo hints = {0};
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+  int err_getaddrinfo = uv_getaddrinfo(
+      uv_default_loop(), &tracker->uv_dns_req, tracker_on_dns_resolve,
+      pg_string_to_cstr(url.host, &tracker->arena),
+      pg_string_to_cstr(pg_u64_to_string(url.port, &tracker->arena),
+                        &tracker->arena),
+      &hints);
+
+  if (err_getaddrinfo < 0) {
+    pg_log(
+        tracker->logger, PG_LOG_LEVEL_ERROR,
+        "tracker: failed to start dns resolving", PG_L("err", err_getaddrinfo),
+        PG_L("host", url.host), PG_L("port", url.port),
+        PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_getaddrinfo))));
+    return (PgError)-err_getaddrinfo;
+  }
+
+  (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
+  tracker->uv_tcp_timeout.data = &tracker;
+
+  int err_timer =
+      uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout, 20'000, 0);
+  if (err_timer < 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to start timeout timer", PG_L("host", url.host),
+           PG_L("port", url.port),
+           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_timer))));
+    // Still continue as normal.
+  }
+
+  return 0;
 }

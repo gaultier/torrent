@@ -147,28 +147,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  {
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
-           PG_L("host", announce.host));
-
-    uv_getaddrinfo_t dns_req = {0};
-    dns_req.data = &tracker;
-    struct addrinfo hints = {0};
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    int err_getaddrinfo = uv_getaddrinfo(
-        uv_default_loop(), &dns_req, tracker_on_dns_resolve,
-        pg_string_to_cstr(announce.host, &arena),
-        pg_string_to_cstr(pg_u64_to_string(announce.port, &arena), &arena),
-        &hints);
-    if (err_getaddrinfo < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to create an event loop dns request for the tracker",
-             PG_L("err", err_getaddrinfo),
-             PG_L("err_s",
-                  pg_cstr_to_string((char *)uv_strerror(err_getaddrinfo))));
-      return 1;
-    }
+  if (tracker_start_dns_resolve(&tracker, announce)) {
+    return 1;
   }
 
   uv_run(uv_default_loop(), UV_RUN_DEFAULT);

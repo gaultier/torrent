@@ -11,6 +11,14 @@
 
 #include "submodules/cstd/lib.c"
 
+static PgString uv_buf_to_string(uv_buf_t buf) {
+  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
+}
+
+static uv_buf_t string_to_uv_buf(PgString s) {
+  return (uv_buf_t){.base = (char *)s.data, .len = s.len};
+}
+
 #define HANDSHAKE_LENGTH 68
 
 typedef enum {
@@ -582,28 +590,35 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   return s;
 }
 
-#if 0
-static void peer_on_write(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
-                          PgError err) {
-  (void)loop;
-  (void)os_handle;
+static void peer_on_tcp_write(uv_write_t *req, int status) {
+  PG_ASSERT(req->handle);
+  PG_ASSERT(req->handle->data);
+  Peer *peer = req->handle->data;
 
-  PG_ASSERT(nullptr != ctx);
-  Peer *peer = ctx;
-
-  if (err) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write",
-           PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))),
-           PG_L("address", peer->address));
+  if (status < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
     peer_release(peer);
     return;
   }
 
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: write successful",
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
          PG_L("address", peer->address));
-}
+
+  free(req);
+#if 0
+  int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
+                               peer_on_tcp_read);
+  if (err_read < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp read",
+           PG_L("port", peer->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    peer_release(peer);
+    return;
+  }
 #endif
+}
 
 #if 0
 [[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
@@ -1060,23 +1075,21 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
-#if 0
-  peer->recv = pg_ring_make(4 * PG_KiB + 2 * BLOCK_SIZE, &peer->arena);
-  {
-    PgArena arena_tmp = peer->arena_tmp;
-    PgString handshake = peer_make_handshake(peer->info_hash, &arena_tmp);
-    PgError err_write =
-        pg_event_loop_write(loop, os_handle, handshake, peer_on_tcp_write);
-    if (err_write) {
-      pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-             PG_L("err", err_write),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)err_write))),
-             PG_L("address", peer->address));
-      peer_release(peer);
-      return;
-    }
+  PgString handshake = peer_make_handshake(peer->info_hash, &peer->arena);
+  uv_buf_t buf = string_to_uv_buf(handshake);
+
+  uv_write_t *req_write = calloc(1, sizeof(uv_write_t));
+  req->data = peer;
+
+  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, &buf, 1,
+                           peer_on_tcp_write);
+  if (err_write < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+    peer_release(peer);
+    return;
   }
-#endif
 }
 
 [[maybe_unused]] [[nodiscard]] static PgError peer_start(Peer *peer) {

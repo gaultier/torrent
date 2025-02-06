@@ -6,10 +6,6 @@
 #include "bencode.c"
 #include "peer.c"
 
-static PgString uv_buf_to_string(uv_buf_t buf) {
-  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
-}
-
 typedef enum {
   TRACKER_EVENT_STARTED,
   TRACKER_EVENT_STOPPED,
@@ -560,15 +556,15 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   // TODO: Consider if we can send the http request as multiple buffers to spare
   // an allocation?
-  const uv_buf_t buf = {.base = (char *)http_req_s.data, .len = http_req_s.len};
+  const uv_buf_t buf = string_to_uv_buf(http_req_s);
 
   int err_write =
       uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, &buf, 1,
                tracker_on_tcp_write);
   if (err_write < 0) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to tcp connect", PG_L("port", tracker->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
+           PG_L("port", tracker->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
     tracker_close_io_handles(tracker);
     return;
   }

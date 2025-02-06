@@ -219,9 +219,8 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Kick-start a retry here?
 
-  /* (void)pg_arena_release(&peer->arena); */
-  /* (void)pg_arena_release(&peer->arena_tmp); */
-  free(peer);
+  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
+  pg_free(&allocator_tracing, peer, sizeof(*peer));
 }
 
 static void peer_release(Peer *peer) {
@@ -617,7 +616,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
          PG_L("address", peer->address));
 
-  free(req);
+  pg_free(&peer->allocator, req, sizeof(*req));
 #if 0
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
                                peer_on_tcp_read);
@@ -1088,7 +1087,8 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   PgString handshake = peer_make_handshake(peer->info_hash, &peer->allocator);
   uv_buf_t buf = string_to_uv_buf(handshake);
 
-  uv_write_t *req_write = calloc(1, sizeof(uv_write_t));
+  uv_write_t *req_write =
+      pg_alloc(&peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
   // TODO: Should we remember what data/length was written?
   req->data = peer;
 

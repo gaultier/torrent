@@ -125,6 +125,7 @@ int main(int argc, char *argv[]) {
   (void)tracker;
 
   uv_timer_t download_metrics_timer = {0};
+  download_metrics_timer.data = &download;
   int err_timer_init =
       uv_timer_init(uv_default_loop(), &download_metrics_timer);
   if (err_timer_init < 0) {
@@ -143,6 +144,8 @@ int main(int argc, char *argv[]) {
            PG_L("err", err_timer_start));
     return 1;
   }
+
+  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 #if 0
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",

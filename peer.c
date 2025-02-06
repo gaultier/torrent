@@ -1079,6 +1079,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   uv_buf_t buf = string_to_uv_buf(handshake);
 
   uv_write_t *req_write = calloc(1, sizeof(uv_write_t));
+  // TODO: Should we remember what data/length was written?
   req->data = peer;
 
   int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, &buf, 1,

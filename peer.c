@@ -222,7 +222,7 @@ static void peer_on_close(uv_handle_t *handle) {
   // TODO: Kick-start a retry here?
 
   PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
-  pg_free(&allocator_tracing, peer, sizeof(*peer));
+  pg_free(&allocator_tracing, peer);
 }
 
 static void peer_release(Peer *peer) {
@@ -605,7 +605,12 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 static void peer_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(req->handle);
   PG_ASSERT(req->handle->data);
+  PG_ASSERT(req->data);
   Peer *peer = req->handle->data;
+
+  uv_buf_t *buf = req->data;
+  pg_free(&peer->allocator, buf->base);
+  pg_free(&peer->allocator, buf);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
@@ -618,7 +623,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
          PG_L("address", peer->address));
 
-  pg_free(&peer->allocator, req, sizeof(*req));
+  pg_free(&peer->allocator, req);
 #if 0
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
                                peer_on_tcp_read);
@@ -1087,14 +1092,16 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
          PG_L("address", peer->address));
 
   PgString handshake = peer_make_handshake(peer->info_hash, &peer->allocator);
-  uv_buf_t buf = string_to_uv_buf(handshake);
+  uv_buf_t *buf =
+      pg_alloc(&peer->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
+  *buf = string_to_uv_buf(handshake);
 
   uv_write_t *req_write =
       pg_alloc(&peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
-  // TODO: Should we remember what data/length was written?
-  req->data = peer;
+  req->data = buf;
+  PG_ASSERT(req->data);
 
-  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, &buf, 1,
+  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, buf, 1,
                            peer_on_tcp_write);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",

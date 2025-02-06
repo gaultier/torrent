@@ -280,9 +280,8 @@ static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   PG_ASSERT(handle->data);
   PG_ASSERT(buf);
 
-  // TODO: Maybe there is a clever way to hand out to libuv the correct part of
-  // the ring buffer `http_recv` directly instead of allocating + copying.
-  buf->base = malloc(suggested_size);
+  PgAllocator allocator = pg_make_tracing_heap_allocator();
+  buf->base = pg_alloc(&allocator, sizeof(u8), _Alignof(u8), suggested_size);
   buf->len = suggested_size;
 }
 
@@ -531,7 +530,13 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
 static void tracker_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(req->handle);
   PG_ASSERT(req->handle->data);
+  PG_ASSERT(req->data);
   Tracker *tracker = req->handle->data;
+
+  uv_buf_t *buf = req->data;
+  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
+  // pg_free(&allocator_tracing, buf->base);
+  pg_free(&allocator_tracing, buf);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
@@ -578,10 +583,13 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   // TODO: Consider if we can send the http request as multiple buffers to spare
   // an allocation?
-  const uv_buf_t buf = string_to_uv_buf(http_req_s);
+  PgAllocator allocator_tracing = pg_make_tracing_heap_allocator();
+  uv_buf_t *buf =
+      pg_alloc(&allocator_tracing, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
+  *buf = string_to_uv_buf(http_req_s);
 
   int err_write =
-      uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, &buf, 1,
+      uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, buf, 1,
                tracker_on_tcp_write);
   if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",

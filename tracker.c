@@ -244,8 +244,9 @@ typedef struct {
   TrackerMetadata metadata;
   Download *download;
 
-  uv_tcp_t tcp;
-  uv_connect_t req_connect;
+  uv_tcp_t uv_tcp;
+  uv_connect_t uv_req_connect;
+  uv_write_t uv_req_write;
 
   PgRing http_response_recv;
   u64 http_response_content_length;
@@ -496,19 +497,75 @@ static void tracker_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
 }
 #endif
 
+static void tracker_on_close(uv_handle_t *handle) {
+  (void)handle;
+  PG_ASSERT(handle->data);
+  Tracker *tracker = handle->data;
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: closed io handles",
+         PG_L("port", tracker->port));
+
+  // TODO: Kick-start a retry here?
+}
+
+static void tracker_close_io_handles(Tracker *tracker) {
+  uv_close((uv_handle_t *)&tracker->uv_tcp, tracker_on_close);
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
+         "tracker: start closing io handles", PG_L("port", tracker->port));
+
+  tracker_close_io_handles(tracker);
+  return;
+}
+
+static void tracker_on_tcp_write(uv_write_t *req, int status) {
+  PG_ASSERT(req->handle);
+  PG_ASSERT(req->handle->data);
+  Tracker *tracker = req->handle->data;
+
+  if (status < 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
+           PG_L("port", tracker->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    tracker_close_io_handles(tracker);
+    return;
+  }
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp write ok",
+         PG_L("port", tracker->port));
+}
+
 static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
   PG_ASSERT(req->data);
   Tracker *tracker = req->data;
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to tcp connect",
+           "tracker: failed to tcp connect", PG_L("port", tracker->port),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp connect ok",
          PG_L("port", tracker->port));
+
+  PgHttpRequest http_req =
+      tracker_make_http_request(tracker->metadata, &tracker->arena);
+  PgString http_req_s = pg_http_request_to_string(http_req, &tracker->arena);
+
+  const uv_buf_t buf = {.base = (char *)http_req_s.data, .len = http_req_s.len};
+
+  int err_write =
+      uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, &buf, 1,
+               tracker_on_tcp_write);
+  if (err_write < 0) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to tcp connect", PG_L("port", tracker->port),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+    tracker_close_io_handles(tracker);
+    return;
+  }
 }
 
 static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
@@ -520,13 +577,11 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to dns resolve the announce url",
-           PG_L("err", status),
+           PG_L("port", tracker->port), PG_L("err", status),
            PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))));
 
     uv_freeaddrinfo(res);
-    // TODO: More graceful. Retry?
-    uv_stop(req->loop);
-
+    tracker_close_io_handles(tracker);
     return;
   }
 
@@ -535,20 +590,20 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
              PG_STATIC_ARRAY_LEN(human_readable_ip));
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
+         PG_L("port", tracker->port),
          PG_L("address", pg_cstr_to_string(human_readable_ip)));
 
-  int err_tcp_init = uv_tcp_init(req->loop, &tracker->tcp);
+  int err_tcp_init = uv_tcp_init(req->loop, &tracker->uv_tcp);
   if (err_tcp_init < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp init",
+           PG_L("port", tracker->port),
            PG_L("address", pg_cstr_to_string(human_readable_ip)));
     uv_freeaddrinfo(res);
-    // TODO: More graceful. Retry?
-    uv_stop(req->loop);
-
+    tracker_close_io_handles(tracker);
     return;
   }
-  tracker->tcp.data = tracker;
-  tracker->req_connect.data = tracker;
+  tracker->uv_tcp.data = tracker;
+  tracker->uv_req_connect.data = tracker;
 
   if (res->ai_addr->sa_family == AF_INET) {
     struct sockaddr_in *addr = (struct sockaddr_in *)(void *)res->ai_addr;
@@ -557,21 +612,21 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
     struct sockaddr_in6 *addr = (struct sockaddr_in6 *)(void *)res->ai_addr;
     addr->sin6_port = htons(tracker->port);
   }
-  int err_tcp_connect = uv_tcp_connect(&tracker->req_connect, &tracker->tcp,
-                                       res->ai_addr, tracker_on_tcp_connect);
+  int err_tcp_connect =
+      uv_tcp_connect(&tracker->uv_req_connect, &tracker->uv_tcp, res->ai_addr,
+                     tracker_on_tcp_connect);
   if (err_tcp_connect < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start tcp connect",
            PG_L("address", pg_cstr_to_string(human_readable_ip)),
            PG_L("port", tracker->port));
     uv_freeaddrinfo(res);
-    // TODO: More graceful. Retry?
-    uv_stop(req->loop);
-
+    tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: started tcp connect",
+         PG_L("port", tracker->port),
          PG_L("address", pg_cstr_to_string(human_readable_ip)));
   uv_freeaddrinfo(res);
 }

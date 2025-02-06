@@ -36,6 +36,7 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   }
 }
 
+[[maybe_unused]]
 static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
                                       PgArena arena) {
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
@@ -192,7 +193,7 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
   return res;
 }
 
-[[nodiscard]] static PgHttpRequest
+[[maybe_unused]] [[nodiscard]] static PgHttpRequest
 tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
@@ -242,7 +243,8 @@ typedef struct {
   PgArena arena;
   TrackerMetadata metadata;
   Download *download;
-  PgEventLoop *loop;
+
+  uv_tcp_t tcp;
 
   PgRing http_response_recv;
   u64 http_response_content_length;
@@ -256,8 +258,8 @@ typedef struct {
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker
-tracker_make(PgLogger *logger, PgString host, u16 port,
-             TrackerMetadata metadata, Download *download, PgEventLoop *loop,
+tracker_make(uv_loop_t *loop, PgLogger *logger, PgString host, u16 port,
+             TrackerMetadata metadata, Download *download,
              u64 concurrent_pieces_download_max,
              u64 concurrent_blocks_download_max, PgString piece_hashes) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
@@ -269,17 +271,19 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
   tracker.download = download;
-  tracker.loop = loop;
   tracker.concurrent_pieces_download_max = concurrent_pieces_download_max;
   tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
   tracker.piece_hashes = piece_hashes;
 
   tracker.arena = pg_arena_make_from_virtual_mem(12 * PG_KiB);
 
+  uv_tcp_init(loop, &tracker.tcp);
+
   return tracker;
 }
 
-[[nodiscard]] static PgError tracker_try_parse_http_response(Tracker *tracker) {
+[[maybe_unused]] [[nodiscard]] static PgError
+tracker_try_parse_http_response(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_HTTP_RESPONSE == tracker->state);
 
   PgHttpResponseReadResult res_http =
@@ -326,7 +330,7 @@ tracker_make(PgLogger *logger, PgString host, u16 port,
   return 0;
 }
 
-[[nodiscard]] static PgBoolResult
+[[maybe_unused]] [[nodiscard]] static PgBoolResult
 tracker_read_http_response_body(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_BODY == tracker->state);
 
@@ -360,6 +364,7 @@ tracker_read_http_response_body(Tracker *tracker) {
              PG_L("peers.len", res_bencode.res.peer_addresses.len),
              PG_L("interval_secs", res_bencode.res.interval_secs));
 
+#if 0
       PgIpv4AddressSlice peers =
           PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
       // TODO
@@ -377,6 +382,7 @@ tracker_read_http_response_body(Tracker *tracker) {
           continue;
         }
       }
+#endif
 
       return res;
     }
@@ -387,6 +393,7 @@ tracker_read_http_response_body(Tracker *tracker) {
   return res;
 }
 
+#if 0
 static void tracker_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
                              void *ctx) {
 
@@ -397,7 +404,9 @@ static void tracker_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
   // TODO
   (void)loop;
 }
+#endif
 
+#if 0
 static void tracker_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle,
                                 void *ctx, PgError io_err, PgString data) {
   PG_ASSERT(nullptr != ctx);
@@ -526,3 +535,4 @@ static void tracker_on_dns_resolve(PgEventLoop *loop, PgOsHandle os_handle,
     }
   }
 }
+#endif

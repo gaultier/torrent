@@ -1,6 +1,8 @@
 #pragma once
 #include "download.c"
 
+#include "submodules/libuv/include/uv.h"
+
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
 // TODO: Requesting pieces.
@@ -67,6 +69,7 @@ typedef struct {
 } PieceDownload;
 PG_DYN(PieceDownload) PieceDownloadDyn;
 
+#if 0
 typedef struct {
   PgIpv4Address address;
   PgString info_hash;
@@ -1083,6 +1086,7 @@ static void peer_on_connect(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
 
   return 0;
 }
+#endif
 
 #if 0
 [[maybe_unused]]

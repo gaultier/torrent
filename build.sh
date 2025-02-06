@@ -3,7 +3,7 @@ set -e
 set -f # disable globbing.
 
 CFLAGS="${CFLAGS}"
-EXTRA_FLAGS="-fpie"
+EXTRA_FLAGS="-fpie ./submodules/libuv/.libs/libuv.a"
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 

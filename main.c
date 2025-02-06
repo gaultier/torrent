@@ -1,11 +1,12 @@
 #include "tracker.c"
 
-static void download_on_timer(PgEventLoop *loop, PgOsHandle os_handle,
-                              void *ctx) {
-  (void)loop;
-  (void)os_handle;
+#include "submodules/libuv/include/uv.h"
 
-  Download *download = ctx;
+static void download_on_timer(uv_timer_t *timer) {
+  PG_ASSERT(timer);
+  PG_ASSERT(timer->data);
+
+  Download *download = timer->data;
   pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
          PG_L("pieces_count", download->pieces_count),
          PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
@@ -114,21 +115,35 @@ int main(int argc, char *argv[]) {
               pg_bitfield_count(download.pieces_have)));
 
   PgUrl announce = res_decode_metainfo.res.announce;
-  PgEventLoopResult res_loop =
-      pg_event_loop_make_loop(pg_arena_make_from_virtual_mem(256 * PG_KiB));
-  if (res_loop.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create event loop",
-           PG_L("err", res_loop.err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_loop.err))));
-    return 1;
-  }
-  PgEventLoop loop = res_loop.res;
+
   u64 concurrent_pieces_download_max = 5;
   u64 concurrent_blocks_download_max = 5;
   Tracker tracker = tracker_make(
-      &logger, announce.host, announce.port, tracker_metadata, &download, &loop,
-      concurrent_pieces_download_max, concurrent_blocks_download_max,
-      res_decode_metainfo.res.pieces);
+      uv_default_loop(), &logger, announce.host, announce.port,
+      tracker_metadata, &download, concurrent_pieces_download_max,
+      concurrent_blocks_download_max, res_decode_metainfo.res.pieces);
+  (void)tracker;
+
+  uv_timer_t download_metrics_timer = {0};
+  int err_timer_init =
+      uv_timer_init(uv_default_loop(), &download_metrics_timer);
+  if (err_timer_init < 0) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to init download metrics timer",
+           PG_L("path", res_decode_metainfo.res.name),
+           PG_L("err", err_timer_init));
+    return 1;
+  }
+
+  int err_timer_start =
+      uv_timer_start(&download_metrics_timer, download_on_timer, 1'000, 1'000);
+  if (err_timer_start < 0) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR,
+           "failed to start download metrics timer",
+           PG_L("path", res_decode_metainfo.res.name),
+           PG_L("err", err_timer_start));
+    return 1;
+  }
+#if 0
   {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "tracker: dns resolving",
            PG_L("host", announce.host));
@@ -161,4 +176,5 @@ int main(int argc, char *argv[]) {
            PG_L("err_s", pg_cstr_to_string(strerror((i32)err_loop))));
     return 1;
   }
+#endif
 }

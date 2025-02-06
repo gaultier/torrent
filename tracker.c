@@ -537,8 +537,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
   Tracker *tracker = req->handle->data;
 
   uv_buf_t *buf = req->data;
-  pg_free(tracker->allocator, buf->base);
-  pg_free(tracker->allocator, buf);
+  pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+  pg_free(tracker->allocator, buf, sizeof(*buf), 1);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",

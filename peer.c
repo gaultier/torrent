@@ -212,7 +212,7 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Kick-start a retry here?
 
-  pg_free(peer->allocator, peer);
+  pg_free(peer->allocator, peer, sizeof(*peer), 1);
 }
 
 static void peer_release(Peer *peer) {
@@ -599,8 +599,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   Peer *peer = req->handle->data;
 
   uv_buf_t *buf = req->data;
-  pg_free(peer->allocator, buf->base);
-  pg_free(peer->allocator, buf);
+  pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+  pg_free(peer->allocator, buf, sizeof(*buf), 1);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
@@ -613,7 +613,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
          PG_L("address", peer->address));
 
-  pg_free(peer->allocator, req);
+  pg_free(peer->allocator, req, sizeof(*req), 1);
 #if 0
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
                                peer_on_tcp_read);

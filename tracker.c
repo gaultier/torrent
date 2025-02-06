@@ -248,6 +248,7 @@ typedef enum {
 } TrackerState;
 
 typedef struct {
+  PgAllocator *allocator;
   PgLogger *logger;
   TrackerState state;
   PgString host;
@@ -273,20 +274,7 @@ typedef struct {
   u64 concurrent_blocks_download_max;
   PgString piece_hashes;
 
-  PgAllocator *allocator;
 } Tracker;
-
-static void tracker_uv_alloc(uv_handle_t *handle, size_t suggested_size,
-                             uv_buf_t *buf) {
-  PG_ASSERT(handle);
-  PG_ASSERT(handle->data);
-  PG_ASSERT(buf);
-  Tracker *tracker = handle->data;
-
-  buf->base =
-      pg_alloc(tracker->allocator, sizeof(u8), _Alignof(u8), suggested_size);
-  buf->len = suggested_size;
-}
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
@@ -489,6 +477,7 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
            PG_L("port", tracker->port),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
+    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
     tracker_close_io_handles(tracker);
     return;
   }
@@ -498,6 +487,9 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   if (0 == nread || nread == UV_EOF) {
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
            PG_L("port", tracker->port));
+
+    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+
     PgError err_http = tracker_try_parse_http_response(tracker);
     if (err_http) {
       // TODO?
@@ -506,27 +498,27 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     return;
   }
 
-  if (nread > 0) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
+  PG_ASSERT(nread > 0);
+
+  pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
+         PG_L("port", tracker->port), PG_L("nread", (u64)nread),
+         PG_L("data", data));
+  if (!pg_ring_write_slice(&tracker->http_recv, data)) {
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: tcp read too big",
            PG_L("port", tracker->port), PG_L("nread", (u64)nread),
+           PG_L("recv_write_space", pg_ring_write_space(tracker->http_recv)),
            PG_L("data", data));
-    if (!pg_ring_write_slice(&tracker->http_recv, data)) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: tcp read too big",
-             PG_L("port", tracker->port), PG_L("nread", (u64)nread),
-             PG_L("recv_write_space", pg_ring_write_space(tracker->http_recv)),
-             PG_L("data", data));
 
-      tracker_close_io_handles(tracker);
-      return;
-    }
+    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+    tracker_close_io_handles(tracker);
+    return;
+  }
+  pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
 
-    PgError err_http = tracker_try_parse_http_response(tracker);
-    if (err_http) {
-      tracker_close_io_handles(tracker);
-      return;
-    }
-
-    // TODO: read body.
+  PgError err_http = tracker_try_parse_http_response(tracker);
+  if (err_http) {
+    tracker_close_io_handles(tracker);
+    return;
   }
 }
 
@@ -551,8 +543,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp write ok",
          PG_L("port", tracker->port));
 
-  int err_read = uv_read_start((uv_stream_t *)&tracker->uv_tcp,
-                               tracker_uv_alloc, tracker_on_tcp_read);
+  int err_read = uv_read_start((uv_stream_t *)&tracker->uv_tcp, pg_uv_alloc,
+                               tracker_on_tcp_read);
   if (err_read < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start tcp read", PG_L("port", tracker->port),

@@ -79,10 +79,10 @@ typedef struct {
 PG_DYN(PieceDownload) PieceDownloadDyn;
 
 typedef struct {
+  PgAllocator *allocator;
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
-  PgAllocator *allocator;
   /* PgArena arena; */
   /* PgArena arena_tmp; */
   PgString remote_bitfield;
@@ -108,6 +108,17 @@ typedef struct {
 
 PG_DYN(Peer) PeerDyn;
 PG_SLICE(Peer) PeerSlice;
+
+static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
+                        uv_buf_t *buf) {
+  PG_ASSERT(handle);
+  PG_ASSERT(handle->data);
+  PG_ASSERT(buf);
+  PgAllocator **allocator = handle->data;
+
+  buf->base = pg_alloc(*allocator, sizeof(u8), _Alignof(u8), suggested_size);
+  buf->len = suggested_size;
+}
 
 #if 0
 [[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
@@ -215,7 +226,7 @@ static void peer_on_close(uv_handle_t *handle) {
   pg_free(peer->allocator, peer, sizeof(*peer), 1);
 }
 
-static void peer_release(Peer *peer) {
+static void peer_close_io_handles(Peer *peer) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: start closing io handles",
          PG_L("address", peer->address));
 
@@ -592,6 +603,51 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
 }
 #endif
 
+static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
+                             const uv_buf_t *buf) {
+  PG_ASSERT(stream);
+  PG_ASSERT(stream->data);
+  PG_ASSERT(buf);
+
+  Peer *peer = stream->data;
+
+  if (nread < 0 && nread != UV_EOF) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
+    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+    peer_close_io_handles(peer);
+    return;
+  }
+  PgString data = uv_buf_to_string(*buf);
+  data.len = (u64)nread;
+
+  if (0 == nread || nread == UV_EOF) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp read EOF",
+           PG_L("address", peer->address));
+    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+    peer_close_io_handles(peer);
+    return;
+  }
+
+  PG_ASSERT(nread > 0);
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp read ok",
+         PG_L("address", peer->address), PG_L("nread", (u64)nread),
+         PG_L("data", data));
+  if (!pg_ring_write_slice(&peer->recv, data)) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: tcp read too big",
+           PG_L("address", peer->address), PG_L("nread", (u64)nread),
+           PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
+           PG_L("data", data));
+
+    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+    peer_close_io_handles(peer);
+    return;
+  }
+  pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+}
+
 static void peer_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(req->handle);
   PG_ASSERT(req->handle->data);
@@ -606,7 +662,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
-    peer_release(peer);
+    peer_close_io_handles(peer);
     return;
   }
 
@@ -614,17 +670,19 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
          PG_L("address", peer->address));
 
   pg_free(peer->allocator, req, sizeof(*req), 1);
-#if 0
-  int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, peer_uv_alloc,
+
+  if (!peer->recv.data.len) {
+    peer->recv = pg_ring_make(64 * PG_KiB, peer->allocator);
+  }
+  int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
                                peer_on_tcp_read);
   if (err_read < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp read",
-           PG_L("port", peer->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
-    peer_release(peer);
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_read))));
+    peer_close_io_handles(peer);
     return;
   }
-#endif
 }
 
 #if 0
@@ -956,59 +1014,9 @@ end:
   }
   return 0;
 }
+#endif
 
-static void peer_on_tcp_read(PgEventLoop *loop, PgOsHandle os_handle, void *ctx,
-                             PgError err, PgString data) {
-  PG_ASSERT(nullptr != ctx);
-  (void)loop;
-  (void)os_handle;
-
-  Peer *peer = ctx;
-
-  if (err) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
-           PG_L("address", peer->address), PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
-    peer_release(peer);
-    return;
-  }
-
-  // TODO: What to do here, maybe `read_stop` and set a timer to `read_start` at
-  // a later time?
-  if (0 == data.len) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: nothing to read",
-           PG_L("address", peer->address));
-    return;
-  }
-
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: read tcp",
-         PG_L("address", peer->address), PG_L("data", data),
-         PG_L("data.len", data.len),
-         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
-         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
-
-  PgError err_handle = peer_handle_recv_data(peer);
-  if (err_handle) {
-    peer_release(peer);
-    return;
-  }
-
-  if (!pg_ring_write_slice(&peer->recv, data)) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: read too much data",
-           PG_L("address", peer->address),
-           PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
-           PG_L("data.len", data.len));
-    peer_release(peer);
-    return;
-  }
-
-  err_handle = peer_handle_recv_data(peer);
-  if (err_handle) {
-    peer_release(peer);
-    return;
-  }
-}
-
+#if 0
 static void peer_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
                               void *ctx, PgError err) {
   PG_ASSERT(nullptr != ctx);
@@ -1074,7 +1082,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
            PG_L("err", status),
            PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))),
            PG_L("address", peer->address));
-    peer_release(peer);
+    peer_close_io_handles(peer);
     return;
   }
 
@@ -1097,7 +1105,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
-    peer_release(peer);
+    peer_close_io_handles(peer);
     return;
   }
 }
@@ -1110,7 +1118,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
            PG_L("address", peer->address),
            PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_init))));
-    peer_release(peer);
+    peer_close_io_handles(peer);
     return (PgError)err_tcp_init;
   }
 
@@ -1129,7 +1137,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
         peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp connect",
         PG_L("address", peer->address), PG_L("err", err_tcp_connect),
         PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_connect))));
-    peer_release(peer);
+    peer_close_io_handles(peer);
     return (PgError)err_tcp_init;
   }
 

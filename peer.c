@@ -615,9 +615,7 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
            PG_L("address", peer->address),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
-    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
-    peer_close_io_handles(peer);
-    return;
+    goto err;
   }
   PgString data = uv_buf_to_string(*buf);
   data.len = (u64)nread;
@@ -625,9 +623,8 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   if (0 == nread || nread == UV_EOF) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp read EOF",
            PG_L("address", peer->address));
-    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
-    peer_close_io_handles(peer);
-    return;
+    // TODO: Should we still try to decode the last chunk of data (`buf`)?
+    goto err;
   }
 
   PG_ASSERT(nread > 0);
@@ -641,10 +638,14 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
            PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
            PG_L("data", data));
 
-    pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
-    peer_close_io_handles(peer);
-    return;
+    goto err;
   }
+  goto end;
+
+err:
+  peer_close_io_handles(peer);
+
+end:
   pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
 }
 

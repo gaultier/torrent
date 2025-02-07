@@ -15,13 +15,47 @@ static void download_on_timer(uv_timer_t *timer) {
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
+  PgRng rng = pg_rand_make();
+
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
 
-  PgTracingAllocator tracing_allocator = pg_make_tracing_heap_allocator();
+  PgAllocator *general_allocator = nullptr;
+  char heap_profile_path[PG_PATH_MAX] = {0};
+  u64 heap_profile_path_len = PG_PATH_MAX;
+  PgTracingAllocator tracing_allocator = {0};
+  PgHeapAllocator heap_allocator = {0};
 
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
-  PgRng rng = pg_rand_make();
+  if (0 ==
+      uv_os_getenv("HEAPPROFILE", heap_profile_path, &heap_profile_path_len)) {
+    uv_fs_t heap_profile_open_req = {0};
+    int heap_profile_file =
+        uv_fs_open(uv_default_loop(), &heap_profile_open_req, heap_profile_path,
+                   O_APPEND | O_CREAT, 0600, nullptr);
+    if (heap_profile_file < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
+             PG_L("err", heap_profile_file),
+             PG_L("err_s", pg_cstr_to_string(strerror(heap_profile_file))),
+             PG_L("path", pg_cstr_to_string(heap_profile_path)));
+    } else {
+      PG_ASSERT(heap_profile_file > 0);
+      tracing_allocator = pg_make_tracing_allocator(heap_profile_file);
+      general_allocator = pg_tracing_allocator_as_allocator(&tracing_allocator);
+
+      pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using tracing allocator",
+             PG_L("heap_profile_file", heap_profile_file));
+    }
+  }
+  // The tracing allocator could not be properly initialized, resort to the
+  // standard (libc) allocator.
+  if (!general_allocator) {
+    heap_allocator = pg_make_heap_allocator();
+    general_allocator = pg_heap_allocator_as_allocator(&heap_allocator);
+
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using general heap allocator",
+           PG_L("_", PG_S("_")));
+  }
 
   PgString torrent_file_path = pg_cstr_to_string(argv[1]);
   PgStringResult res_torrent_file_read = pg_file_read_full(
@@ -128,8 +162,7 @@ int main(int argc, char *argv[]) {
   Tracker tracker = tracker_make(
       &logger, announce.host, announce.port, tracker_metadata, &download,
       concurrent_pieces_download_max, concurrent_blocks_download_max,
-      res_decode_metainfo.res.pieces,
-      pg_tracing_allocator_as_allocator(&tracing_allocator));
+      res_decode_metainfo.res.pieces, general_allocator);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

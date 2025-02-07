@@ -225,6 +225,10 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Kick-start a retry here?
 
+  // TODO: Could do one big allocation for the Peer and then point
+  // `remote_bitfield` to it + an offset.
+  pg_free(peer->allocator, peer->remote_bitfield.data,
+          peer->remote_bitfield.len, 1);
   pg_free(peer->allocator, peer, sizeof(*peer), 1);
 }
 

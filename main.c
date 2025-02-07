@@ -139,6 +139,9 @@ int main(int argc, char *argv[]) {
 
   Download download = {
       .pieces_have = res_bitfield_pieces.res,
+      .blocks_have = pg_string_make(
+          download_compute_blocks_count(res_decode_metainfo.res.length),
+          general_allocator),
       .pieces_count = pieces_count,
       .max_blocks_per_piece_count = download_compute_max_blocks_per_piece_count(
           res_decode_metainfo.res.piece_length),
@@ -157,12 +160,12 @@ int main(int argc, char *argv[]) {
 
   PgUrl announce = res_decode_metainfo.res.announce;
 
-  u64 concurrent_pieces_download_max = 5;
-  u64 concurrent_blocks_download_max = 5;
-  Tracker tracker = tracker_make(
-      &logger, announce.host, announce.port, tracker_metadata, &download,
-      concurrent_pieces_download_max, concurrent_blocks_download_max,
-      res_decode_metainfo.res.pieces, general_allocator);
+  // TODO: Tweak.
+  u64 concurrent_download_max = 30;
+  Tracker tracker =
+      tracker_make(&logger, announce.host, announce.port, tracker_metadata,
+                   &download, concurrent_download_max,
+                   res_decode_metainfo.res.pieces, general_allocator);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

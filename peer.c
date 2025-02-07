@@ -93,7 +93,7 @@ typedef struct {
   PeerState state;
 
   PieceDownloadDyn downloading_pieces;
-  u64 concurrent_pieces_download_max;
+  u64 concurrent_downloads_max;
   u64 concurrent_blocks_download_max;
   PgString piece_hashes;
 
@@ -182,9 +182,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, u64 concurrent_pieces_download_max,
-          u64 concurrent_blocks_download_max, PgString piece_hashes,
-          PgFile file, PgAllocator *allocator) {
+          Download *download, u64 concurrent_downloads_max,
+          PgString piece_hashes, PgFile file, PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -193,8 +192,7 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.info_hash = info_hash;
   peer.logger = logger;
   peer.download = download;
-  peer.concurrent_pieces_download_max = concurrent_pieces_download_max;
-  peer.concurrent_blocks_download_max = concurrent_blocks_download_max;
+  peer.concurrent_downloads_max = concurrent_downloads_max;
   peer.piece_hashes = piece_hashes;
   peer.file = file;
   peer.allocator = allocator;

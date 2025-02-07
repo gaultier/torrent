@@ -270,8 +270,7 @@ typedef struct {
 
   // Options to spawn peers.
   // TODO: Decouple from tracker.
-  u64 concurrent_pieces_download_max;
-  u64 concurrent_blocks_download_max;
+  u64 concurrent_download_max;
   PgString piece_hashes;
 
 } Tracker;
@@ -279,9 +278,8 @@ typedef struct {
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata, Download *download,
-                            u64 concurrent_pieces_download_max,
-                            u64 concurrent_blocks_download_max,
-                            PgString piece_hashes, PgAllocator *allocator) {
+                            u64 concurrent_download_max, PgString piece_hashes,
+                            PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -291,8 +289,7 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.port = port;
   tracker.metadata = metadata;
   tracker.download = download;
-  tracker.concurrent_pieces_download_max = concurrent_pieces_download_max;
-  tracker.concurrent_blocks_download_max = concurrent_blocks_download_max;
+  tracker.concurrent_download_max = concurrent_download_max;
   tracker.piece_hashes = piece_hashes;
   tracker.allocator = allocator;
 
@@ -351,11 +348,10 @@ tracker_read_http_response_body(Tracker *tracker) {
                PG_L("port", tracker->port));
         Peer *peer =
             pg_alloc(tracker->allocator, sizeof(Peer), _Alignof(Peer), 1);
-        *peer = peer_make(
-            addr, tracker->metadata.info_hash, tracker->logger,
-            tracker->download, tracker->concurrent_pieces_download_max,
-            tracker->concurrent_blocks_download_max, tracker->piece_hashes,
-            tracker->download->file, tracker->allocator);
+        *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
+                          tracker->download, tracker->concurrent_download_max,
+                          tracker->piece_hashes, tracker->download->file,
+                          tracker->allocator);
 
         PgError err_peer = peer_start(peer);
         if (err_peer) {

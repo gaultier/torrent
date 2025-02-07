@@ -18,13 +18,13 @@ case $1 in
     EXTRA_FLAGS="${EXTRA_FLAGS} -O0"
     ;;
   sanitizer)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -fsanitize=undefined -fsanitize-trap=all"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
   release)
     EXTRA_FLAGS="${EXTRA_FLAGS} -O3 -march=native -flto"
     ;;
   release_sanitizer)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O1 -march=native -fsanitize=undefined -fsanitize-trap=all"
+    EXTRA_FLAGS="${EXTRA_FLAGS} -O1 -march=native -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
 	*)
 		error "Build mode \"$1\" unsupported!"

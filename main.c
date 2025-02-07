@@ -180,8 +180,8 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    int err_timer_start = uv_timer_start(
-        &download_metrics_timer, download_on_timer, 1'000, 0 /* 1'000*/);
+    int err_timer_start = uv_timer_start(&download_metrics_timer,
+                                         download_on_timer, 1'000, 1'000);
     if (err_timer_start < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to start download metrics timer",

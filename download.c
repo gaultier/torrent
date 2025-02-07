@@ -73,28 +73,6 @@ download_compute_block_length(u32 block, u64 piece_length) {
   return res;
 }
 
-// Pick a random piece that the remote claimed they have.
-[[maybe_unused]] [[nodiscard]] static Pgu32Ok
-download_pick_next_piece(PgRng *rng, PgString local_bitfield_have,
-                         PgString remote_bitfield_have, u32 pieces_count) {
-  Pgu32Ok res = {0};
-
-  PG_ASSERT(local_bitfield_have.len == remote_bitfield_have.len);
-
-  u32 start = pg_rand_u32_min_incl_max_excl(rng, 0, pieces_count);
-  for (u32 i = 0; i < pieces_count; i++) {
-    u32 idx = (start + i) % pieces_count;
-    if (!pg_bitfield_get(local_bitfield_have, idx) &&
-        pg_bitfield_get(remote_bitfield_have, idx)) {
-
-      res.res = idx;
-      res.ok = true;
-      return res;
-    }
-  }
-  return res;
-}
-
 [[nodiscard]] static bool download_verify_piece_hash(PgString data,
                                                      PgString hash_expected) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
@@ -185,4 +163,26 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
   }
 
   return res;
+}
+
+[[maybe_unused]] [[nodiscard]] static Pgu32Ok
+download_pick_next_block(Download *download) {
+  Pgu32Ok res = {0};
+
+  PG_ASSERT(download->concurrent_downloads_count <=
+            download->concurrent_downloads_max);
+
+  if (download->concurrent_downloads_count ==
+      download->concurrent_downloads_max) {
+    return res;
+  }
+
+  // TODO: Prefer downloading all blocks for one piece, to identify
+  // bad peers.
+  // Currently we download random blocks without attention to which piece and
+  // peer they come from.
+
+  u32 blocks_count = (u32)pg_div_ceil(download->total_file_size, BLOCK_SIZE);
+  return pg_bitfield_get_first_zero_rand(download->blocks_have, blocks_count,
+                                         download->rng);
 }

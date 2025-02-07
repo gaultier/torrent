@@ -476,48 +476,6 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 }
 #endif
 
-[[maybe_unused]] [[nodiscard]] static Pgu32Ok
-piece_download_pick_next_block(Download *download) {
-  Pgu32Ok res = {0};
-
-  PG_ASSERT(download->concurrent_downloads_count <=
-            download->concurrent_downloads_max);
-
-  if (download->concurrent_downloads_count ==
-      download->concurrent_downloads_max) {
-    return res;
-  }
-
-#if 0
-  u32 blocks_count = download_compute_blocks_count_for_piece(
-      pd->piece, download->piece_length, download->total_file_size);
-  u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
-  PG_ASSERT(blocks_downloading + blocks_have <= blocks_count);
-
-  u32 start = pg_rand_u32_min_incl_max_excl(download->rng, 0, blocks_count);
-
-  for (u64 i = 0; i < blocks_count; i++) {
-    u32 idx = (start + i) % blocks_count;
-    if (!pg_bitfield_get(pd->blocks_bitfield_have, idx) &&
-        !pg_bitfield_get(pd->blocks_bitfield_downloading, idx)) {
-      PG_ASSERT(idx < blocks_count);
-      PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <
-                concurrent_blocks_download_max);
-
-      pg_bitfield_set(pd->blocks_bitfield_downloading, idx, true);
-
-      PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
-                concurrent_blocks_download_max);
-
-      res.res = idx;
-      res.ok = true;
-      return res;
-    }
-  }
-#endif
-  return res;
-}
-
 #if 0
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_encode_message(PeerMessage msg, PgArena *arena) {

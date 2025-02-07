@@ -137,6 +137,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // TODO: Tweak.
+  u64 concurrent_download_max = 30;
   Download download = {
       .pieces_have = res_bitfield_pieces.res,
       .blocks_have = pg_string_make(
@@ -150,6 +152,7 @@ int main(int argc, char *argv[]) {
       .file = target_file_res.res,
       .logger = &logger,
       .rng = &rng,
+      .concurrent_downloads_max = concurrent_download_max,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
 
@@ -160,12 +163,9 @@ int main(int argc, char *argv[]) {
 
   PgUrl announce = res_decode_metainfo.res.announce;
 
-  // TODO: Tweak.
-  u64 concurrent_download_max = 30;
-  Tracker tracker =
-      tracker_make(&logger, announce.host, announce.port, tracker_metadata,
-                   &download, concurrent_download_max,
-                   res_decode_metainfo.res.pieces, general_allocator);
+  Tracker tracker = tracker_make(
+      &logger, announce.host, announce.port, tracker_metadata, &download,
+      res_decode_metainfo.res.pieces, general_allocator);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

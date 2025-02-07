@@ -13,6 +13,9 @@ typedef struct {
   PgFile file;
   PgLogger *logger;
   PgRng *rng;
+
+  u64 concurrent_downloads_count;
+  u64 concurrent_downloads_max;
 } Download;
 
 [[nodiscard]] static u32

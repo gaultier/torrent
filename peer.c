@@ -83,8 +83,6 @@ typedef struct {
   PgIpv4Address address;
   PgString info_hash;
   PgLogger *logger;
-  /* PgArena arena; */
-  /* PgArena arena_tmp; */
   PgString remote_bitfield;
   bool remote_choked, remote_interested;
   bool local_choked, local_interested;
@@ -123,22 +121,6 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
 #if 0
 [[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
                                                       PieceDownload *pd);
-#endif
-
-#if 0
-[[nodiscard]] [[maybe_unused]] static PieceDownload
-piece_download_make(u32 piece, u64 piece_length, u32 max_blocks_per_piece_count,
-                    PgArena *arena) {
-  PieceDownload res = {0};
-  res.piece = piece;
-  res.data = pg_string_make(piece_length, arena);
-  res.blocks_bitfield_have =
-      pg_string_make(pg_div_ceil(max_blocks_per_piece_count, 8), arena);
-  res.blocks_bitfield_downloading =
-      pg_string_make(pg_div_ceil(max_blocks_per_piece_count, 8), arena);
-
-  return res;
-}
 #endif
 
 [[maybe_unused]] [[nodiscard]] static PieceDownload *
@@ -182,8 +164,8 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, u64 concurrent_downloads_max,
-          PgString piece_hashes, PgFile file, PgAllocator *allocator) {
+          Download *download, PgString piece_hashes, PgFile file,
+          PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -192,7 +174,6 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.info_hash = info_hash;
   peer.logger = logger;
   peer.download = download;
-  peer.concurrent_downloads_max = concurrent_downloads_max;
   peer.piece_hashes = piece_hashes;
   peer.file = file;
   peer.allocator = allocator;
@@ -496,18 +477,18 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 #endif
 
 [[maybe_unused]] [[nodiscard]] static Pgu32Ok
-piece_download_pick_next_block(PieceDownload *pd, Download *download,
-                               u64 concurrent_blocks_download_max) {
+piece_download_pick_next_block(Download *download) {
   Pgu32Ok res = {0};
 
-  PG_ASSERT(pd->piece <= download->pieces_count);
-  u64 blocks_downloading = pg_bitfield_count(pd->blocks_bitfield_downloading);
-  PG_ASSERT(blocks_downloading <= concurrent_blocks_download_max);
+  PG_ASSERT(download->concurrent_downloads_count <=
+            download->concurrent_downloads_max);
 
-  if (blocks_downloading >= concurrent_blocks_download_max) {
+  if (download->concurrent_downloads_count ==
+      download->concurrent_downloads_max) {
     return res;
   }
 
+#if 0
   u32 blocks_count = download_compute_blocks_count_for_piece(
       pd->piece, download->piece_length, download->total_file_size);
   u64 blocks_have = pg_bitfield_count(pd->blocks_bitfield_have);
@@ -533,6 +514,7 @@ piece_download_pick_next_block(PieceDownload *pd, Download *download,
       return res;
     }
   }
+#endif
   return res;
 }
 

@@ -136,7 +136,7 @@ download_compute_blocks_count(u64 total_file_size) {
   PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
   PG_ASSERT(block_for_piece.val * BLOCK_SIZE < download->piece_length);
 
-  if (piece.val + 1 != download->pieces_count) { // General case.
+  if (piece.val + 1 < download->pieces_count) { // General case.
     return BLOCK_SIZE;
   }
 

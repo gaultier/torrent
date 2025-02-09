@@ -406,14 +406,9 @@ static void peer_on_file_write(uv_fs_t *req) {
     return (PgError)err_file;
   }
 
-#if 0
-  if (blocks_have_after < blocks_count_for_piece) {
-    return peer_request_block_maybe(peer, pd);
-  } else {
-    PG_ASSERT(blocks_have_after == blocks_count_for_piece);
-    return peer_complete_piece_download(peer, pd);
-  }
-#endif
+  pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);
+  PG_ASSERT(peer->download->concurrent_downloads_count > 0);
+  peer->download->concurrent_downloads_count -= 1;
   return 0;
 }
 
@@ -722,8 +717,14 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   case PEER_MSG_KIND_REQUEST:
     // TODO
     break;
-  case PEER_MSG_KIND_PIECE:
-    return peer_receive_block(peer, msg.piece);
+  case PEER_MSG_KIND_PIECE: {
+    PgError err_receive = peer_receive_block(peer, msg.piece);
+    if (err_receive) {
+      return err_receive;
+    }
+
+    return peer_request_remote_data_maybe(peer);
+  }
   case PEER_MSG_KIND_CANCEL:
     // TODO
     break;
@@ -1069,23 +1070,3 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
 
   return 0;
 }
-
-#if 0
-[[maybe_unused]]
-static void peer_pick_random(PgIpv4AddressDyn *addresses_all,
-                             PeerDyn *peers_active, u64 count,
-                             PgString info_hash, PgArena *arena) {
-  u64 real_count = PG_MIN(addresses_all->len, count);
-
-  for (u64 i = 0; i < real_count; i++) {
-    u32 idx = pg_rand_u32(0, (u32)addresses_all->len - 1); // FIXME
-    PgIpv4Address address = PG_SLICE_AT(*addresses_all, idx);
-    Peer peer = peer_make(address, info_hash);
-    *PG_DYN_PUSH(peers_active, arena) = peer;
-    PG_SLICE_SWAP_REMOVE(addresses_all, idx);
-
-    pg_log(PG_LOG_LEVEL_DEBUG, "peer_pick_random", &peer.arena,
-           PG_L("ipv4", peer.address.ip), PG_L("port", peer.address.port));
-  }
-}
-#endif

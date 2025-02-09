@@ -411,8 +411,13 @@ static void peer_on_file_write(uv_fs_t *req) {
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
   pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);
+  peer->download->blocks_have_count += 1;
+  PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
+
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);
   peer->download->concurrent_downloads_count -= 1;
+
+  // TODO: verify piece if whole.
   return 0;
 }
 

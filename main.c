@@ -125,22 +125,11 @@ int main(int argc, char *argv[]) {
       res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
   PG_ASSERT(pieces_count > 0);
 
-  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
-      res_decode_metainfo.res.name, res_decode_metainfo.res.pieces,
-      res_decode_metainfo.res.piece_length, pieces_count, &logger, &arena);
-  if (res_bitfield_pieces.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
-           PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", res_bitfield_pieces.err),
-           PG_L("err_s",
-                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
-    return 1;
-  }
-
   // TODO: Tweak.
   u64 concurrent_download_max = 30;
   Download download = {
-      .pieces_have = res_bitfield_pieces.res,
+      .pieces_have =
+          pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
       .blocks_have = pg_string_make(
           download_compute_blocks_count(res_decode_metainfo.res.length),
           general_allocator),
@@ -179,6 +168,16 @@ int main(int argc, char *argv[]) {
                 1) *
                    BLOCK_SIZE));
 
+  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
+      &download, res_decode_metainfo.res.name, res_decode_metainfo.res.pieces);
+  if (res_bitfield_pieces.err) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
+           PG_L("path", res_decode_metainfo.res.name),
+           PG_L("err", res_bitfield_pieces.err),
+           PG_L("err_s",
+                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
+    return 1;
+  }
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),
          PG_L("local_bitfield_have_count",

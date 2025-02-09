@@ -19,7 +19,11 @@ PG_OK(BlockForDownloadIndex) BlockForDownloadIndexOk;
 
 typedef struct {
   PgString pieces_have;
+  u32 pieces_have_count;
+
   PgString blocks_have;
+  u32 blocks_have_count;
+
   u32 pieces_count;
   u32 blocks_count;
   u32 max_blocks_per_piece_count;
@@ -180,29 +184,33 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 }
 
 typedef struct {
-  PgString bitfield;
   PgString info_hash;
-  PgLogger *logger;
-  u64 piece_i;
-  u64 pieces_count;
+  u32 piece_i;
+  Download *download;
 } DownloadLoadBitfieldFromDiskCtx;
 
 [[maybe_unused]] [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
   (void)chunk;
   DownloadLoadBitfieldFromDiskCtx *d = ctx;
-  PG_ASSERT(d->piece_i < d->pieces_count);
+  PG_ASSERT(d->piece_i < d->download->pieces_count);
 
   PgString sha_expected =
       PG_SLICE_RANGE(d->info_hash, PG_SHA1_DIGEST_LENGTH * d->piece_i,
                      PG_SHA1_DIGEST_LENGTH * (d->piece_i + 1));
   bool eq = download_verify_piece_hash(chunk, sha_expected);
 
-  pg_log(d->logger, PG_LOG_LEVEL_DEBUG, "chunk", PG_L("len", chunk.len),
-         PG_L("piece", d->piece_i), PG_L("pieces_count", d->pieces_count),
-         PG_L("eq", (u64)eq));
+  pg_log(d->download->logger, PG_LOG_LEVEL_DEBUG, "chunk",
+         PG_L("len", chunk.len), PG_L("piece", d->piece_i),
+         PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq));
 
-  pg_bitfield_set(d->bitfield, d->piece_i, eq);
+  pg_bitfield_set(d->download->pieces_have, d->piece_i, eq);
+  d->download->pieces_count += 1;
+  PG_ASSERT(d->download->pieces_have_count <= d->download->pieces_count);
+
+  d->download->blocks_have_count += download_compute_blocks_count_for_piece(
+      d->download, (PieceIndex){d->piece_i});
+  PG_ASSERT(d->download->blocks_have_count <= d->download->blocks_count);
 
   d->piece_i += 1;
 
@@ -210,32 +218,30 @@ download_file_on_chunk(PgString chunk, void *ctx) {
 }
 
 [[maybe_unused]] [[nodiscard]] static PgStringResult
-download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
-                                        u64 piece_length, u64 pieces_count,
-                                        PgLogger *logger, PgArena *arena) {
+download_load_bitfield_pieces_from_disk(Download *download, PgString path,
+                                        PgString info_hash) {
+  PG_ASSERT(download->pieces_have.len > 0);
+
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
-
   DownloadLoadBitfieldFromDiskCtx ctx = {
-      .bitfield = pg_string_make(pg_div_ceil(pieces_count, 8), allocator),
       .info_hash = info_hash,
-      .logger = logger,
-      .pieces_count = pieces_count,
+      .download = download,
   };
 
   PgStringResult res = {0};
   {
-    PgArena arena_tmp = *arena;
-    PgError err = pg_file_read_chunks(filename, piece_length,
-                                      download_file_on_chunk, &ctx, arena_tmp);
+    // FIXME: Use libuv here.
+    PgArena arena = pg_arena_make_from_virtual_mem(download->piece_length);
+    PgError err = pg_file_read_chunks(filename, download->piece_length,
+                                      download_file_on_chunk, &ctx, arena);
+    (void)pg_arena_release(&arena);
+
     if (err) {
       res.err = err;
       return res;
     }
-    res.res = ctx.bitfield;
   }
 
   return res;

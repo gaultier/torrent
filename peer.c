@@ -86,6 +86,7 @@ typedef struct {
 typedef struct {
   bool present;
   PgError err;
+  PeerMessage res;
 } PeerMessageReadResult;
 
 typedef struct {
@@ -559,24 +560,13 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   PG_ASSERT(pg_ring_read_u8(&peer->recv, &kind));
 
   switch (kind) {
-  case PEER_MSG_KIND_CHOKE: {
-    peer->remote_choked = true;
-    // TODO: Cancel on-going downloads?
+    // No associated data.
+  case PEER_MSG_KIND_CHOKE:
+  case PEER_MSG_KIND_UNCHOKE:
+  case PEER_MSG_KIND_INTERESTED:
+  case PEER_MSG_KIND_UNINTERESTED:
     break;
-  }
-  case PEER_MSG_KIND_UNCHOKE: {
-    peer->remote_choked = false;
-    res.err = peer_request_remote_data_maybe(peer);
-    break;
-  }
-  case PEER_MSG_KIND_INTERESTED: {
-    peer->remote_interested = true;
-    break;
-  }
-  case PEER_MSG_KIND_UNINTERESTED: {
-    peer->remote_interested = false;
-    break;
-  }
+
   case PEER_MSG_KIND_HAVE: {
     if ((1 + sizeof(u32)) != length_announced) {
       res.err = PG_ERR_INVALID_VALUE;
@@ -700,6 +690,44 @@ end:
   return res;
 }
 
+[[nodiscard]] static PgError peer_react_to_message(Peer *peer,
+                                                   PeerMessage msg) {
+  switch (msg.kind) {
+  case PEER_MSG_KIND_CHOKE:
+    peer->remote_choked = true;
+    // TODO: Cancel on-going downloads?
+    break;
+  case PEER_MSG_KIND_UNCHOKE:
+    peer->remote_choked = false;
+    return peer_request_remote_data_maybe(peer);
+  case PEER_MSG_KIND_INTERESTED:
+    peer->remote_interested = true;
+    break;
+  case PEER_MSG_KIND_UNINTERESTED:
+    peer->remote_interested = false;
+    break;
+  case PEER_MSG_KIND_HAVE:
+    return peer_request_remote_data_maybe(peer);
+  case PEER_MSG_KIND_BITFIELD:
+    return peer_request_remote_data_maybe(peer);
+  case PEER_MSG_KIND_REQUEST:
+    // TODO
+    break;
+  case PEER_MSG_KIND_PIECE:
+    // TODO
+    break;
+  case PEER_MSG_KIND_CANCEL:
+    // TODO
+    break;
+  case PEER_MSG_KIND_KEEP_ALIVE:
+    // TODO
+    break;
+  default:
+    PG_ASSERT(0);
+  }
+  return 0;
+}
+
 [[nodiscard]] static PgError peer_handle_recv_data(Peer *peer) {
   for (u64 _i = 0; _i < 128; _i++) {
     switch (peer->state) {
@@ -717,6 +745,12 @@ end:
       if (!res.present) {
         return 0;
       }
+
+      PgError err = peer_react_to_message(peer, res.res);
+      if (err) {
+        return err;
+      }
+
       break;
     }
     default:
@@ -825,9 +859,10 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
             peer->download->piece_length);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
-         PG_L("address", peer->address), PG_L("block", block_for_download),
-         PG_L("piece", piece), PG_L("begin", msg.request.begin),
-         PG_L("block_length", block_length),
+         PG_L("address", peer->address),
+         PG_L("block_for_download", block_for_download),
+         PG_L("block_for_piece", block_for_piece), PG_L("piece", piece),
+         PG_L("begin", msg.request.begin), PG_L("block_length", block_length),
          PG_L("blocks_bitfield_have", peer->download->blocks_have));
 
   PgString msg_encoded = peer_encode_message(msg, peer->allocator);
@@ -869,7 +904,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
     return 0;
   }
 
-  Pgu32Ok res_block = download_pick_next_block(peer->download);
+  Pgu32Ok res_block =
+      download_pick_next_block(peer->download, peer->remote_bitfield);
   if (!res_block.ok) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: not requesting remote data since all blocks are already "

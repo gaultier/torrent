@@ -52,19 +52,18 @@ download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
-download_compute_blocks_count_for_piece(u32 piece, u64 piece_length,
-                                        u64 total_file_size) {
-  PG_ASSERT(piece * piece_length <= total_file_size);
+download_compute_blocks_count_for_piece(Download *download, u32 piece) {
+  PG_ASSERT(piece * download->piece_length <= download->total_file_size);
 
-  u32 pieces_count =
-      download_compute_pieces_count(piece_length, total_file_size);
+  u32 pieces_count = download_compute_pieces_count(download->piece_length,
+                                                   download->total_file_size);
   PG_ASSERT(pieces_count > 0);
 
   if (piece < pieces_count - 1) {
-    return download_compute_max_blocks_per_piece_count(piece_length);
+    return download_compute_max_blocks_per_piece_count(download->piece_length);
   }
 
-  u64 rem = total_file_size - piece * piece_length;
+  u64 rem = download->total_file_size - piece * download->piece_length;
 
   u64 res = pg_div_ceil(rem, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
@@ -89,9 +88,7 @@ download_convert_block_for_download_to_block_for_piece(Download *download,
 
   u64 res = (piece_offset_end - block_offset) / BLOCK_SIZE;
   PG_ASSERT(res <= UINT32_MAX);
-  PG_ASSERT(res <=
-            download_compute_blocks_count_for_piece(
-                piece, download->piece_length, download->total_file_size));
+  PG_ASSERT(res <= download_compute_blocks_count_for_piece(download, piece));
 
   return (u32)res;
 }
@@ -221,11 +218,11 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
 }
 
 [[maybe_unused]] [[nodiscard]] static Pgu32Ok
-download_pick_next_block(Download *download) {
+download_pick_next_block(Download *download, PgString remote_pieces_have) {
   Pgu32Ok res = {0};
-
   PG_ASSERT(download->concurrent_downloads_count <=
             download->concurrent_downloads_max);
+  PG_ASSERT(pg_div_ceil(download->pieces_count, 8) == remote_pieces_have.len);
 
   if (download->concurrent_downloads_count ==
       download->concurrent_downloads_max) {
@@ -237,6 +234,31 @@ download_pick_next_block(Download *download) {
   // Currently we download random blocks without attention to which piece and
   // peer they come from.
 
-  return pg_bitfield_get_first_zero_rand(download->blocks_have,
-                                         download->blocks_count, download->rng);
+  u32 start =
+      pg_rand_u32_min_incl_max_excl(download->rng, 0, download->blocks_count);
+  for (u64 i = 0; i < download->blocks_count;) {
+    u32 block_for_download = (start + i) % download->blocks_count;
+    if (pg_bitfield_get(download->blocks_have, block_for_download)) {
+      i += 1;
+      continue;
+    }
+    u32 piece = download_get_piece_for_block(download, block_for_download);
+    if (!pg_bitfield_get(remote_pieces_have, piece)) {
+      u32 block_for_piece =
+          download_convert_block_for_download_to_block_for_piece(
+              download, piece, block_for_download);
+      u32 blocks_count_for_piece =
+          download_compute_blocks_count_for_piece(download, piece);
+      PG_ASSERT(block_for_piece < blocks_count_for_piece);
+
+      i += blocks_count_for_piece - block_for_piece;
+      continue;
+    }
+
+    res.res = block_for_download;
+    res.ok = true;
+    return res;
+  }
+
+  return res;
 }

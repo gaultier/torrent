@@ -10,13 +10,32 @@
 
 #include "submodules/cstd/lib.c"
 
-[[maybe_unused]]
+typedef struct {
+  uv_write_t req;
+  uv_buf_t buf;
+  void *data;
+} WriteRequest;
+
+[[nodiscard]] [[maybe_unused]]
 static PgString uv_buf_to_string(uv_buf_t buf) {
   return (PgString){.data = (u8 *)buf.base, .len = buf.len};
 }
 
+[[nodiscard]]
 static uv_buf_t string_to_uv_buf(PgString s) {
   return (uv_buf_t){.base = (char *)s.data, .len = s.len};
+}
+
+[[nodiscard]] static int do_write(uv_stream_t *stream, PgString data,
+                                  PgAllocator *allocator, uv_write_cb cb,
+                                  void *ctx) {
+  WriteRequest *wq =
+      pg_alloc(allocator, sizeof(WriteRequest), _Alignof(WriteRequest), 1);
+  wq->buf = string_to_uv_buf(data);
+  wq->req.data = wq;
+  wq->data = ctx;
+
+  return uv_write(&wq->req, stream, &wq->buf, 1, cb);
 }
 
 #define HANDSHAKE_LENGTH 68
@@ -758,18 +777,15 @@ end:
 }
 
 static void peer_on_tcp_write(uv_write_t *req, int status) {
-  PG_ASSERT(req->handle);
-  PG_ASSERT(req->handle->data);
   PG_ASSERT(req->data);
-  Peer *peer = req->data;
-
-  PG_ASSERT(1 == req->nbufs);
-  PG_ASSERT(req->bufs);
+  WriteRequest *wq = req->data;
+  PG_ASSERT(wq->data);
+  Peer *peer = wq->data;
 
   uv_buf_t buf = req->bufs[0];
   u64 len = buf.len;
-  pg_free(peer->allocator, buf.base, sizeof(u8), buf.len);
-  pg_free(peer->allocator, req, sizeof(*req), 1);
+  pg_free(peer->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
+  pg_free(peer->allocator, wq, sizeof(*wq), 1);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
@@ -816,13 +832,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
          PG_L("blocks_bitfield_have", peer->download->blocks_have));
 
   PgString msg_encoded = peer_encode_message(msg, peer->allocator);
-  uv_buf_t buf = string_to_uv_buf(msg_encoded);
-
-  uv_write_t *req_write =
-      pg_alloc(peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
-  req_write->data = peer;
-  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, &buf, 1,
-                           peer_on_tcp_write);
+  int err_write = do_write((uv_stream_t *)&peer->uv_tcp, msg_encoded,
+                           peer->allocator, peer_on_tcp_write, peer);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address),
@@ -922,15 +933,8 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   peer->recv = pg_ring_make(2 * PG_KiB + 2 * BLOCK_SIZE, peer->allocator);
 
   PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);
-  uv_buf_t buf = string_to_uv_buf(handshake);
-
-  uv_write_t *req_write =
-      pg_alloc(peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
-  req_write->data = peer;
-  PG_ASSERT(req_write->data);
-
-  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, &buf, 1,
-                           peer_on_tcp_write);
+  int err_write = do_write((uv_stream_t *)&peer->uv_tcp, handshake,
+                           peer->allocator, peer_on_tcp_write, peer);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address),
@@ -939,7 +943,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
     return;
   }
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: sending handshake",
-         PG_L("address", peer->address), PG_L("req", (u64)req_write));
+         PG_L("address", peer->address));
 
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
                                peer_on_tcp_read);

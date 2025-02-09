@@ -16,6 +16,12 @@ typedef struct {
   void *data;
 } WriteRequest;
 
+typedef struct {
+  uv_fs_t req;
+  uv_buf_t buf;
+  void *data;
+} FsWriteRequest;
+
 [[nodiscard]] [[maybe_unused]]
 static PgString uv_buf_to_string(uv_buf_t buf) {
   return (PgString){.data = (u8 *)buf.base, .len = buf.len};
@@ -331,50 +337,34 @@ static void peer_close_io_handles(Peer *peer) {
 
   return 0;
 }
+#endif
 
-[[nodiscard]] static PgError peer_receive_block(Peer *peer, u32 piece,
-                                                u32 begin, u32 data_len) {
-  PieceDownload *pd = peer_find_piece_download(peer, piece);
-  if (nullptr == pd) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: piece message for piece not being downloaded",
-           PG_L("address", peer->address), PG_L("piece", piece));
-    return PG_ERR_INVALID_VALUE;
-  }
+static void peer_on_file_write(uv_fs_t *req) {
+  PG_ASSERT(req->data);
+  FsWriteRequest *fs_req = req->data;
+  PG_ASSERT(fs_req->data);
+  Peer *peer = fs_req->data;
 
-  // Sanity checks.
-  u64 blocks_downloading_before =
-      pg_bitfield_count(pd->blocks_bitfield_downloading);
-  PG_ASSERT(blocks_downloading_before <= peer->concurrent_blocks_download_max);
-  u32 blocks_count = download_compute_blocks_count_for_piece(
-      pd->piece, peer->download->piece_length, peer->download->total_file_size);
-  u64 blocks_have_before = pg_bitfield_count(pd->blocks_bitfield_have);
-  PG_ASSERT(blocks_downloading_before + blocks_have_before <= blocks_count);
+  u64 len = fs_req->buf.len;
+  pg_free(peer->allocator, fs_req->buf.base, sizeof(u8), fs_req->buf.len);
+  pg_free(peer->allocator, fs_req, sizeof(FsWriteRequest), 1);
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
+         PG_L("address", peer->address), PG_L("len", len));
+}
+
+[[nodiscard]] static PgError peer_receive_block(Peer *peer,
+                                                PeerMessagePiece msg) {
+  PG_ASSERT(msg.data.len <= BLOCK_SIZE);
+  PG_ASSERT(msg.data.len >= 0);
+
+  BlockForDownloadIndex block_for_download = (BlockForDownloadIndex){
+      (u32)(msg.index * peer->download->piece_length + msg.begin) / BLOCK_SIZE};
+  PieceIndex piece = {msg.index};
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
-         PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data_len", data_len),
-         PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
-         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
-
-  // Bounds check.
-  u64 end = 0;
-  if (ckd_add(&end, begin, data_len) || end > peer->download->piece_length) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: begin/data.len invalid in piece message",
-           PG_L("address", peer->address), PG_L("piece", piece),
-           PG_L("begin", begin), PG_L("data.len", data_len),
-           PG_L("piece_length", peer->download->piece_length));
-    return PG_ERR_INVALID_VALUE;
-  }
-  PG_ASSERT(pd->data.len == peer->download->piece_length);
-
-  u32 block = begin / BLOCK_SIZE;
-  u64 blocks_count_for_piece = download_compute_blocks_count_for_piece(
-      piece, peer->download->piece_length, peer->download->total_file_size);
-
-  // TODO: This be a validation error instead of an assert.
-  PG_ASSERT(block < blocks_count_for_piece);
+         PG_L("address", peer->address), PG_L("piece", piece.val),
+         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
   // From the spec:
   //
@@ -382,65 +372,50 @@ static void peer_close_io_handles(Peer *peer) {
   // messages are sent in quick succession and/or transfer is going very slowly.
   //
   // In this case, ignore.
-  // TODO: Keep it if we do not have it.
-  bool expected_block = true;
-  if (!pg_bitfield_get(pd->blocks_bitfield_downloading, block)) {
-    pg_log(
-        peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received unexpected block",
-        PG_L("address", peer->address), PG_L("piece", piece),
-        PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
-        PG_L("blocks_count_for_piece", blocks_count_for_piece),
-        PG_L("blocks_have_before", blocks_have_before),
-        PG_L("blocks_downloading_before", blocks_downloading_before),
-        PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
-        PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
-    if (pg_bitfield_get(pd->blocks_bitfield_have, block)) {
-      PgArena arena_tmp = peer->arena_tmp;
-      PgString block_dst = pg_string_make(data_len, &arena_tmp);
-      PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
-      return 0;
-    }
-    expected_block = false;
+  if (pg_bitfield_get(peer->download->blocks_have, block_for_download.val)) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: received block we already have",
+           PG_L("address", peer->address), PG_L("piece", piece.val),
+           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
+           PG_L("block_for_download", block_for_download.val));
   }
 
-  pg_bitfield_set(pd->blocks_bitfield_have, block, true);
-  pg_bitfield_set(pd->blocks_bitfield_downloading, block, false);
-
-  // Sanity checks.
-  u64 blocks_downloading_after =
-      pg_bitfield_count(pd->blocks_bitfield_downloading);
-  PG_ASSERT(blocks_downloading_after <= peer->concurrent_blocks_download_max);
-  u64 blocks_have_after = pg_bitfield_count(pd->blocks_bitfield_have);
-  PG_ASSERT(blocks_downloading_after + blocks_have_after <= blocks_count);
-
-  PG_ASSERT(blocks_downloading_after ==
-            blocks_downloading_before - expected_block);
-  PG_ASSERT(blocks_have_after == blocks_have_before + 1);
-  PG_ASSERT(blocks_have_after <= blocks_count_for_piece);
-
   // Actual data copy here, the rest is just metadata bookkeeping.
-  PgString block_dst = PG_SLICE_RANGE(pd->data, begin, begin + data_len);
-  PG_ASSERT(pg_ring_read_slice(&peer->recv, block_dst));
 
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received block",
-         PG_L("address", peer->address), PG_L("piece", piece),
-         PG_L("begin", begin), PG_L("data.len", data_len), PG_L("block", block),
-         PG_L("blocks_count_for_piece", blocks_count_for_piece),
-         PG_L("blocks_have_before", blocks_have_before),
-         PG_L("blocks_downloading_before", blocks_downloading_before),
-         PG_L("blocks_have_after", blocks_have_after),
-         PG_L("blocks_downloading_after", blocks_downloading_after),
-         PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
-         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
+  FsWriteRequest *req = pg_alloc(peer->allocator, sizeof(FsWriteRequest),
+                                 _Alignof(FsWriteRequest), 1);
+  req->buf = string_to_uv_buf(msg.data);
+  req->req.data = req;
+  req->data = peer;
 
+  u64 offset = (piece.val * peer->download->piece_length + msg.begin);
+  PG_ASSERT(offset <= peer->download->total_file_size);
+  PG_ASSERT(offset + msg.data.len <= peer->download->total_file_size);
+
+  int err_file = uv_fs_write(uv_default_loop(), &req->req, peer->download->file,
+                             &req->buf, 1, (i64)offset, peer_on_file_write);
+  if (err_file) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+           "peer: failed to write block to file",
+           PG_L("address", peer->address), PG_L("piece", piece.val),
+           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
+           PG_L("err", err_file),
+           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
+    // TODO: Retry?
+    peer_close_io_handles(peer);
+    return (PgError)err_file;
+  }
+
+#if 0
   if (blocks_have_after < blocks_count_for_piece) {
     return peer_request_block_maybe(peer, pd);
   } else {
     PG_ASSERT(blocks_have_after == blocks_count_for_piece);
     return peer_complete_piece_download(peer, pd);
   }
-}
 #endif
+  return 0;
+}
 
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
@@ -646,9 +621,44 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
     u32 data_len = length_announced -
                    (sizeof(res.res.kind) + sizeof(index) + sizeof(begin));
-    PG_ASSERT(data_len <= BLOCK_SIZE);
-    // TODO
-    // res.err = peer_receive_block(peer, piece, begin, data_len);
+
+    // Validation.
+    {
+      PieceIndex piece_idx = {res.res.piece.index};
+
+      if (res.res.piece.index >= peer->download->pieces_count) {
+        res.err = PG_ERR_INVALID_VALUE;
+        return res;
+      }
+
+      u32 blocks_count_for_piece =
+          download_compute_blocks_count_for_piece(peer->download, piece_idx);
+      if (res.res.piece.begin >= blocks_count_for_piece * BLOCK_SIZE) {
+        res.err = PG_ERR_INVALID_VALUE;
+        return res;
+      }
+      if (res.res.piece.begin % BLOCK_SIZE != 0) {
+        res.err = PG_ERR_INVALID_VALUE;
+        return res;
+      }
+
+      BlockForPieceIndex block_for_piece = {res.res.piece.begin / BLOCK_SIZE};
+      if (block_for_piece.val >=
+          download_compute_blocks_count_for_piece(peer->download, piece_idx)) {
+        res.err = PG_ERR_INVALID_VALUE;
+        return res;
+      }
+
+      u32 expected_data_len = download_compute_block_length(
+          peer->download, block_for_piece, piece_idx);
+      if (data_len != expected_data_len) {
+        res.err = PG_ERR_INVALID_VALUE;
+        return res;
+      }
+    }
+
+    res.res.piece.data = pg_string_make(data_len, peer->allocator);
+    PG_ASSERT(pg_ring_read_slice(&peer->recv, res.res.piece.data));
 
     break;
   }
@@ -713,8 +723,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     // TODO
     break;
   case PEER_MSG_KIND_PIECE:
-    // TODO
-    break;
+    return peer_receive_block(peer, msg.piece);
   case PEER_MSG_KIND_CANCEL:
     // TODO
     break;

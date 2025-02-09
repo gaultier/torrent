@@ -426,7 +426,7 @@ static void peer_close_io_handles(Peer *peer) {
 peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
   Pgu8Dyn sb = {0};
-  u64 cap = 16;
+  u64 cap = 17;
   if (msg.kind == PEER_MSG_KIND_BITFIELD) {
     cap += msg.bitfield.len;
   } else if (msg.kind == PEER_MSG_KIND_PIECE) {

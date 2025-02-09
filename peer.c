@@ -857,15 +857,17 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   return 0;
 }
 
-[[nodiscard]] static PgError peer_request_block(Peer *peer,
-                                                u32 block_for_download) {
-  PG_ASSERT(block_for_download < peer->download->blocks_count);
-  u32 piece = download_get_piece_for_block(peer->download, block_for_download);
-  PG_ASSERT(piece < peer->download->pieces_count);
-  PG_ASSERT(pg_bitfield_get(peer->remote_bitfield, piece));
+[[nodiscard]] static PgError
+peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
+  PG_ASSERT(block_for_download.val < peer->download->blocks_count);
+  PieceIndex piece =
+      download_get_piece_for_block(peer->download, block_for_download);
+  PG_ASSERT(piece.val < peer->download->pieces_count);
+  PG_ASSERT(pg_bitfield_get(peer->remote_bitfield, piece.val));
 
-  u32 block_for_piece = download_convert_block_for_download_to_block_for_piece(
-      peer->download, piece, block_for_download);
+  BlockForPieceIndex block_for_piece =
+      download_convert_block_for_download_to_block_for_piece(
+          peer->download, piece, block_for_download);
 
   u32 block_length =
       download_compute_block_length(peer->download, block_for_piece, piece);
@@ -881,8 +883,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
       .kind = PEER_MSG_KIND_REQUEST,
       .request =
           {
-              .index = piece,
-              .begin = block_for_download * BLOCK_SIZE,
+              .index = piece.val,
+              .begin = block_for_download.val * BLOCK_SIZE,
               .length = block_length,
           },
   };
@@ -891,8 +893,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
          PG_L("address", peer->address),
-         PG_L("block_for_download", block_for_download),
-         PG_L("block_for_piece", block_for_piece), PG_L("piece", piece),
+         PG_L("block_for_download", block_for_download.val),
+         PG_L("block_for_piece", block_for_piece.val), PG_L("piece", piece.val),
          PG_L("begin", msg.request.begin), PG_L("block_length", block_length),
          PG_L("blocks_bitfield_have", peer->download->blocks_have));
 
@@ -935,7 +937,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
     return 0;
   }
 
-  Pgu32Ok res_block =
+  BlockForDownloadIndexOk res_block =
       download_pick_next_block(peer->download, peer->remote_bitfield);
   if (!res_block.ok) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,

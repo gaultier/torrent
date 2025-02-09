@@ -166,14 +166,16 @@ int main(int argc, char *argv[]) {
       PG_L("piece_length", download.piece_length),
       PG_L("total_file_size", download.total_file_size),
       PG_L("last_piece_blocks_count",
-           download_compute_blocks_count_for_piece(&download,
-                                                   download.pieces_count - 1)),
+           download_compute_blocks_count_for_piece(
+               &download, (PieceIndex){download.pieces_count - 1})),
       PG_L("last_piece_size",
-           download_compute_piece_length(&download, download.pieces_count - 1)),
+           download_compute_piece_length(
+               &download, (PieceIndex){download.pieces_count - 1})),
       PG_L("last_block_size",
-           download_compute_piece_length(&download, download.pieces_count - 1) -
+           download_compute_piece_length(
+               &download, (PieceIndex){download.pieces_count - 1}) -
                (download_compute_blocks_count_for_piece(
-                    &download, download.pieces_count - 1) -
+                    &download, (PieceIndex){download.pieces_count - 1}) -
                 1) *
                    BLOCK_SIZE));
 

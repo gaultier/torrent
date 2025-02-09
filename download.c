@@ -4,6 +4,20 @@
 #define BLOCK_SIZE (1UL << 14)
 
 typedef struct {
+  u32 val;
+} PieceIndex;
+
+typedef struct {
+  u32 val;
+} BlockForPieceIndex;
+
+typedef struct {
+  u32 val;
+} BlockForDownloadIndex;
+
+PG_OK(BlockForDownloadIndex) BlockForDownloadIndexOk;
+
+typedef struct {
   PgString pieces_have;
   PgString blocks_have;
   u32 pieces_count;
@@ -29,13 +43,13 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
 
 // TODO: Consider having two separate types for these two kinds of blocks.
 [[nodiscard]] static u32 download_compute_piece_length(Download *download,
-                                                       u32 piece) {
-  PG_ASSERT(piece < download->pieces_count);
+                                                       PieceIndex piece) {
+  PG_ASSERT(piece.val < download->pieces_count);
   PG_ASSERT(download->pieces_count > 0);
   PG_ASSERT(download->piece_length <= UINT32_MAX);
 
-  u64 res = (piece + 1) == download->pieces_count
-                ? download->total_file_size - piece * download->piece_length
+  u64 res = (piece.val + 1) == download->pieces_count
+                ? download->total_file_size - piece.val * download->piece_length
                 : download->piece_length;
 
   PG_ASSERT(res <= UINT32_MAX);
@@ -52,18 +66,18 @@ download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
-download_compute_blocks_count_for_piece(Download *download, u32 piece) {
-  PG_ASSERT(piece * download->piece_length <= download->total_file_size);
+download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
+  PG_ASSERT(piece.val * download->piece_length <= download->total_file_size);
 
   u32 pieces_count = download_compute_pieces_count(download->piece_length,
                                                    download->total_file_size);
   PG_ASSERT(pieces_count > 0);
 
-  if (piece < pieces_count - 1) {
+  if (piece.val < pieces_count - 1) {
     return download_compute_max_blocks_per_piece_count(download->piece_length);
   }
 
-  u64 rem = download->total_file_size - piece * download->piece_length;
+  u64 rem = download->total_file_size - piece.val * download->piece_length;
 
   u64 res = pg_div_ceil(rem, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
@@ -71,15 +85,15 @@ download_compute_blocks_count_for_piece(Download *download, u32 piece) {
 }
 
 // TODO: Consider having two separate types for these two kinds of blocks.
-[[maybe_unused]] [[nodiscard]] static u32
-download_convert_block_for_download_to_block_for_piece(Download *download,
-                                                       u32 piece,
-                                                       u32 block_for_download) {
-  PG_ASSERT(piece < download->pieces_count);
-  PG_ASSERT(block_for_download < download->blocks_count);
+[[maybe_unused]] [[nodiscard]] static BlockForPieceIndex
+download_convert_block_for_download_to_block_for_piece(
+    Download *download, PieceIndex piece,
+    BlockForDownloadIndex block_for_download) {
+  PG_ASSERT(piece.val < download->pieces_count);
+  PG_ASSERT(block_for_download.val < download->blocks_count);
 
-  u64 block_offset = block_for_download * BLOCK_SIZE;
-  u64 piece_offset_start = piece * download->piece_length;
+  u64 block_offset = block_for_download.val * BLOCK_SIZE;
+  u64 piece_offset_start = piece.val * download->piece_length;
   u64 piece_offset_end =
       piece_offset_start + download_compute_piece_length(download, piece);
 
@@ -91,17 +105,18 @@ download_convert_block_for_download_to_block_for_piece(Download *download,
   PG_ASSERT(res < download->max_blocks_per_piece_count);
   PG_ASSERT(res < download_compute_blocks_count_for_piece(download, piece));
 
-  return (u32)res;
+  return (BlockForPieceIndex){(u32)res};
 }
 
-[[maybe_unused]] [[nodiscard]] static u32
-download_get_piece_for_block(Download *download, u32 block_for_download) {
-  PG_ASSERT(block_for_download < download->blocks_count);
+[[maybe_unused]] [[nodiscard]] static PieceIndex
+download_get_piece_for_block(Download *download,
+                             BlockForDownloadIndex block_for_download) {
+  PG_ASSERT(block_for_download.val < download->blocks_count);
 
-  u32 res = block_for_download / download->max_blocks_per_piece_count;
+  u32 res = block_for_download.val / download->max_blocks_per_piece_count;
   PG_ASSERT(res < download->pieces_count);
 
-  return res;
+  return (PieceIndex){res};
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
@@ -111,21 +126,20 @@ download_compute_blocks_count(u64 total_file_size) {
   return (u32)res;
 }
 
-[[maybe_unused]] [[nodiscard]] static u32
-download_compute_block_length(Download *download, u32 block_for_piece,
-                              u32 piece) {
-  fprintf(stderr, "[D001] %u %u\n", block_for_piece, piece);
-  PG_ASSERT(piece < download->pieces_count);
-  PG_ASSERT(block_for_piece < download->max_blocks_per_piece_count);
-  PG_ASSERT(block_for_piece * BLOCK_SIZE < download->piece_length);
+[[maybe_unused]] [[nodiscard]] static u32 download_compute_block_length(
+    Download *download, BlockForPieceIndex block_for_piece, PieceIndex piece) {
+  fprintf(stderr, "[D001] %u %u\n", block_for_piece.val, piece.val);
+  PG_ASSERT(piece.val < download->pieces_count);
+  PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
+  PG_ASSERT(block_for_piece.val * BLOCK_SIZE < download->piece_length);
 
-  if (piece + 1 != download->pieces_count) { // General case.
+  if (piece.val + 1 != download->pieces_count) { // General case.
     return BLOCK_SIZE;
   }
 
   // Special case for the last piece.
   u32 res = (u32)(download_compute_piece_length(download, piece) -
-                  (u64)block_for_piece * BLOCK_SIZE);
+                  (u64)block_for_piece.val * BLOCK_SIZE);
   PG_ASSERT(res > 0);
   PG_ASSERT(res <= BLOCK_SIZE);
 
@@ -224,9 +238,9 @@ download_load_bitfield_pieces_from_disk(PgString path, PgString info_hash,
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static Pgu32Ok
+[[maybe_unused]] [[nodiscard]] static BlockForDownloadIndexOk
 download_pick_next_block(Download *download, PgString remote_pieces_have) {
-  Pgu32Ok res = {0};
+  BlockForDownloadIndexOk res = {0};
   PG_ASSERT(download->concurrent_downloads_count <=
             download->concurrent_downloads_max);
   PG_ASSERT(pg_div_ceil(download->pieces_count, 8) == remote_pieces_have.len);
@@ -244,23 +258,25 @@ download_pick_next_block(Download *download, PgString remote_pieces_have) {
   u32 start =
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->blocks_count);
   for (u64 i = 0; i < download->blocks_count;) {
-    u32 block_for_download = (start + i) % download->blocks_count;
-    PG_ASSERT(block_for_download < download->blocks_count);
+    BlockForDownloadIndex block_for_download = {(start + i) %
+                                                download->blocks_count};
+    PG_ASSERT(block_for_download.val < download->blocks_count);
 
-    if (pg_bitfield_get(download->blocks_have, block_for_download)) {
+    if (pg_bitfield_get(download->blocks_have, block_for_download.val)) {
       i += 1;
       continue;
     }
-    u32 piece = download_get_piece_for_block(download, block_for_download);
-    if (!pg_bitfield_get(remote_pieces_have, piece)) {
-      u32 block_for_piece =
+    PieceIndex piece =
+        download_get_piece_for_block(download, block_for_download);
+    if (!pg_bitfield_get(remote_pieces_have, piece.val)) {
+      BlockForPieceIndex block_for_piece =
           download_convert_block_for_download_to_block_for_piece(
               download, piece, block_for_download);
       u32 blocks_count_for_piece =
           download_compute_blocks_count_for_piece(download, piece);
-      PG_ASSERT(block_for_piece < blocks_count_for_piece);
+      PG_ASSERT(block_for_piece.val < blocks_count_for_piece);
 
-      i += blocks_count_for_piece - block_for_piece;
+      i += blocks_count_for_piece - block_for_piece.val;
       continue;
     }
 

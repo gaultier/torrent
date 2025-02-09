@@ -74,13 +74,15 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
   PG_ASSERT(pieces_count > 0);
 
   if (piece.val < pieces_count - 1) {
-    return download_compute_max_blocks_per_piece_count(download->piece_length);
+    PG_ASSERT(download->max_blocks_per_piece_count > 0);
+    return download->max_blocks_per_piece_count;
   }
 
   u64 rem = download->total_file_size - piece.val * download->piece_length;
 
   u64 res = pg_div_ceil(rem, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
+  PG_ASSERT(res <= download->max_blocks_per_piece_count);
   return (u32)res;
 }
 
@@ -97,10 +99,12 @@ download_convert_block_for_download_to_block_for_piece(
   u64 piece_offset_end =
       piece_offset_start + download_compute_piece_length(download, piece);
 
+  PG_ASSERT(piece_offset_end > piece_offset_start);
+  PG_ASSERT(piece_offset_end - piece_offset_start <= download->piece_length);
   PG_ASSERT(piece_offset_start <= block_offset);
   PG_ASSERT(block_offset < piece_offset_end);
 
-  u64 res = (piece_offset_end - block_offset) / BLOCK_SIZE;
+  u64 res = (block_offset - piece_offset_start) / BLOCK_SIZE;
   PG_ASSERT(res <= UINT32_MAX);
   PG_ASSERT(res < download->max_blocks_per_piece_count);
   PG_ASSERT(res < download_compute_blocks_count_for_piece(download, piece));

@@ -238,6 +238,8 @@ download_pick_next_block(Download *download, PgString remote_pieces_have) {
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->blocks_count);
   for (u64 i = 0; i < download->blocks_count;) {
     u32 block_for_download = (start + i) % download->blocks_count;
+    PG_ASSERT(block_for_download < download->blocks_count);
+
     if (pg_bitfield_get(download->blocks_have, block_for_download)) {
       i += 1;
       continue;

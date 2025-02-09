@@ -88,7 +88,8 @@ download_convert_block_for_download_to_block_for_piece(Download *download,
 
   u64 res = (piece_offset_end - block_offset) / BLOCK_SIZE;
   PG_ASSERT(res <= UINT32_MAX);
-  PG_ASSERT(res <= download_compute_blocks_count_for_piece(download, piece));
+  PG_ASSERT(res < download->max_blocks_per_piece_count);
+  PG_ASSERT(res < download_compute_blocks_count_for_piece(download, piece));
 
   return (u32)res;
 }
@@ -113,7 +114,9 @@ download_compute_blocks_count(u64 total_file_size) {
 [[maybe_unused]] [[nodiscard]] static u32
 download_compute_block_length(Download *download, u32 block_for_piece,
                               u32 piece) {
+  fprintf(stderr, "[D001] %u %u\n", block_for_piece, piece);
   PG_ASSERT(piece < download->pieces_count);
+  PG_ASSERT(block_for_piece < download->max_blocks_per_piece_count);
   PG_ASSERT(block_for_piece * BLOCK_SIZE < download->piece_length);
 
   if (piece + 1 != download->pieces_count) { // General case.

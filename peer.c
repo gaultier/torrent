@@ -938,6 +938,8 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
     peer_close_io_handles(peer);
     return;
   }
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: sending handshake",
+         PG_L("address", peer->address), PG_L("req", (u64)req_write));
 
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
                                peer_on_tcp_read);

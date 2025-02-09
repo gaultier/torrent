@@ -795,18 +795,17 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   }
 }
 
-[[nodiscard]] static PgError peer_request_block(Peer *peer, u32 block) {
-  PG_ASSERT(block < peer->download->blocks_count);
-  u32 piece = download_get_piece_for_block(peer->download, block);
+[[nodiscard]] static PgError peer_request_block(Peer *peer,
+                                                u32 block_for_download) {
+  PG_ASSERT(block_for_download < peer->download->blocks_count);
+  u32 piece = download_get_piece_for_block(peer->download, block_for_download);
   PG_ASSERT(piece < peer->download->pieces_count);
 
-  /* PG_ASSERT(true == */
-  /*           pg_bitfield_get(pd->blocks_bitfield_downloading, block.res)); */
-  /* PG_ASSERT(blocks_downloading_before + 1 == */
-  /*           pg_bitfield_count(pd->blocks_bitfield_downloading)); */
+  u32 block_for_piece = download_convert_block_for_download_to_block_for_piece(
+      peer->download, piece, block_for_download);
 
-  u32 block_length =
-      download_compute_block_length(block, peer->download->piece_length);
+  u32 block_length = download_compute_block_length(
+      block_for_piece, peer->download->piece_length);
   PG_ASSERT(block_length <= BLOCK_SIZE);
   PG_ASSERT(block_length > 0);
 
@@ -815,7 +814,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
       .request =
           {
               .index = piece,
-              .begin = block * BLOCK_SIZE,
+              .begin = block_for_download * BLOCK_SIZE,
               .length = block_length,
           },
   };
@@ -823,7 +822,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
             peer->download->piece_length);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
-         PG_L("address", peer->address), PG_L("block", block),
+         PG_L("address", peer->address), PG_L("block", block_for_download),
          PG_L("piece", piece), PG_L("begin", msg.request.begin),
          PG_L("block_length", block_length),
          PG_L("blocks_bitfield_have", peer->download->blocks_have));

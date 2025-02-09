@@ -551,16 +551,15 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     peer->recv = recv_tmp;
   }
 
-  u8 kind = PEER_MSG_KIND_KEEP_ALIVE;
-
-  if (0 == length_announced) {
-    goto end;
+  if (0 == length_announced) { // keep-alive?
+    res.res.kind = PEER_MSG_KIND_KEEP_ALIVE;
+  } else {
+    PG_ASSERT(pg_ring_read_u8(&peer->recv, &res.res.kind));
   }
 
-  PG_ASSERT(pg_ring_read_u8(&peer->recv, &kind));
-
-  switch (kind) {
-    // No associated data.
+  switch (res.res.kind) {
+  // No associated data.
+  case PEER_MSG_KIND_KEEP_ALIVE:
   case PEER_MSG_KIND_CHOKE:
   case PEER_MSG_KIND_UNCHOKE:
   case PEER_MSG_KIND_INTERESTED:
@@ -634,8 +633,9 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     break;
   }
   case PEER_MSG_KIND_PIECE: {
-    if (length_announced < sizeof(kind) + 2 * sizeof(u32) ||
-        length_announced > sizeof(kind) + 2 * sizeof(u32) + BLOCK_SIZE) {
+    if (length_announced < sizeof(res.res.kind) + 2 * sizeof(u32) ||
+        length_announced >
+            sizeof(res.res.kind) + 2 * sizeof(u32) + BLOCK_SIZE) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -645,8 +645,8 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     piece = ntohl(piece);
     begin = ntohl(begin);
 
-    u32 data_len =
-        length_announced - (sizeof(kind) + sizeof(piece) + sizeof(begin));
+    u32 data_len = length_announced -
+                   (sizeof(res.res.kind) + sizeof(piece) + sizeof(begin));
     PG_ASSERT(data_len <= BLOCK_SIZE);
     // TODO
     // res.err = peer_receive_block(peer, piece, begin, data_len);
@@ -672,17 +672,16 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   default:
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: message unknown kind",
            PG_L("address", peer->address),
-           PG_L("kind", peer_message_kind_to_string(kind)));
+           PG_L("kind", peer_message_kind_to_string(res.res.kind)));
     res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
-end:
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
          PG_L("address", peer->address),
          PG_L("length_announced", length_announced), PG_L("err", res.err),
          PG_L("err_s", pg_cstr_to_string(strerror((i32)res.err))),
-         PG_L("kind", peer_message_kind_to_string(kind)),
+         PG_L("kind", peer_message_kind_to_string(res.res.kind)),
          PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
          PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
 

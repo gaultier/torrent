@@ -200,17 +200,19 @@ download_file_on_chunk(PgString chunk, void *ctx) {
                      PG_SHA1_DIGEST_LENGTH * (d->piece_i + 1));
   bool eq = download_verify_piece_hash(chunk, sha_expected);
 
-  pg_log(d->download->logger, PG_LOG_LEVEL_DEBUG, "chunk",
-         PG_L("len", chunk.len), PG_L("piece", d->piece_i),
-         PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq));
-
   pg_bitfield_set(d->download->pieces_have, d->piece_i, eq);
-  d->download->pieces_have_count += 1;
+  d->download->pieces_have_count += eq;
   PG_ASSERT(d->download->pieces_have_count <= d->download->pieces_count);
 
-  d->download->blocks_have_count += download_compute_blocks_count_for_piece(
-      d->download, (PieceIndex){d->piece_i});
+  d->download->blocks_have_count +=
+      eq * download_compute_blocks_count_for_piece(d->download,
+                                                   (PieceIndex){d->piece_i});
   PG_ASSERT(d->download->blocks_have_count <= d->download->blocks_count);
+
+  pg_log(d->download->logger, PG_LOG_LEVEL_DEBUG, "chunk",
+         PG_L("len", chunk.len), PG_L("piece", d->piece_i),
+         PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq),
+         PG_L("pieces_have_count", d->download->pieces_have_count));
 
   d->piece_i += 1;
 

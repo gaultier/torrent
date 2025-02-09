@@ -5,7 +5,6 @@
 
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
-// TODO: Requesting pieces.
 // TODO: Serve piece data.
 // TODO: Retry on failure (with exp backoff?).
 
@@ -90,9 +89,9 @@ typedef struct {
   Download *download;
   PeerState state;
 
-  PieceDownloadDyn downloading_pieces;
-  u64 concurrent_downloads_max;
-  u64 concurrent_blocks_download_max;
+  /* PieceDownloadDyn downloading_pieces; */
+  /* u64 concurrent_downloads_max; */
+  /* u64 concurrent_blocks_download_max; */
   PgString piece_hashes;
 
   // TODO: Consider making libuv structs a pointer to reduce the size of the
@@ -101,7 +100,7 @@ typedef struct {
   uv_connect_t uv_req_connect;
 
   PgRing recv;
-  PgFile file; // TODO: Support multiple files.
+  /* PgFile file; // TODO: Support multiple files. */
 } Peer;
 
 PG_DYN(Peer) PeerDyn;
@@ -118,21 +117,7 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   buf->len = suggested_size;
 }
 
-#if 0
-[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
-                                                      PieceDownload *pd);
-#endif
-
-[[maybe_unused]] [[nodiscard]] static PieceDownload *
-peer_find_piece_download(Peer *peer, u32 piece) {
-  for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
-    PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
-    if (piece == pd->piece) {
-      return pd;
-    }
-  }
-  return nullptr;
-}
+[[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer);
 
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
@@ -164,8 +149,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 
 [[maybe_unused]] [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, PgString piece_hashes, PgFile file,
-          PgAllocator *allocator) {
+          Download *download, PgString piece_hashes, PgAllocator *allocator) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
@@ -175,7 +159,6 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   peer.logger = logger;
   peer.download = download;
   peer.piece_hashes = piece_hashes;
-  peer.file = file;
   peer.allocator = allocator;
   peer.remote_choked = true;
   peer.remote_interested = false;
@@ -282,43 +265,6 @@ static void peer_close_io_handles(Peer *peer) {
   return pg_file_write_data_at_offset_from_start(file, file_offset, data);
 }
 
-static void piece_download_reuse_for_piece(PieceDownload *pd, u32 piece) {
-  pd->piece = piece;
-  memset(pd->blocks_bitfield_downloading.data, 0,
-         pd->blocks_bitfield_downloading.len);
-  memset(pd->blocks_bitfield_have.data, 0, pd->blocks_bitfield_have.len);
-}
-
-[[nodiscard]] static PgError
-peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
-  u64 blocks_downloading_count =
-      pg_bitfield_count(pd->blocks_bitfield_downloading);
-  PG_ASSERT(blocks_downloading_count <= peer->concurrent_blocks_download_max);
-
-  if (pg_bitfield_count(pd->blocks_bitfield_downloading) ==
-      peer->concurrent_blocks_download_max) {
-    return 0;
-  }
-
-  u64 blocks_to_queue_count =
-      peer->concurrent_blocks_download_max - blocks_downloading_count;
-  PG_ASSERT(blocks_to_queue_count <= peer->concurrent_blocks_download_max);
-
-  for (u64 j = 0; j < blocks_to_queue_count; j++) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing block download",
-           PG_L("address", peer->address), PG_L("piece", pd->piece),
-           PG_L("piece_download_concurrent_blocks_download_count",
-                blocks_downloading_count));
-    PgError err = peer_request_block_maybe(peer, pd);
-    if (err) {
-      return err;
-    }
-  }
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
-            peer->concurrent_blocks_download_max);
-
-  return 0;
-}
 
 [[nodiscard]] static PgError peer_complete_piece_download(Peer *peer,
                                                           PieceDownload *pd) {
@@ -476,67 +422,68 @@ peer_request_blocks_for_piece_download(Peer *peer, PieceDownload *pd) {
 }
 #endif
 
-#if 0
 [[maybe_unused]] [[nodiscard]] static PgString
-peer_encode_message(PeerMessage msg, PgArena *arena) {
+peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
   Pgu8Dyn sb = {0};
   u64 cap = 16;
   if (msg.kind == PEER_MSG_KIND_BITFIELD) {
     cap += msg.bitfield.len;
   } else if (msg.kind == PEER_MSG_KIND_PIECE) {
+    // OPTIMIZATION: download_compute_block_length.
     cap += BLOCK_SIZE;
   }
-  PG_DYN_ENSURE_CAP(&sb, cap, arena);
+  PG_DYN_ENSURE_CAP(&sb, cap, allocator);
 
   switch (msg.kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
-    pg_string_builder_append_u32(&sb, 0, arena);
+    pg_string_builder_append_u32_within_capacity(&sb, 0);
     break;
 
   case PEER_MSG_KIND_CHOKE:
   case PEER_MSG_KIND_UNCHOKE:
   case PEER_MSG_KIND_INTERESTED:
   case PEER_MSG_KIND_UNINTERESTED:
-    pg_string_builder_append_u32(&sb, 1, arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
+    pg_string_builder_append_u32_within_capacity(&sb, 1);
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
     break;
 
   case PEER_MSG_KIND_HAVE:
-    pg_string_builder_append_u32(&sb, 1 + sizeof(u32), arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.have, arena);
+    pg_string_builder_append_u32_within_capacity(&sb, 1 + sizeof(u32));
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
+    pg_string_builder_append_u32_within_capacity(&sb, msg.have);
     break;
 
   case PEER_MSG_KIND_BITFIELD:
-    pg_string_builder_append_u32(&sb, 1 + (u32)msg.bitfield.len, arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
-    PG_DYN_APPEND_SLICE(&sb, msg.bitfield, arena);
+    pg_string_builder_append_u32_within_capacity(&sb,
+                                                 1 + (u32)msg.bitfield.len);
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
+    PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, msg.bitfield);
     break;
 
   case PEER_MSG_KIND_REQUEST:
-    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.request.index, arena);
-    pg_string_builder_append_u32(&sb, msg.request.begin, arena);
-    pg_string_builder_append_u32(&sb, msg.request.length, arena);
+    pg_string_builder_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
+    pg_string_builder_append_u32_within_capacity(&sb, msg.request.index);
+    pg_string_builder_append_u32_within_capacity(&sb, msg.request.begin);
+    pg_string_builder_append_u32_within_capacity(&sb, msg.request.length);
     break;
 
   case PEER_MSG_KIND_PIECE:
-    pg_string_builder_append_u32(
-        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len, arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.piece.index, arena);
-    pg_string_builder_append_u32(&sb, msg.piece.begin, arena);
-    PG_DYN_APPEND_SLICE(&sb, msg.piece.data, arena);
+    pg_string_builder_append_u32_within_capacity(
+        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len);
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
+    pg_string_builder_append_u32_within_capacity(&sb, msg.piece.index);
+    pg_string_builder_append_u32_within_capacity(&sb, msg.piece.begin);
+    PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, msg.piece.data);
     break;
 
   case PEER_MSG_KIND_CANCEL:
-    pg_string_builder_append_u32(&sb, 1 + 3 * sizeof(u32), arena);
-    *PG_DYN_PUSH(&sb, arena) = msg.kind;
-    pg_string_builder_append_u32(&sb, msg.cancel.index, arena);
-    pg_string_builder_append_u32(&sb, msg.cancel.begin, arena);
-    pg_string_builder_append_u32(&sb, msg.cancel.length, arena);
+    pg_string_builder_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
+    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.index);
+    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.begin);
+    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.length);
     break;
   default:
     PG_ASSERT(0);
@@ -547,7 +494,6 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   PgString s = PG_DYN_SLICE(PgString, sb);
   return s;
 }
-#endif
 
 [[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
   PeerMessageReadResult res = {0};
@@ -601,8 +547,7 @@ peer_encode_message(PeerMessage msg, PgArena *arena) {
   }
   case PEER_MSG_KIND_UNCHOKE: {
     peer->remote_choked = false;
-    // TODO
-    // res.err = peer_request_remote_data_maybe(peer);
+    res.err = peer_request_remote_data_maybe(peer);
     break;
   }
   case PEER_MSG_KIND_INTERESTED: {
@@ -850,40 +795,27 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   }
 }
 
-#if 0
-[[nodiscard]] static PgError peer_request_block_maybe(Peer *peer,
-                                                      PieceDownload *pd) {
-  PG_ASSERT(pg_bitfield_count(pd->blocks_bitfield_downloading) <=
-            peer->concurrent_blocks_download_max);
+[[nodiscard]] static PgError peer_request_block(Peer *peer, u32 block) {
+  PG_ASSERT(block < peer->download->blocks_count);
+  u32 piece = download_get_piece_for_block(block);
+  PG_ASSERT(piece < peer->download->pieces_count);
 
-  PgArena arena_tmp = peer->arena_tmp;
-  u64 blocks_downloading_before =
-      pg_bitfield_count(pd->blocks_bitfield_downloading);
-  Pgu32Ok block = piece_download_pick_next_block(
-      pd, peer->download, peer->concurrent_blocks_download_max);
-  PG_ASSERT(blocks_downloading_before <= peer->concurrent_blocks_download_max);
-
-  if (!block.ok) {
-    pg_log(
-        peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no block left to pick",
-        PG_L("address", peer->address), PG_L("piece", pd->piece),
-        PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
-        PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
-    return 0;
-  }
-  PG_ASSERT(true ==
-            pg_bitfield_get(pd->blocks_bitfield_downloading, block.res));
-  PG_ASSERT(blocks_downloading_before + 1 ==
-            pg_bitfield_count(pd->blocks_bitfield_downloading));
+  /* PG_ASSERT(true == */
+  /*           pg_bitfield_get(pd->blocks_bitfield_downloading, block.res)); */
+  /* PG_ASSERT(blocks_downloading_before + 1 == */
+  /*           pg_bitfield_count(pd->blocks_bitfield_downloading)); */
 
   u32 block_length =
-      download_compute_block_length(block.res, peer->download->piece_length);
+      download_compute_block_length(block, peer->download->piece_length);
+  PG_ASSERT(block_length <= BLOCK_SIZE);
+  PG_ASSERT(block_length > 0);
+
   PeerMessage msg = {
       .kind = PEER_MSG_KIND_REQUEST,
       .request =
           {
-              .index = pd->piece,
-              .begin = block.res * BLOCK_SIZE,
+              .index = piece,
+              .begin = block * BLOCK_SIZE,
               .length = block_length,
           },
   };
@@ -891,31 +823,37 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
             peer->download->piece_length);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
-         PG_L("address", peer->address), PG_L("block", block.res),
-         PG_L("piece", pd->piece), PG_L("begin", msg.request.begin),
+         PG_L("address", peer->address), PG_L("block", block),
+         PG_L("piece", piece), PG_L("begin", msg.request.begin),
          PG_L("block_length", block_length),
-         PG_L("blocks_bitfield_have", pd->blocks_bitfield_have),
-         PG_L("blocks_bitfield_downloading", pd->blocks_bitfield_downloading));
+         PG_L("blocks_bitfield_have", peer->download->blocks_have));
 
-  PgString msg_encoded = peer_encode_message(msg, &arena_tmp);
-  PgError err = pg_event_loop_write(peer->loop, peer->os_handle_socket,
-                                    msg_encoded, peer_on_write);
-  if (err) {
-    return err;
+  PgString msg_encoded = peer_encode_message(msg, peer->allocator);
+  uv_buf_t *buf =
+      pg_alloc(peer->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
+  *buf = string_to_uv_buf(msg_encoded);
+
+  uv_write_t *req_write =
+      pg_alloc(peer->allocator, sizeof(uv_write_t), _Alignof(uv_write_t), 1);
+  req_write->data = peer;
+  int err_write = uv_write(req_write, (uv_stream_t *)&peer->uv_tcp, buf, 1,
+                           peer_on_tcp_write);
+  if (err_write < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+    peer_close_io_handles(peer);
+    return (PgError)err_write;
   }
 
   return 0;
 }
 
 [[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer) {
-  PG_ASSERT(0 != peer->concurrent_pieces_download_max);
-  PG_ASSERT(0 != peer->concurrent_blocks_download_max);
-
-  PG_ASSERT(peer->downloading_pieces.len <=
-            peer->concurrent_pieces_download_max);
+  PG_ASSERT(peer->download->concurrent_downloads_count <=
+            peer->download->concurrent_downloads_max);
 
   // TODO: Should we send 'interested' first?
-
   if (peer->remote_choked) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: not requesting remote data since remote is choked",
@@ -924,81 +862,33 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
     return 0;
   }
 
-  if (peer->downloading_pieces.len < peer->concurrent_pieces_download_max) {
-    u64 pieces_to_queue_count =
-        peer->concurrent_pieces_download_max - peer->downloading_pieces.len;
-    PG_ASSERT(pieces_to_queue_count > 0);
-    PG_ASSERT(pieces_to_queue_count <= peer->concurrent_pieces_download_max);
+  if (peer->download->concurrent_downloads_count ==
+      peer->download->concurrent_downloads_max) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: not requesting remote data since max concurrent downloads is "
+           "reached",
+           PG_L("address", peer->address),
+           PG_L("concurrent_downloads",
+                peer->download->concurrent_downloads_count));
 
-    for (u64 i = 0; i < pieces_to_queue_count; i++) {
-      Pgu32Ok piece = download_pick_next_piece(
-          peer->download->rng, peer->download->pieces_have,
-          peer->remote_bitfield, peer->download->pieces_count);
-      if (!piece.ok) {
-        pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no piece left to pick",
-               PG_L("address", peer->address));
-
-        break;
-      }
-
-      PG_ASSERT(peer->downloading_pieces.len <
-                peer->concurrent_pieces_download_max);
-      *PG_DYN_PUSH(&peer->downloading_pieces, &peer->arena) =
-          piece_download_make(piece.res, peer->download->piece_length,
-                              peer->download->max_blocks_per_piece_count,
-                              &peer->arena);
-      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: queuing piece download",
-             PG_L("address", peer->address), PG_L("piece", piece.res),
-             PG_L("downloading_pieces_count", peer->downloading_pieces.len));
-
-      PG_ASSERT(peer->downloading_pieces.len <=
-                peer->concurrent_pieces_download_max);
-    }
+    return 0;
   }
 
-  for (u64 i = 0; i < peer->downloading_pieces.len; i++) {
-    PieceDownload *pd = PG_SLICE_AT_PTR(&peer->downloading_pieces, i);
-    PgError err = peer_request_blocks_for_piece_download(peer, pd);
-    if (err) {
-      return err;
-    }
+  Pgu32Ok res_block = download_pick_next_block(peer->download);
+  if (!res_block.ok) {
+    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+           "peer: not requesting remote data since all blocks are already "
+           "downloaded",
+           PG_L("address", peer->address));
+    return 0;
   }
-  PG_ASSERT(peer->downloading_pieces.len <=
-            peer->concurrent_pieces_download_max);
 
-  return 0;
+  peer->download->concurrent_downloads_count += 1;
+  PG_ASSERT(peer->download->concurrent_downloads_count <=
+            peer->download->concurrent_downloads_max);
+
+  return peer_request_block(peer, res_block.res);
 }
-#endif
-
-#if 0
-static void peer_on_tcp_write(PgEventLoop *loop, PgOsHandle os_handle,
-                              void *ctx, PgError err) {
-  PG_ASSERT(nullptr != ctx);
-
-  Peer *peer = ctx;
-
-  if (err) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address), PG_L("err", err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err))));
-    peer_release(peer);
-    return;
-  }
-
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: wrote",
-         PG_L("address", peer->address));
-
-  PgError err_read =
-      pg_event_loop_read_start(loop, os_handle, peer_on_tcp_read);
-  if (err_read) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp start read",
-           PG_L("address", peer->address), PG_L("err", err_read),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_read))));
-    peer_release(peer);
-    return;
-  }
-}
-#endif
 
 [[maybe_unused]] [[nodiscard]] static PgString
 peer_make_handshake(PgString info_hash, PgAllocator *allocator) {

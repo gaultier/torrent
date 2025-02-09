@@ -345,7 +345,7 @@ tracker_read_http_response_body(Tracker *tracker) {
             pg_alloc(tracker->allocator, sizeof(Peer), _Alignof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
                           tracker->download, tracker->piece_hashes,
-                          tracker->download->file, tracker->allocator);
+                          tracker->allocator);
 
         PgError err_peer = peer_start(peer);
         if (err_peer) {

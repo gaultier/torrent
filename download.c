@@ -7,9 +7,11 @@ typedef struct {
   PgString pieces_have;
   PgString blocks_have;
   u32 pieces_count;
+  u32 blocks_count;
   u32 max_blocks_per_piece_count;
   u64 piece_length;
   u64 total_file_size;
+  // TODO: Multiple files.
   PgFile file;
   PgLogger *logger;
   PgRng *rng;
@@ -23,6 +25,11 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
   u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
   return (u32)res;
+}
+
+[[maybe_unused]] [[nodiscard]] static u32
+download_get_piece_for_block(u32 block) {
+  return block / BLOCK_SIZE;
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
@@ -182,7 +189,6 @@ download_pick_next_block(Download *download) {
   // Currently we download random blocks without attention to which piece and
   // peer they come from.
 
-  u32 blocks_count = (u32)pg_div_ceil(download->total_file_size, BLOCK_SIZE);
-  return pg_bitfield_get_first_zero_rand(download->blocks_have, blocks_count,
-                                         download->rng);
+  return pg_bitfield_get_first_zero_rand(download->blocks_have,
+                                         download->blocks_count, download->rng);
 }

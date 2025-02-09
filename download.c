@@ -34,7 +34,7 @@ typedef struct {
   u64 concurrent_downloads_max;
 } Download;
 
-[[nodiscard]] static u32
+[[maybe_unused]] [[nodiscard]] static u32
 download_compute_max_blocks_per_piece_count(u64 piece_length) {
   u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
@@ -132,7 +132,6 @@ download_compute_blocks_count(u64 total_file_size) {
 
 [[maybe_unused]] [[nodiscard]] static u32 download_compute_block_length(
     Download *download, BlockForPieceIndex block_for_piece, PieceIndex piece) {
-  fprintf(stderr, "[D001] %u %u\n", block_for_piece.val, piece.val);
   PG_ASSERT(piece.val < download->pieces_count);
   PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
   PG_ASSERT(block_for_piece.val * BLOCK_SIZE < download->piece_length);

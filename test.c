@@ -315,10 +315,11 @@ static void test_download_compute_blocks_count_for_piece() {
   download.blocks_count = 31688;
 
   PG_ASSERT(download.max_blocks_per_piece_count ==
-            download_compute_blocks_count_for_piece(&download,
-                                                    download.pieces_count - 2));
+            download_compute_blocks_count_for_piece(
+                &download, (PieceIndex){download.pieces_count - 2}));
   PG_ASSERT(8 == download_compute_blocks_count_for_piece(
-                     &download, download.pieces_count - 1 /* Last piece */));
+                     &download,
+                     (PieceIndex){download.pieces_count - 1} /* Last piece */));
 }
 
 static void test_download_compute_block_length() {
@@ -329,12 +330,18 @@ static void test_download_compute_block_length() {
   download.total_file_size = 519174144;
   download.blocks_count = 31688;
 
-  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(&download, 0, 1));
-  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(&download, 1, 1));
+  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(&download,
+                                                        (BlockForPieceIndex){0},
+                                                        (PieceIndex){1}));
+  PG_ASSERT(BLOCK_SIZE == download_compute_block_length(&download,
+                                                        (BlockForPieceIndex){1},
+                                                        (PieceIndex){1}));
   // Last block - last piece has 8 blocks.
-  PG_ASSERT(14336 == download_compute_block_length(&download,
-                                                   7 /* Last block */,
-                                                   download.pieces_count - 1));
+  PG_ASSERT(14336 ==
+            download_compute_block_length(
+                &download,
+                (BlockForPieceIndex){7} /* Last block for the last piece */,
+                (PieceIndex){download.pieces_count - 1}));
 }
 
 #if 0

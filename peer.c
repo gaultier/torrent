@@ -867,8 +867,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   u32 block_for_piece = download_convert_block_for_download_to_block_for_piece(
       peer->download, piece, block_for_download);
 
-  u32 block_length = download_compute_block_length(
-      block_for_piece, peer->download->piece_length);
+  u32 block_length =
+      download_compute_block_length(peer->download, piece, block_for_piece);
   PG_ASSERT(block_length <= BLOCK_SIZE);
   PG_ASSERT(block_length > 0);
 

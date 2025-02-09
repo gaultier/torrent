@@ -157,6 +157,25 @@ int main(int argc, char *argv[]) {
       .concurrent_downloads_max = concurrent_download_max,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
+  pg_log(
+      &logger, PG_LOG_LEVEL_DEBUG, "download",
+      PG_L("path", res_decode_metainfo.res.name),
+      PG_L("pieces_count", download.pieces_count),
+      PG_L("blocks_count", download.blocks_count),
+      PG_L("max_blocks_per_piece_count", download.max_blocks_per_piece_count),
+      PG_L("piece_length", download.piece_length),
+      PG_L("total_file_size", download.total_file_size),
+      PG_L("last_piece_blocks_count",
+           download_compute_blocks_count_for_piece(&download,
+                                                   download.pieces_count - 1)),
+      PG_L("last_piece_size",
+           download_compute_piece_length(&download, download.pieces_count - 1)),
+      PG_L("last_block_size",
+           download_compute_piece_length(&download, download.pieces_count - 1) -
+               (download_compute_blocks_count_for_piece(
+                    &download, download.pieces_count - 1) -
+                1) *
+                   BLOCK_SIZE));
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
          PG_L("path", res_decode_metainfo.res.name),

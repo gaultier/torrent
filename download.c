@@ -111,14 +111,18 @@ download_compute_blocks_count(u64 total_file_size) {
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
-download_compute_block_length(u32 block_for_piece, u64 piece_length) {
-  PG_ASSERT(block_for_piece * BLOCK_SIZE < piece_length);
-  u32 res =
-      (u32)(piece_length - (u64)block_for_piece * BLOCK_SIZE) % BLOCK_SIZE;
-  if (0 == res) {
-    res = BLOCK_SIZE;
+download_compute_block_length(Download *download, u32 block_for_piece,
+                              u32 piece) {
+  PG_ASSERT(piece < download->pieces_count);
+  PG_ASSERT(block_for_piece * BLOCK_SIZE < download->piece_length);
+
+  if (piece + 1 != download->pieces_count) { // General case.
+    return BLOCK_SIZE;
   }
 
+  // Special case for the last piece.
+  u32 res = (u32)(download_compute_piece_length(download, piece) -
+                  (u64)block_for_piece * BLOCK_SIZE);
   PG_ASSERT(res > 0);
   PG_ASSERT(res <= BLOCK_SIZE);
 

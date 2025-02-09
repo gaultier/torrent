@@ -513,25 +513,25 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
 }
 
 static void tracker_on_tcp_write(uv_write_t *req, int status) {
-  PG_ASSERT(req->handle);
-  PG_ASSERT(req->handle->data);
   PG_ASSERT(req->data);
-  Tracker *tracker = req->handle->data;
+  WriteRequest *wq = req->data;
+  PG_ASSERT(wq->data);
+  Tracker *tracker = wq->data;
 
-  uv_buf_t *buf = req->data;
-  pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
-  pg_free(tracker->allocator, buf, sizeof(*buf), 1);
+  u64 len = wq->buf.len;
+  pg_free(tracker->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
+  pg_free(tracker->allocator, wq, sizeof(*wq), 1);
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
-           PG_L("port", tracker->port),
+           PG_L("port", tracker->port), PG_L("len", len),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
     tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp write ok",
-         PG_L("port", tracker->port));
+         PG_L("len", len), PG_L("port", tracker->port));
 
   int err_read = uv_read_start((uv_stream_t *)&tracker->uv_tcp, pg_uv_alloc,
                                tracker_on_tcp_read);
@@ -562,18 +562,9 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
   PgHttpRequest http_req =
       tracker_make_http_request(tracker->metadata, &tracker->arena);
   PgString http_req_s = pg_http_request_to_string(http_req, tracker->allocator);
+  int err_write = do_write((uv_stream_t *)&tracker->uv_tcp, http_req_s,
+                           tracker->allocator, tracker_on_tcp_write, tracker);
 
-  // TODO: Consider if we can send the http request as multiple buffers to spare
-  // an allocation?
-  uv_buf_t *buf =
-      pg_alloc(tracker->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
-  *buf = string_to_uv_buf(http_req_s);
-
-  tracker->uv_req_write.data = buf;
-
-  int err_write =
-      uv_write(&tracker->uv_req_write, (uv_stream_t *)&tracker->uv_tcp, buf, 1,
-               tracker_on_tcp_write);
   if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
            PG_L("port", tracker->port),

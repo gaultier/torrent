@@ -350,7 +350,9 @@ static void peer_on_file_write(uv_fs_t *req) {
   pg_free(peer->allocator, fs_req, sizeof(FsWriteRequest), 1);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
-         PG_L("address", peer->address), PG_L("len", len));
+         PG_L("address", peer->address), PG_L("len", len),
+         PG_L("blocks_have_count", peer->download->blocks_have_count),
+         PG_L("pieces_have_count", peer->download->pieces_have_count));
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer,

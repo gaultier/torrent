@@ -205,7 +205,7 @@ download_file_on_chunk(PgString chunk, void *ctx) {
          PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq));
 
   pg_bitfield_set(d->download->pieces_have, d->piece_i, eq);
-  d->download->pieces_count += 1;
+  d->download->pieces_have_count += 1;
   PG_ASSERT(d->download->pieces_have_count <= d->download->pieces_count);
 
   d->download->blocks_have_count += download_compute_blocks_count_for_piece(

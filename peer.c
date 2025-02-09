@@ -831,6 +831,32 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
          PG_L("address", peer->address), PG_L("len", len));
 }
 
+[[nodiscard]] static PgError peer_ensure_local_interested(Peer *peer) {
+  if (peer->local_interested) {
+    return 0;
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: announcing interest",
+         PG_L("address", peer->address));
+
+  PeerMessage msg = {.kind = PEER_MSG_KIND_INTERESTED};
+  PgString msg_encoded = peer_encode_message(msg, peer->allocator);
+  int err_write = do_write((uv_stream_t *)&peer->uv_tcp, msg_encoded,
+                           peer->allocator, peer_on_tcp_write, peer);
+  if (err_write < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+    peer_close_io_handles(peer);
+    return (PgError)err_write;
+  }
+
+  // TODO: Should this be done in the callback `peer_on_tcp_write`?
+  peer->local_interested = true;
+
+  return 0;
+}
+
 [[nodiscard]] static PgError peer_request_block(Peer *peer,
                                                 u32 block_for_download) {
   PG_ASSERT(block_for_download < peer->download->blocks_count);
@@ -845,6 +871,11 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
       block_for_piece, peer->download->piece_length);
   PG_ASSERT(block_length <= BLOCK_SIZE);
   PG_ASSERT(block_length > 0);
+
+  PgError err_interested = peer_ensure_local_interested(peer);
+  if (err_interested) {
+    return err_interested;
+  }
 
   PeerMessage msg = {
       .kind = PEER_MSG_KIND_REQUEST,

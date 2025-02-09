@@ -782,8 +782,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(wq->data);
   Peer *peer = wq->data;
 
-  uv_buf_t buf = req->bufs[0];
-  u64 len = buf.len;
+  u64 len = wq->buf.len;
   pg_free(peer->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
   pg_free(peer->allocator, wq, sizeof(*wq), 1);
 

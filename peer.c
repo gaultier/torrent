@@ -571,10 +571,9 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 have = 0;
-    PG_ASSERT(pg_ring_read_u32(&peer->recv, &have));
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &res.res.have));
 
-    if (have > peer->download->pieces_count) {
+    if (res.res.have > peer->download->pieces_count) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -626,9 +625,9 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
-    index = ntohl(index);
-    begin = ntohl(begin);
-    data_length = ntohl(data_length);
+    res.res.request.index = ntohl(index);
+    res.res.request.begin = ntohl(begin);
+    res.res.request.length = ntohl(data_length);
 
     break;
   }
@@ -639,14 +638,14 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
-    u32 piece = 0, begin = 0;
-    PG_ASSERT(pg_ring_read_u32(&peer->recv, &piece));
+    u32 index = 0, begin = 0;
+    PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
-    piece = ntohl(piece);
-    begin = ntohl(begin);
+    res.res.piece.index = ntohl(index);
+    res.res.piece.begin = ntohl(begin);
 
     u32 data_len = length_announced -
-                   (sizeof(res.res.kind) + sizeof(piece) + sizeof(begin));
+                   (sizeof(res.res.kind) + sizeof(index) + sizeof(begin));
     PG_ASSERT(data_len <= BLOCK_SIZE);
     // TODO
     // res.err = peer_receive_block(peer, piece, begin, data_len);
@@ -663,9 +662,9 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &index));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &begin));
     PG_ASSERT(pg_ring_read_u32(&peer->recv, &data_length));
-    index = ntohl(index);
-    begin = ntohl(begin);
-    data_length = ntohl(data_length);
+    res.res.cancel.index = ntohl(index);
+    res.res.cancel.begin = ntohl(begin);
+    res.res.cancel.length = ntohl(data_length);
 
     break;
   }

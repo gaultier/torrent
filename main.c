@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
   }
 
   // TODO: Tweak.
-  u64 concurrent_download_max = 1;
+  u64 concurrent_download_max = 10;
   Download download = {
       .pieces_have = res_bitfield_pieces.res,
       .blocks_have = pg_string_make(

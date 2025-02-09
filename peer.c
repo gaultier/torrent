@@ -378,6 +378,7 @@ static void peer_on_file_write(uv_fs_t *req) {
            PG_L("address", peer->address), PG_L("piece", piece.val),
            PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
            PG_L("block_for_download", block_for_download.val));
+    return 0;
   }
 
   // Actual data copy here, the rest is just metadata bookkeeping.
@@ -396,7 +397,7 @@ static void peer_on_file_write(uv_fs_t *req) {
                              &req->buf, 1, (i64)offset, peer_on_file_write);
   if (err_file) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: failed to write block to file",
+           "peer: failed to write block to disk",
            PG_L("address", peer->address), PG_L("piece", piece.val),
            PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
            PG_L("err", err_file),
@@ -405,6 +406,9 @@ static void peer_on_file_write(uv_fs_t *req) {
     peer_close_io_handles(peer);
     return (PgError)err_file;
   }
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing block to disk",
+         PG_L("address", peer->address), PG_L("piece", piece.val),
+         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
   pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);

@@ -23,3 +23,9 @@ main.bin: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie li
 ```sh
 $ ./test.sh
 ```
+
+## Run with ASAN
+
+```sh
+$ ASAN_OPTIONS="abort_on_error=1:halt_on_error=1:symbolize=0:detect_stack_use_after_return=1" ./main.bin /path/to/file.torrent
+```

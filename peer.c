@@ -764,35 +764,22 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   Peer *peer = req->handle->data;
 
   uv_buf_t *buf = req->data;
+  u64 len = buf->len;
   pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
   pg_free(peer->allocator, buf, sizeof(*buf), 1);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address),
+           PG_L("address", peer->address), PG_L("len", len),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
     peer_close_io_handles(peer);
     return;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
-         PG_L("address", peer->address));
+         PG_L("address", peer->address), PG_L("len", len));
 
   pg_free(peer->allocator, req, sizeof(*req), 1);
-
-  if (!peer->recv.data.len) {
-    // TODO: Revisit when file I/O is async.
-    peer->recv = pg_ring_make(2 * PG_KiB + 2 * BLOCK_SIZE, peer->allocator);
-  }
-  int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
-                               peer_on_tcp_read);
-  if (err_read < 0) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp read",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_read))));
-    peer_close_io_handles(peer);
-    return;
-  }
 }
 
 [[nodiscard]] static PgError peer_request_block(Peer *peer,
@@ -932,6 +919,9 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
          PG_L("address", peer->address));
 
+  PG_ASSERT(0 == peer->recv.data.len);
+  peer->recv = pg_ring_make(2 * PG_KiB + 2 * BLOCK_SIZE, peer->allocator);
+
   PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);
   uv_buf_t *buf =
       pg_alloc(peer->allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t), 1);
@@ -948,6 +938,16 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
            PG_L("address", peer->address),
            PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+    peer_close_io_handles(peer);
+    return;
+  }
+
+  int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
+                               peer_on_tcp_read);
+  if (err_read < 0) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp read",
+           PG_L("address", peer->address),
+           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_read))));
     peer_close_io_handles(peer);
     return;
   }

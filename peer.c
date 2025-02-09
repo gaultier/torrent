@@ -706,6 +706,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     peer->remote_interested = false;
     break;
   case PEER_MSG_KIND_HAVE:
+    pg_bitfield_set(peer->remote_bitfield, msg.have, true);
     return peer_request_remote_data_maybe(peer);
   case PEER_MSG_KIND_BITFIELD:
     return peer_request_remote_data_maybe(peer);

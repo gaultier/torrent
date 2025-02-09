@@ -836,6 +836,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   PG_ASSERT(block_for_download < peer->download->blocks_count);
   u32 piece = download_get_piece_for_block(peer->download, block_for_download);
   PG_ASSERT(piece < peer->download->pieces_count);
+  PG_ASSERT(pg_bitfield_get(peer->remote_bitfield, piece));
 
   u32 block_for_piece = download_convert_block_for_download_to_block_for_piece(
       peer->download, piece, block_for_download);

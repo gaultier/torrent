@@ -28,8 +28,8 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
-download_get_piece_for_block(u32 block) {
-  return block / BLOCK_SIZE;
+download_get_piece_for_block(Download *download, u32 block) {
+  return block / download->max_blocks_per_piece_count;
 }
 
 [[maybe_unused]] [[nodiscard]] static u32

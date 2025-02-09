@@ -797,7 +797,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
 
 [[nodiscard]] static PgError peer_request_block(Peer *peer, u32 block) {
   PG_ASSERT(block < peer->download->blocks_count);
-  u32 piece = download_get_piece_for_block(block);
+  u32 piece = download_get_piece_for_block(peer->download, block);
   PG_ASSERT(piece < peer->download->pieces_count);
 
   /* PG_ASSERT(true == */

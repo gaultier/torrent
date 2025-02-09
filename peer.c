@@ -884,11 +884,11 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
       .request =
           {
               .index = piece.val,
-              .begin = block_for_download.val * BLOCK_SIZE,
+              .begin = block_for_piece.val * BLOCK_SIZE,
               .length = block_length,
           },
   };
-  PG_ASSERT(msg.request.index + msg.request.length <=
+  PG_ASSERT(msg.request.begin + msg.request.length <=
             peer->download->piece_length);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",

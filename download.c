@@ -405,8 +405,9 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
     *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) = piece;
 
     // Start at block 0 for simplicity.
-    BlockForDownloadIndex block_for_download = {
-        (u32)(piece.val * download->piece_length)};
+    BlockForDownloadIndex block_for_download =
+        download_convert_block_for_piece_to_block_for_download(
+            download, piece, (BlockForPieceIndex){0});
     res.res = block_for_download;
     res.ok = true;
     return res;

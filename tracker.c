@@ -198,10 +198,10 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
 }
 
 [[maybe_unused]] [[nodiscard]] static PgHttpRequest
-tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
+tracker_make_http_request(TrackerMetadata *req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
-  res.url = req_tracker.announce;
+  res.url = req_tracker->announce;
 
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -212,37 +212,37 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
       .key = PG_S("info_hash"),
       .value =
           (PgString){
-              .data = req_tracker.info_hash,
-              .len = PG_STATIC_ARRAY_LEN(req_tracker.info_hash),
+              .data = req_tracker->info_hash,
+              .len = PG_STATIC_ARRAY_LEN(req_tracker->info_hash),
           },
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("peer_id"),
       .value =
           (PgString){
-              .data = req_tracker.peer_id,
-              .len = PG_STATIC_ARRAY_LEN(req_tracker.peer_id),
+              .data = req_tracker->peer_id,
+              .len = PG_STATIC_ARRAY_LEN(req_tracker->peer_id),
           },
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("port"),
-      .value = pg_u64_to_string(req_tracker.port, allocator),
+      .value = pg_u64_to_string(req_tracker->port, allocator),
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("uploaded"),
-      .value = pg_u64_to_string(req_tracker.uploaded, allocator),
+      .value = pg_u64_to_string(req_tracker->uploaded, allocator),
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("downloaded"),
-      .value = pg_u64_to_string(req_tracker.downloaded, allocator),
+      .value = pg_u64_to_string(req_tracker->downloaded, allocator),
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("left"),
-      .value = pg_u64_to_string(req_tracker.left, allocator),
+      .value = pg_u64_to_string(req_tracker->left, allocator),
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("event"),
-      .value = tracker_metadata_event_to_string(req_tracker.event),
+      .value = tracker_metadata_event_to_string(req_tracker->event),
   };
 
   return res;
@@ -566,7 +566,7 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
          PG_L("port", tracker->port));
 
   PgHttpRequest http_req =
-      tracker_make_http_request(tracker->metadata, &tracker->arena);
+      tracker_make_http_request(&tracker->metadata, &tracker->arena);
   PgString http_req_s = pg_http_request_to_string(http_req, tracker->allocator);
   int err_write = do_write((uv_stream_t *)&tracker->uv_tcp, http_req_s,
                            tracker->allocator, tracker_on_tcp_write, tracker);

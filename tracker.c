@@ -13,8 +13,8 @@ typedef enum {
 } TrackerMetadataEvent;
 
 typedef struct {
-  PgString info_hash;
-  PgString peer_id;
+  u8 info_hash[PG_SHA1_DIGEST_LENGTH];
+  u8 peer_id[20];
   u32 ip;
   u16 port;
   u64 downloaded, uploaded, left;
@@ -37,7 +37,8 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
 }
 
 [[maybe_unused]]
-static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
+static void tracker_compute_info_hash(Metainfo metainfo,
+                                      u8 hash[PG_SHA1_DIGEST_LENGTH],
                                       PgArena arena) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -76,8 +77,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
 
   u8 pg_sha1_hash[PG_SHA1_DIGEST_LENGTH] = {0};
   pg_sha1(encoded, pg_sha1_hash);
-  PG_ASSERT(sizeof(pg_sha1_hash) == hash.len);
-  memcpy(hash.data, pg_sha1_hash, hash.len);
+  memcpy(hash, pg_sha1_hash, PG_SHA1_DIGEST_LENGTH);
 }
 
 typedef struct {
@@ -210,11 +210,19 @@ tracker_make_http_request(TrackerMetadata req_tracker, PgArena *arena) {
 
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("info_hash"),
-      .value = req_tracker.info_hash,
+      .value =
+          (PgString){
+              .data = req_tracker.info_hash,
+              .len = PG_STATIC_ARRAY_LEN(req_tracker.info_hash),
+          },
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("peer_id"),
-      .value = req_tracker.peer_id,
+      .value =
+          (PgString){
+              .data = req_tracker.peer_id,
+              .len = PG_STATIC_ARRAY_LEN(req_tracker.peer_id),
+          },
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
       .key = PG_S("port"),
@@ -275,7 +283,6 @@ typedef struct {
 static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
                             TrackerMetadata metadata, Download *download,
                             PgString piece_hashes, PgAllocator *allocator) {
-  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == metadata.info_hash.len);
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Tracker tracker = {0};

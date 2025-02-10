@@ -62,7 +62,7 @@ typedef struct {
 typedef struct {
   PgAllocator *allocator;
   PgIpv4Address address;
-  PgString info_hash;
+  u8 info_hash[PG_SHA1_DIGEST_LENGTH];
   PgLogger *logger;
   PgString remote_bitfield;
   bool remote_choked, remote_interested;
@@ -129,14 +129,14 @@ peer_message_kind_to_string(PeerMessageKind kind) {
 }
 
 [[maybe_unused]] [[nodiscard]] static Peer
-peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
-          Download *download, PgString piece_hashes, PgAllocator *allocator) {
-  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
+peer_make(PgIpv4Address address, u8 info_hash[PG_SHA1_DIGEST_LENGTH],
+          PgLogger *logger, Download *download, PgString piece_hashes,
+          PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Peer peer = {0};
   peer.address = address;
-  peer.info_hash = info_hash;
+  memcpy(peer.info_hash, info_hash, PG_SHA1_DIGEST_LENGTH);
   peer.logger = logger;
   peer.download = download;
   peer.piece_hashes = piece_hashes;
@@ -216,7 +216,8 @@ static void peer_close_io_handles(Peer *peer) {
 
   PgString info_hash_received =
       PG_SLICE_RANGE(handshake, 28, 28 + PG_SHA1_DIGEST_LENGTH);
-  if (!pg_string_eq(info_hash_received, peer->info_hash)) {
+  PgString info_hash = {.data = peer->info_hash, .len = PG_SHA1_DIGEST_LENGTH};
+  if (!pg_string_eq(info_hash_received, info_hash)) {
     return PG_ERR_INVALID_VALUE;
   }
 
@@ -951,7 +952,8 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString
-peer_make_handshake(PgString info_hash, PgAllocator *allocator) {
+peer_make_handshake(u8 info_hash[PG_SHA1_DIGEST_LENGTH],
+                    PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, HANDSHAKE_LENGTH, allocator);
   PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, PG_S("\x13"
@@ -966,8 +968,8 @@ peer_make_handshake(PgString info_hash, PgAllocator *allocator) {
                                                 "\x00"));
   PG_ASSERT(1 + 19 + 8 == sb.len);
 
-  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == info_hash.len);
-  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, info_hash);
+  PgString info_hash_s = {.data = info_hash, .len = PG_SHA1_DIGEST_LENGTH};
+  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, info_hash_s);
 
   PgString peer_id = PG_S("00000000000000000000");
   PG_ASSERT(20 == peer_id.len);

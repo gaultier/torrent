@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
   PG_ASSERT(pieces_count > 0);
 
   // TODO: Tweak.
-  u64 concurrent_download_max = 30;
+  u64 concurrent_download_max = 500;
   Download download = {
       .pieces_have =
           pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),

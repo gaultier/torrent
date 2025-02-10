@@ -1,7 +1,44 @@
 #pragma once
 #include "submodules/cstd/lib.c"
 
+#include "submodules/libuv/include/uv.h"
+
 #define BLOCK_SIZE (1UL << 14)
+
+typedef struct {
+  uv_write_t req;
+  uv_buf_t buf;
+  void *data;
+} WriteRequest;
+
+typedef struct {
+  uv_fs_t req;
+  uv_buf_t buf;
+  void *data;
+} FsWriteRequest;
+
+[[nodiscard]] [[maybe_unused]]
+static PgString uv_buf_to_string(uv_buf_t buf) {
+  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
+}
+
+[[nodiscard]]
+static uv_buf_t string_to_uv_buf(PgString s) {
+  return (uv_buf_t){.base = (char *)s.data, .len = s.len};
+}
+
+[[maybe_unused]] [[nodiscard]] static int do_write(uv_stream_t *stream,
+                                                   PgString data,
+                                                   PgAllocator *allocator,
+                                                   uv_write_cb cb, void *ctx) {
+  WriteRequest *wq =
+      pg_alloc(allocator, sizeof(WriteRequest), _Alignof(WriteRequest), 1);
+  wq->buf = string_to_uv_buf(data);
+  wq->req.data = wq;
+  wq->data = ctx;
+
+  return uv_write(&wq->req, stream, &wq->buf, 1, cb);
+}
 
 typedef struct {
   u32 val;
@@ -36,6 +73,9 @@ typedef struct {
 
   u64 concurrent_downloads_count;
   u64 concurrent_downloads_max;
+
+  // All hashes (20 bytes long) for pieces, in one big string.
+  PgString pieces_hash;
 } Download;
 
 [[maybe_unused]] [[nodiscard]] static u32
@@ -297,4 +337,64 @@ download_pick_next_block(Download *download, PgString remote_pieces_have) {
   }
 
   return res;
+}
+
+[[nodiscard]] [[maybe_unused]] bool static download_has_all_blocks_for_piece(
+    Download *download, PieceIndex piece) {
+  PG_ASSERT(piece.val < download->pieces_count);
+
+  BlockForDownloadIndex block_for_download = {
+      piece.val * download->max_blocks_per_piece_count};
+  u32 blocks_for_piece_count =
+      download_compute_blocks_count_for_piece(download, piece);
+
+  bool res = true;
+  for (u32 i = 0; i < blocks_for_piece_count; i++) {
+    u32 idx = block_for_download.val + i;
+    res &= pg_bitfield_get(download->blocks_have, idx);
+  }
+  return res;
+}
+
+[[maybe_unused]] [[nodiscard]] static PgError
+download_verify_piece(Download *download, PieceIndex piece,
+                      PgAllocator *allocator) {
+  PG_ASSERT(piece.val < download->pieces_count);
+  PG_ASSERT(download->pieces_hash.len ==
+            PG_SHA1_DIGEST_LENGTH * download->pieces_count);
+
+  PgString hash_expected =
+      PG_SLICE_RANGE(download->pieces_hash, PG_SHA1_DIGEST_LENGTH * piece.val,
+                     PG_SHA1_DIGEST_LENGTH * (piece.val + 1));
+
+  u32 piece_length = download_compute_piece_length(download, piece);
+
+  FsWriteRequest req = {0};
+  req.req.data = &req;
+  req.data = download;
+  req.buf = string_to_uv_buf(pg_string_make(piece_length, allocator));
+
+  u64 offset = (piece.val * download->piece_length);
+  PG_ASSERT(offset <= download->total_file_size);
+  PG_ASSERT(offset + piece_length <= download->total_file_size);
+
+  int err_file =
+      uv_fs_read(uv_default_loop(), &req.req, download->file, &req.buf, 1,
+                 (i64)offset, nullptr /* TODO: Should it be async? */);
+  if (err_file) {
+    pg_log(download->logger, PG_LOG_LEVEL_ERROR,
+           "download: failed to read block from disk",
+           PG_L("file", download->file), PG_L("err", err_file),
+           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
+    pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
+    return (PgError)err_file;
+  }
+  pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
+         "download: reading block from disk", PG_L("file", download->file));
+
+  PgError err_verify =
+      download_verify_piece_hash(uv_buf_to_string(req.buf), hash_expected);
+
+  pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
+  return err_verify;
 }

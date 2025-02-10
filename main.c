@@ -144,6 +144,7 @@ int main(int argc, char *argv[]) {
       .logger = &logger,
       .rng = &rng,
       .concurrent_downloads_max = concurrent_download_max,
+      .pieces_hash = res_decode_metainfo.res.pieces,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
   pg_log(

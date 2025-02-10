@@ -1,48 +1,12 @@
 #pragma once
 #include "download.c"
 
-#include "submodules/libuv/include/uv.h"
-
 // TODO: Timeouts.
 // TODO: Timer-triggered keep-alives.
 // TODO: Serve piece data.
 // TODO: Retry on failure (with exp backoff?).
 
 #include "submodules/cstd/lib.c"
-
-typedef struct {
-  uv_write_t req;
-  uv_buf_t buf;
-  void *data;
-} WriteRequest;
-
-typedef struct {
-  uv_fs_t req;
-  uv_buf_t buf;
-  void *data;
-} FsWriteRequest;
-
-[[nodiscard]] [[maybe_unused]]
-static PgString uv_buf_to_string(uv_buf_t buf) {
-  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
-}
-
-[[nodiscard]]
-static uv_buf_t string_to_uv_buf(PgString s) {
-  return (uv_buf_t){.base = (char *)s.data, .len = s.len};
-}
-
-[[nodiscard]] static int do_write(uv_stream_t *stream, PgString data,
-                                  PgAllocator *allocator, uv_write_cb cb,
-                                  void *ctx) {
-  WriteRequest *wq =
-      pg_alloc(allocator, sizeof(WriteRequest), _Alignof(WriteRequest), 1);
-  wq->buf = string_to_uv_buf(data);
-  wq->req.data = wq;
-  wq->data = ctx;
-
-  return uv_write(&wq->req, stream, &wq->buf, 1, cb);
-}
 
 #define HANDSHAKE_LENGTH 68
 
@@ -274,24 +238,6 @@ static void peer_close_io_handles(Peer *peer) {
 }
 
 #if 0
-[[nodiscard]] static bool piece_download_verify_piece(PieceDownload *pd,
-                                                      PgString pieces_hash) {
-  PG_ASSERT(pieces_hash.len >= PG_SHA1_DIGEST_LENGTH * (pd->piece + 1));
-
-  PgString hash_expected =
-      PG_SLICE_RANGE(pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece,
-                     PG_SHA1_DIGEST_LENGTH * (pd->piece + 1));
-  return download_verify_piece_hash(pd->data, hash_expected);
-}
-
-[[nodiscard]] static PgError peer_save_piece_to_disk(PgFile file, u32 piece,
-                                                     u64 piece_length,
-                                                     PgString data) {
-  u64 file_offset = piece * piece_length;
-  return pg_file_write_data_at_offset_from_start(file, file_offset, data);
-}
-
-
 [[nodiscard]] static PgError peer_complete_piece_download(Peer *peer,
                                                           PieceDownload *pd) {
   bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
@@ -419,8 +365,22 @@ static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);
   peer->download->concurrent_downloads_count -= 1;
 
-  // TODO: verify piece if whole.
-  return 0;
+  if (!download_has_all_blocks_for_piece(peer->download, piece)) {
+    return 0;
+  }
+
+  PgError err_verify =
+      download_verify_piece(peer->download, piece, peer->allocator);
+  if (!err_verify) {
+    pg_bitfield_set(peer->download->pieces_have, piece.val, true);
+    peer->download->pieces_have_count += 1;
+    PG_ASSERT(peer->download->pieces_have_count <=
+              peer->download->pieces_count);
+
+    // TODO: finish download when all pieces are there.
+  }
+
+  return err_verify;
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString

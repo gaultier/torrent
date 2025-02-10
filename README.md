@@ -13,7 +13,7 @@ $ ./build_sh release_sanitizer
 
 ```sh
 $ cd submodules/libuv 
-$ cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLIBUV_BUILD_SHARED=OFF # -DCMAKE_C_COMPILER='zig' -D CMAKE_C_COMPILER_ARG1='cc' -DCMAKE_C_FLAGS='--target=x86_64-linux-musl -static' 
+$ cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLIBUV_BUILD_SHARED=OFF -DCMAKE_C_COMPILER='zig' -D CMAKE_C_COMPILER_ARG1='cc' -DCMAKE_C_FLAGS='--target=x86_64-linux-musl -static'
 $ ninja -C build/ libuv.a
 $ CC='zig cc' CFLAGS='-static --target=x86_64-linux-musl' ./build.sh release
 $ file main.bin

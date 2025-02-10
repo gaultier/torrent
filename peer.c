@@ -332,7 +332,6 @@ static void peer_on_file_write(uv_fs_t *req) {
     // TODO: Blacklist remote?
     return PG_ERR_INVALID_VALUE;
   }
-
   PG_ASSERT(pd->block_downloads_len == blocks_count_for_piece);
 
   pg_bitfield_set(peer->download->pieces_have, piece.val, true);
@@ -352,6 +351,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   req->req.data = req;
   req->data = peer;
   u64 len_total = 0;
+  PG_ASSERT(pd->block_downloads_len == blocks_count_for_piece);
   for (u64 i = 0; i < pd->block_downloads_len; i++) {
     BlockDownload block_download =
         PG_C_ARRAY_AT(pd->block_downloads, pd->block_downloads_len, i);

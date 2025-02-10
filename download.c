@@ -375,41 +375,55 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
   // Prefer downloading all blocks for one piece, to identify
   // bad peers.
   for (u64 i = 0; i < downloading_pieces->len; i++) {
-    PieceDownload piece_download = PG_SLICE_AT(*downloading_pieces, i);
-    PG_ASSERT(piece_download.piece.val < download->pieces_count);
+    PieceDownload *piece_download = PG_SLICE_AT_PTR(downloading_pieces, i);
+    PG_ASSERT(piece_download->piece.val < download->pieces_count);
+    PG_ASSERT(pg_bitfield_get(remote_pieces_have, piece_download->piece.val));
 
-    PG_ASSERT(false ==
-              pg_bitfield_get(download->pieces_have, piece_download.piece.val));
+    PG_ASSERT(false == pg_bitfield_get(download->pieces_have,
+                                       piece_download->piece.val));
     PG_ASSERT(true == pg_bitfield_get(download->pieces_downloading,
-                                      piece_download.piece.val));
+                                      piece_download->piece.val));
 
-    u32 blocks_count_for_piece =
-        download_compute_blocks_count_for_piece(download, piece_download.piece);
+    u32 blocks_count_for_piece = download_compute_blocks_count_for_piece(
+        download, piece_download->piece);
 
     for (u32 j = 0; j < blocks_count_for_piece; j++) {
       BlockForPieceIndex block_for_piece = {j};
       BlockForDownloadIndex block_for_download =
           download_convert_block_for_piece_to_block_for_download(
-              download, piece_download.piece, block_for_piece);
+              download, piece_download->piece, block_for_piece);
       if (pg_bitfield_get_ptr(
-              piece_download.blocks_downloading,
-              PG_STATIC_ARRAY_LEN(piece_download.blocks_downloading),
+              piece_download->blocks_downloading,
+              PG_STATIC_ARRAY_LEN(piece_download->blocks_downloading),
               block_for_piece.val)) {
         continue;
       }
 
-      if (!pg_bitfield_get_ptr(piece_download.blocks_have,
-                               PG_STATIC_ARRAY_LEN(piece_download.blocks_have),
-                               block_for_piece.val)) {
-        pg_bitfield_set_ptr(
-            piece_download.blocks_downloading,
-            PG_STATIC_ARRAY_LEN(piece_download.blocks_downloading),
-            block_for_piece.val, true);
-
-        res.ok = true;
-        res.res = block_for_download;
-        return res;
+      if (pg_bitfield_get_ptr(piece_download->blocks_have,
+                              PG_STATIC_ARRAY_LEN(piece_download->blocks_have),
+                              block_for_piece.val)) {
+        continue;
       }
+
+      PG_ASSERT(!pg_bitfield_get_ptr(
+          piece_download->blocks_downloading,
+          PG_STATIC_ARRAY_LEN(piece_download->blocks_downloading),
+          block_for_piece.val));
+      pg_bitfield_set_ptr(
+          piece_download->blocks_downloading,
+          PG_STATIC_ARRAY_LEN(piece_download->blocks_downloading),
+          block_for_piece.val, true);
+
+      pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
+             "download: picked next block for piece being downloaded",
+             PG_L("piece", piece_download->piece.val),
+             PG_L("block_for_piece", block_for_piece.val),
+             PG_L("block_for_download", block_for_download.val),
+             PG_L("piece_download_i", i));
+
+      res.ok = true;
+      res.res = block_for_download;
+      return res;
     }
   }
 
@@ -448,6 +462,11 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
                         PG_STATIC_ARRAY_LEN(piece_download->blocks_downloading),
                         block_for_piece.val, true);
 
+    pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
+           "download: picked next block for new piece being downloaded",
+           PG_L("piece", piece_download->piece.val),
+           PG_L("block_for_piece", block_for_piece.val),
+           PG_L("block_for_download", block_for_download.val));
     res.res = block_for_download;
     res.ok = true;
     return res;

@@ -407,6 +407,7 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
     }
   }
 
+  // Start downloading a new piece.
   u32 start =
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->pieces_count);
   for (u32 i = 0; i < download->pieces_count; i++) {

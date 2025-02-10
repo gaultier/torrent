@@ -370,9 +370,8 @@ static void peer_on_file_write(uv_fs_t *req) {
     }
   }
 
-  u64 offset = (piece.val * peer->download->piece_length + msg.begin);
+  u64 offset = (piece.val * peer->download->piece_length);
   PG_ASSERT(offset <= peer->download->total_file_size);
-  PG_ASSERT(offset + msg.data.len <= peer->download->total_file_size);
 
   int err_file =
       uv_fs_write(uv_default_loop(), &req->req, peer->download->file, req->bufs,

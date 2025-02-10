@@ -64,7 +64,10 @@ typedef struct {
   PieceIndex piece;
   BlockDownload block_downloads[32 /* FIXME */];
   u64 block_downloads_len;
+
+  // Bitfield.
   u8 blocks_have[4 /* FIXME */];
+  u8 blocks_downloading[4 /* FIXME */];
 } PieceDownload;
 
 PG_DYN(PieceDownload) PieceDownloadDyn;
@@ -382,18 +385,27 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
       BlockForDownloadIndex block_for_download =
           download_convert_block_for_piece_to_block_for_download(
               download, piece_download.piece, block_for_piece);
+      if (pg_bitfield_get_ptr(
+              piece_download.blocks_downloading,
+              PG_STATIC_ARRAY_LEN(piece_download.blocks_downloading),
+              block_for_piece.val)) {
+        continue;
+      }
+
       if (!pg_bitfield_get_ptr(piece_download.blocks_have,
                                PG_STATIC_ARRAY_LEN(piece_download.blocks_have),
                                block_for_piece.val)) {
+        pg_bitfield_set_ptr(
+            piece_download.blocks_downloading,
+            PG_STATIC_ARRAY_LEN(piece_download.blocks_downloading),
+            block_for_piece.val, true);
+
         res.ok = true;
         res.res = block_for_download;
         return res;
       }
     }
-    PG_ASSERT(0 && "unreachable");
   }
-
-  PG_ASSERT(0 == downloading_pieces->len);
 
   u32 start =
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->pieces_count);
@@ -419,9 +431,16 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
     pg_bitfield_set(download->pieces_downloading, piece.val, true);
 
     // Start at block 0 for simplicity.
+    BlockForPieceIndex block_for_piece = {0};
     BlockForDownloadIndex block_for_download =
-        download_convert_block_for_piece_to_block_for_download(
-            download, piece, (BlockForPieceIndex){0});
+        download_convert_block_for_piece_to_block_for_download(download, piece,
+                                                               block_for_piece);
+
+    PieceDownload *piece_download = PG_SLICE_LAST_PTR(downloading_pieces);
+    pg_bitfield_set_ptr(piece_download->blocks_downloading,
+                        PG_STATIC_ARRAY_LEN(piece_download->blocks_downloading),
+                        block_for_piece.val, true);
+
     res.res = block_for_download;
     res.ok = true;
     return res;

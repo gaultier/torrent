@@ -133,7 +133,19 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
   return (u32)res;
 }
 
-// TODO: Consider having two separate types for these two kinds of blocks.
+[[maybe_unused]] [[nodiscard]] static BlockForDownloadIndex
+download_convert_block_for_piece_to_block_for_download(
+    Download *download, PieceIndex piece, BlockForPieceIndex block_for_piece) {
+  PG_ASSERT(piece.val < download->pieces_count);
+  PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
+
+  u32 res =
+      piece.val * download->max_blocks_per_piece_count + block_for_piece.val;
+  PG_ASSERT(res < download->blocks_count);
+
+  return (BlockForDownloadIndex){res};
+}
+
 [[maybe_unused]] [[nodiscard]] static BlockForPieceIndex
 download_convert_block_for_download_to_block_for_piece(
     Download *download, PieceIndex piece,
@@ -361,10 +373,11 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
     u32 blocks_count_for_piece =
         download_compute_blocks_count_for_piece(download, piece);
 
-    for (u64 j = 0; j < blocks_count_for_piece; j++) {
-      BlockForDownloadIndex block_for_download = {
-          (u32)(piece.val * download->piece_length + i)};
-
+    for (u32 j = 0; j < blocks_count_for_piece; j++) {
+      BlockForPieceIndex block_for_piece = {j};
+      BlockForDownloadIndex block_for_download =
+          download_convert_block_for_piece_to_block_for_download(
+              download, piece, block_for_piece);
       if (!pg_bitfield_get(download->blocks_have, block_for_download.val)) {
         res.ok = true;
         res.res = block_for_download;

@@ -358,6 +358,10 @@ static void peer_on_file_write(uv_fs_t *req) {
   }
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing block to disk",
          PG_L("address", peer->address), PG_L("piece", piece.val),
+         PG_L("pieces_have_count", peer->download->pieces_have_count),
+         PG_L("pieces_count", peer->download->pieces_count),
+         PG_L("blocks_have_count", peer->download->blocks_have_count),
+         PG_L("blocks_count", peer->download->blocks_count),
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
   pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);

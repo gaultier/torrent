@@ -333,6 +333,8 @@ static void peer_on_file_write(uv_fs_t *req) {
     return PG_ERR_INVALID_VALUE;
   }
 
+  PG_ASSERT(pd->block_downloads_len == blocks_count_for_piece);
+
   pg_bitfield_set(peer->download->pieces_have, piece.val, true);
   pg_bitfield_set(peer->download->pieces_downloading, piece.val, false);
   peer->download->pieces_have_count += 1;
@@ -349,9 +351,11 @@ static void peer_on_file_write(uv_fs_t *req) {
                                  _Alignof(FsWriteRequest), 1);
   req->req.data = req;
   req->data = peer;
+  u64 len_total = 0;
   for (u64 i = 0; i < pd->block_downloads_len; i++) {
     BlockDownload block_download =
         PG_C_ARRAY_AT(pd->block_downloads, pd->block_downloads_len, i);
+    PG_ASSERT(block_download.data.len > 0);
 
     *PG_C_ARRAY_AT_PTR(req->bufs, PG_STATIC_ARRAY_LEN(req->bufs), i) =
         string_to_uv_buf(block_download.data);
@@ -364,15 +368,18 @@ static void peer_on_file_write(uv_fs_t *req) {
           PG_C_ARRAY_AT(pd->block_downloads, pd->block_downloads_len, i - 1)
               .block.val);
     }
+    len_total += block_download.data.len;
   }
 
   u64 offset = (piece.val * peer->download->piece_length);
-  PG_ASSERT(offset <= peer->download->total_file_size);
+  u32 piece_length = download_compute_piece_length(peer->download, piece);
+  PG_ASSERT(offset + piece_length <= peer->download->total_file_size);
+  PG_ASSERT(piece_length == len_total);
 
   int err_file =
       uv_fs_write(uv_default_loop(), &req->req, peer->download->file, req->bufs,
                   (u32)req->bufs_len, (i64)offset, peer_on_file_write);
-  if (err_file) {
+  if (err_file < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: failed to write piece to disk",
            PG_L("address", peer->address), PG_L("piece", piece.val),

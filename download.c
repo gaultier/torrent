@@ -389,6 +389,9 @@ download_verify_piece(Download *download, PieceIndex piece,
   PG_ASSERT(download->pieces_hash.len ==
             PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
+  pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verifying piece",
+         PG_L("file", download->file), PG_L("piece", piece.val));
+
   PgString hash_expected =
       PG_SLICE_RANGE(download->pieces_hash, PG_SHA1_DIGEST_LENGTH * piece.val,
                      PG_SHA1_DIGEST_LENGTH * (piece.val + 1));
@@ -424,6 +427,10 @@ download_verify_piece(Download *download, PieceIndex piece,
 
   pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
   uv_fs_req_cleanup(&req.req);
+
+  pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verified piece",
+         PG_L("file", download->file), PG_L("piece", piece.val),
+         PG_L("err", err_verify));
 
   return err_verify;
 }

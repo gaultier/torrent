@@ -225,10 +225,16 @@ download_compute_blocks_count(u64 total_file_size) {
     return BLOCK_SIZE;
   }
 
-  // Special case for the last piece.
+  u32 blocks_for_piece_count =
+      download_compute_blocks_count_for_piece(download, piece);
+
+  if (block_for_piece.val + 1 < blocks_for_piece_count) {
+    return BLOCK_SIZE;
+  }
+
+  // Special case for the last block of the last piece.
   u32 res = (u32)(download_compute_piece_length(download, piece) -
-                  (u64)block_for_piece.val * BLOCK_SIZE) %
-            BLOCK_SIZE;
+                  (u64)block_for_piece.val * BLOCK_SIZE);
   PG_ASSERT(res > 0);
   PG_ASSERT(res <= BLOCK_SIZE);
 

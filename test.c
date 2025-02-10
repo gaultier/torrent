@@ -77,21 +77,23 @@ static void test_bencode_decode_string() {
 
 static void test_bencode_decode_list() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S(""), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S(""), allocator);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("a"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("a"), allocator);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("l"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("l"), allocator);
     PG_ASSERT(0 != res.err);
   }
 
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("lefoo"), &arena);
+    BencodeListDecodeResult res = bencode_decode_list(PG_S("lefoo"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(0 == res.values.len);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
@@ -99,7 +101,7 @@ static void test_bencode_decode_list() {
 
   {
     BencodeListDecodeResult res =
-        bencode_decode_list(PG_S("l2:abi123eefoo"), &arena);
+        bencode_decode_list(PG_S("l2:abi123eefoo"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(2 == res.values.len);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
@@ -118,7 +120,7 @@ static void test_bencode_decode_list() {
   }
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("l2:abi123eefoo"), &arena);
+        bencode_decode_value(PG_S("l2:abi123eefoo"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_LIST == res.value.kind);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
@@ -142,9 +144,11 @@ static void test_bencode_decode_list() {
 
 static void test_bencode_decode() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("i123ei456e"), &arena);
+        bencode_decode_value(PG_S("i123ei456e"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     PG_ASSERT(123 == res.value.num);
@@ -154,13 +158,13 @@ static void test_bencode_decode() {
   // Unordered keys.
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("d2:abi123e2:ab5:helloefoo"), &arena);
+        bencode_decode_value(PG_S("d2:abi123e2:ab5:helloefoo"), allocator);
     PG_ASSERT(0 != res.err);
   }
 
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), &arena);
+        bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
@@ -193,7 +197,7 @@ static void test_bencode_decode() {
   }
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("2:abfoo"), &arena);
+        bencode_decode_value(PG_S("2:abfoo"), allocator);
     PG_ASSERT(0 == res.err);
     PG_ASSERT(BENCODE_KIND_STRING == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("ab"), res.value.s));
@@ -203,6 +207,9 @@ static void test_bencode_decode() {
 
 static void test_decode_metainfo() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
   PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -213,7 +220,7 @@ static void test_decode_metainfo() {
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   DecodeMetaInfoResult res =
-      bencode_decode_metainfo(torrent_file_content, &arena);
+      bencode_decode_metainfo(torrent_file_content, allocator);
   PG_ASSERT(0 == res.err);
 
   PG_ASSERT(pg_string_eq(PG_S("http"), res.res.announce.scheme));
@@ -246,19 +253,22 @@ static void test_bencode_decode_encode() {
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   BencodeValueDecodeResult res =
-      bencode_decode_value(torrent_file_content, &arena);
+      bencode_decode_value(torrent_file_content, allocator);
   PG_ASSERT(0 == res.err);
 
   Pgu8Dyn sb = {0};
   PgWriter w = pg_writer_make_from_string_builder(&sb, allocator);
 
-  PG_ASSERT(0 == bencode_encode(res.value, &w, &arena));
+  PG_ASSERT(0 == bencode_encode(res.value, &w, allocator));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
   PG_ASSERT(pg_string_eq(encoded, torrent_file_content));
 }
 
 static void test_tracker_compute_info_hash() {
   PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
   PgString torrent_file_content = PG_S(
       "d8:announce43:http://OpenBSD.somedomain.net:6969/"
       "announce7:comment107:OpenBSD/7.4/alpha/install74.iso\nCreated by andrew "
@@ -269,21 +279,17 @@ static void test_tracker_compute_info_hash() {
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   DecodeMetaInfoResult res =
-      bencode_decode_metainfo(torrent_file_content, &arena);
+      bencode_decode_metainfo(torrent_file_content, allocator);
   PG_ASSERT(0 == res.err);
 
-  PgString hash = {
-      .data = pg_arena_new(&arena, u8, PG_SHA1_DIGEST_LENGTH),
-      .len = PG_SHA1_DIGEST_LENGTH,
-  };
+  u8 hash[PG_SHA1_DIGEST_LENGTH] = {0};
   tracker_compute_info_hash(res.res, hash, arena);
 
   u8 expected_hash[PG_SHA1_DIGEST_LENGTH] = {
       0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,
       0x90, 0xe8, 0x7d, 0x3a, 0x01, 0x4f, 0x8a, 0x07, 0x2d, 0x7a,
   };
-  PG_ASSERT(hash.len == sizeof(expected_hash));
-  PG_ASSERT(0 == memcmp(hash.data, expected_hash, hash.len));
+  PG_ASSERT(0 == memcmp(hash, expected_hash, PG_SHA1_DIGEST_LENGTH));
 }
 
 static void test_peer_make_handshake() {
@@ -292,7 +298,7 @@ static void test_peer_make_handshake() {
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgString info_hash = PG_S("abcdefghijklmnopqrst");
-  PgString handshake = peer_make_handshake(info_hash, allocator);
+  PgString handshake = peer_make_handshake(info_hash.data, allocator);
 
   PG_ASSERT(HANDSHAKE_LENGTH == handshake.len);
   PG_ASSERT(pg_string_starts_with(handshake, PG_S("\x13"

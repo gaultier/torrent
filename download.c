@@ -44,6 +44,9 @@ typedef struct {
   u32 val;
 } PieceIndex;
 
+PG_DYN(PieceIndex) PieceIndexDyn;
+PG_SLICE(PieceIndex) PieceIndexSlice;
+
 typedef struct {
   u32 val;
 } BlockForPieceIndex;
@@ -315,22 +318,63 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   return res;
 }
 
+[[nodiscard]] [[maybe_unused]] bool static download_has_all_blocks_for_piece(
+    Download *download, PieceIndex piece) {
+  PG_ASSERT(piece.val < download->pieces_count);
+
+  BlockForDownloadIndex block_for_download = {
+      piece.val * download->max_blocks_per_piece_count};
+  u32 blocks_for_piece_count =
+      download_compute_blocks_count_for_piece(download, piece);
+
+  bool res = true;
+  for (u32 i = 0; i < blocks_for_piece_count; i++) {
+    u32 idx = block_for_download.val + i;
+    res &= pg_bitfield_get(download->blocks_have, idx);
+  }
+  return res;
+}
+
 [[maybe_unused]] [[nodiscard]] static BlockForDownloadIndexOk
-download_pick_next_block(Download *download, PgString remote_pieces_have) {
-  BlockForDownloadIndexOk res = {0};
+download_pick_next_block(Download *download, PgString remote_pieces_have,
+                         PieceIndexDyn *downloading_pieces) {
   PG_ASSERT(download->concurrent_downloads_count <=
             download->concurrent_downloads_max);
   PG_ASSERT(pg_div_ceil(download->pieces_count, 8) == remote_pieces_have.len);
+  PG_ASSERT(downloading_pieces->len <= download->concurrent_downloads_max);
+
+  BlockForDownloadIndexOk res = {0};
 
   if (download->concurrent_downloads_count ==
       download->concurrent_downloads_max) {
     return res;
   }
 
-  // TODO: Prefer downloading all blocks for one piece, to identify
+  // Prefer downloading all blocks for one piece, to identify
   // bad peers.
-  // Currently we download random blocks without attention to which piece and
-  // peer they come from.
+  for (u64 i = 0; i < downloading_pieces->len; i++) {
+    PieceIndex piece = PG_SLICE_AT(*downloading_pieces, i);
+    PG_ASSERT(piece.val < download->pieces_count);
+
+    PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
+
+    u32 blocks_count_for_piece =
+        download_compute_blocks_count_for_piece(download, piece);
+
+    for (u64 j = 0; j < blocks_count_for_piece; j++) {
+      BlockForDownloadIndex block_for_download = {
+          (u32)(piece.val * download->piece_length + i)};
+
+      if (!pg_bitfield_get(download->blocks_have, block_for_download.val)) {
+        res.ok = true;
+        res.res = block_for_download;
+        return res;
+      }
+    }
+    PG_ASSERT(0 && "unreachable");
+  }
+
+  PG_ASSERT(0 == downloading_pieces->len);
 
   u32 start =
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->blocks_count);
@@ -357,28 +401,13 @@ download_pick_next_block(Download *download, PgString remote_pieces_have) {
       continue;
     }
 
+    *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) = piece;
+
     res.res = block_for_download;
     res.ok = true;
     return res;
   }
 
-  return res;
-}
-
-[[nodiscard]] [[maybe_unused]] bool static download_has_all_blocks_for_piece(
-    Download *download, PieceIndex piece) {
-  PG_ASSERT(piece.val < download->pieces_count);
-
-  BlockForDownloadIndex block_for_download = {
-      piece.val * download->max_blocks_per_piece_count};
-  u32 blocks_for_piece_count =
-      download_compute_blocks_count_for_piece(download, piece);
-
-  bool res = true;
-  for (u32 i = 0; i < blocks_for_piece_count; i++) {
-    u32 idx = block_for_download.val + i;
-    res &= pg_bitfield_get(download->blocks_have, idx);
-  }
   return res;
 }
 

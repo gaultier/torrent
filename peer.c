@@ -79,9 +79,8 @@ typedef struct {
   Download *download;
   PeerState state;
 
-  /* PieceDownloadDyn downloading_pieces; */
-  /* u64 concurrent_downloads_max; */
-  /* u64 concurrent_blocks_download_max; */
+  PieceIndexDyn downloading_pieces;
+
   PgString piece_hashes;
 
   // TODO: Consider making libuv structs a pointer to reduce the size of the
@@ -156,6 +155,9 @@ peer_make(PgIpv4Address address, PgString info_hash, PgLogger *logger,
   // `remote_bitfield` to it + an offset.
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), peer.allocator);
+  PG_DYN_ENSURE_CAP(&peer.downloading_pieces,
+                    download->concurrent_downloads_max, peer.allocator);
+  PG_ASSERT(peer.downloading_pieces.cap > 0);
 
   peer.local_choked = true;
   peer.local_interested = false;
@@ -181,6 +183,8 @@ static void peer_on_close(uv_handle_t *handle) {
   // `remote_bitfield` to it + an offset.
   pg_free(peer->allocator, peer->remote_bitfield.data,
           peer->remote_bitfield.len, 1);
+  pg_free(peer->allocator, peer->downloading_pieces.data,
+          peer->downloading_pieces.len, 1);
   pg_free(peer->allocator, peer, sizeof(*peer), 1);
 }
 
@@ -236,54 +240,6 @@ static void peer_close_io_handles(Peer *peer) {
 
   return 0;
 }
-
-#if 0
-[[nodiscard]] static PgError peer_complete_piece_download(Peer *peer,
-                                                          PieceDownload *pd) {
-  bool verified = piece_download_verify_piece(pd, peer->piece_hashes);
-  if (!verified) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: completed piece download but hash verification failed",
-           PG_L("address", peer->address), PG_L("piece", pd->piece));
-    return PG_ERR_INVALID_VALUE;
-  }
-
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
-         "peer: completed piece download and hash verification succeeded",
-         PG_L("address", peer->address), PG_L("piece", pd->piece));
-
-  // TODO: Async disk I/O.
-  PgError err_file = peer_save_piece_to_disk(
-      peer->file, pd->piece, peer->download->piece_length, pd->data);
-  if (err_file) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: failed to save piece data to disk",
-           PG_L("address", peer->address), PG_L("piece", pd->piece),
-           PG_L("err", err_file),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_file))));
-    return err_file;
-  }
-
-  pg_bitfield_set(peer->download->pieces_have, pd->piece, true);
-
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved piece data to disk",
-         PG_L("address", peer->address), PG_L("piece", pd->piece));
-
-  Pgu32Ok piece_new = download_pick_next_piece(
-      peer->download->rng, peer->download->pieces_have, peer->remote_bitfield,
-      peer->download->pieces_count);
-  if (!piece_new.ok) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: no new piece to pick",
-           PG_L("address", peer->address),
-           PG_L("pieces_have", peer->download->pieces_have));
-  } else {
-    piece_download_reuse_for_piece(pd, piece_new.res);
-    return peer_request_blocks_for_piece_download(peer, pd);
-  }
-
-  return 0;
-}
-#endif
 
 static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(req->data);
@@ -377,19 +333,38 @@ static void peer_on_file_write(uv_fs_t *req) {
 
   PgError err_verify =
       download_verify_piece(peer->download, piece, peer->allocator);
-  if (!err_verify) {
-    pg_bitfield_set(peer->download->pieces_have, piece.val, true);
-    peer->download->pieces_have_count += 1;
-    PG_ASSERT(peer->download->pieces_have_count <=
-              peer->download->pieces_count);
-
-    pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
-           PG_L("address", peer->address), PG_L("piece", piece.val),
-           PG_L("pieces_count", peer->download->pieces_count));
-    // TODO: finish download when all pieces are there.
+  if (err_verify) {
+    // TODO: Blacklist remote?
+    peer_close_io_handles(peer);
+    return err_verify;
   }
 
-  return err_verify;
+  pg_bitfield_set(peer->download->pieces_have, piece.val, true);
+  peer->download->pieces_have_count += 1;
+  PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
+
+  // Update `downloading_pieces`.
+  {
+    PG_ASSERT(peer->downloading_pieces.len > 0);
+    bool found = false;
+    u64 i = 0;
+    for (i = 0; i < peer->downloading_pieces.len; i++) {
+      if (PG_SLICE_AT(peer->downloading_pieces, i).val == piece.val) {
+        found = true;
+        break;
+      }
+    }
+
+    PG_ASSERT(found);
+    PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, i);
+  }
+
+  pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
+         PG_L("address", peer->address), PG_L("piece", piece.val),
+         PG_L("pieces_count", peer->download->pieces_count));
+  // TODO: finish download when all pieces are there.
+
+  return 0;
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString
@@ -927,8 +902,8 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
     return 0;
   }
 
-  BlockForDownloadIndexOk res_block =
-      download_pick_next_block(peer->download, peer->remote_bitfield);
+  BlockForDownloadIndexOk res_block = download_pick_next_block(
+      peer->download, peer->remote_bitfield, &peer->downloading_pieces);
   if (!res_block.ok) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: not requesting remote data since all blocks are already "

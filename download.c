@@ -455,6 +455,13 @@ download_verify_block_downloads(BlockDownload *block_downloads,
     BlockDownload block_download =
         PG_C_ARRAY_AT(block_downloads, block_downloads_len, i);
 
+    // Check that they are in order.
+    if (i > 0) {
+      PG_ASSERT(
+          block_download.block.val >
+          PG_C_ARRAY_AT(block_downloads, block_downloads_len, i - 1).block.val);
+    }
+
     PG_SHA1Update(&ctx, block_download.data.data, block_download.data.len);
   }
 
@@ -479,6 +486,7 @@ download_verify_piece(Download *download, PieceDownload *pd) {
       download->pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece.val,
       PG_SHA1_DIGEST_LENGTH * (pd->piece.val + 1));
 
+  // TODO: Custom sort (glibc's qsort allocates :/).
   qsort(pd->block_downloads, pd->block_downloads_len, sizeof(BlockDownload),
         block_downloads_sort);
 

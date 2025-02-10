@@ -323,13 +323,12 @@ static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);
   peer->download->concurrent_downloads_count -= 1;
 
-  if (!download_has_all_blocks_for_piece(peer->download, piece)) {
+  if (pd->block_downloads_len < blocks_count_for_piece) {
     return 0;
   }
 
   // We have all blocks for this piece.
-  PG_ASSERT(pd->block_downloads_len ==
-            download_compute_blocks_count_for_piece(peer->download, pd->piece));
+  PG_ASSERT(pd->block_downloads_len == blocks_count_for_piece);
 
   bool verified = download_verify_piece(peer->download, pd);
   if (!verified) {

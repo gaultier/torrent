@@ -372,6 +372,13 @@ static void test_download_has_all_blocks_for_piece() {
                       download.max_blocks_per_piece_count - 1,
                   true);
   PG_ASSERT(true == download_has_all_blocks_for_piece(&download, piece));
+
+  pg_bitfield_set(download.blocks_have,
+                  piece.val * download.max_blocks_per_piece_count + 1, false);
+  PG_ASSERT(false == download_has_all_blocks_for_piece(&download, piece));
+  pg_bitfield_set(download.blocks_have,
+                  piece.val * download.max_blocks_per_piece_count + 1, true);
+  PG_ASSERT(true == download_has_all_blocks_for_piece(&download, piece));
 }
 
 #if 0

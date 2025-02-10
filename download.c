@@ -73,6 +73,7 @@ PG_SLICE(PieceDownload) PieceDownloadSlice;
 typedef struct {
   PgString pieces_have;
   u32 pieces_have_count;
+  PgString pieces_downloading;
 
   u32 pieces_count;
   u32 blocks_count;
@@ -371,6 +372,8 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
 
     PG_ASSERT(false ==
               pg_bitfield_get(download->pieces_have, piece_download.piece.val));
+    PG_ASSERT(true == pg_bitfield_get(download->pieces_downloading,
+                                      piece_download.piece.val));
 
     u32 blocks_count_for_piece =
         download_compute_blocks_count_for_piece(download, piece_download.piece);
@@ -405,9 +408,16 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
       continue;
     }
 
+    if (pg_bitfield_get(download->pieces_downloading, piece.val)) {
+      continue;
+    }
+
     PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
+    PG_ASSERT(false ==
+              pg_bitfield_get(download->pieces_downloading, piece.val));
     *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) =
         (PieceDownload){.piece = piece};
+    pg_bitfield_set(download->pieces_downloading, piece.val, true);
 
     // Start at block 0 for simplicity.
     BlockForDownloadIndex block_for_download =

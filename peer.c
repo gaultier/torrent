@@ -337,6 +337,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   }
 
   pg_bitfield_set(peer->download->pieces_have, piece.val, true);
+  pg_bitfield_set(peer->download->pieces_downloading, piece.val, false);
   peer->download->pieces_have_count += 1;
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
   PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, pd_index);

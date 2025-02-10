@@ -103,8 +103,8 @@ int main(int argc, char *argv[]) {
   }
   PG_ASSERT(torrent_file_data.len > 0);
 
-  DecodeMetaInfoResult res_decode_metainfo =
-      bencode_decode_metainfo(torrent_file_data, &arena);
+  DecodeMetaInfoResult res_decode_metainfo = bencode_decode_metainfo(
+      torrent_file_data, pg_arena_allocator_as_allocator(&arena_allocator));
   if (res_decode_metainfo.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
            PG_L("err", res_decode_metainfo.err),

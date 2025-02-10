@@ -40,7 +40,7 @@ typedef struct {
 } BencodeValueDecodeResult;
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(PgString s, PgArena *arena);
+bencode_decode_value(PgString s, PgAllocator *allocator);
 
 typedef struct {
   PgError err;
@@ -120,10 +120,8 @@ typedef struct {
 } BencodeDictionaryDecodeResult;
 
 [[nodiscard]] static BencodeDictionaryDecodeResult
-bencode_decode_dictionary(PgString s, PgArena *arena) {
+bencode_decode_dictionary(PgString s, PgAllocator *allocator) {
   BencodeDictionaryDecodeResult res = {0};
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.ok) {
@@ -161,7 +159,8 @@ bencode_decode_dictionary(PgString s, PgArena *arena) {
     *PG_DYN_PUSH(&res.dict.keys, allocator) = res_key.s;
 
     // TODO: Address stack overflow.
-    BencodeValueDecodeResult res_value = bencode_decode_value(remaining, arena);
+    BencodeValueDecodeResult res_value =
+        bencode_decode_value(remaining, allocator);
     if (res_value.err) {
       res.err = res_value.err;
       return res;
@@ -191,10 +190,8 @@ typedef struct {
 } BencodeListDecodeResult;
 
 [[nodiscard]] static BencodeListDecodeResult
-bencode_decode_list(PgString s, PgArena *arena) {
+bencode_decode_list(PgString s, PgAllocator *allocator) {
   BencodeListDecodeResult res = {0};
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.ok) {
@@ -213,7 +210,8 @@ bencode_decode_list(PgString s, PgArena *arena) {
     }
 
     // TODO: Address stack overflow.
-    BencodeValueDecodeResult res_value = bencode_decode_value(remaining, arena);
+    BencodeValueDecodeResult res_value =
+        bencode_decode_value(remaining, allocator);
     if (res_value.err) {
       res.err = res_value.err;
       return res;
@@ -235,7 +233,7 @@ bencode_decode_list(PgString s, PgArena *arena) {
 }
 
 [[nodiscard]] static BencodeValueDecodeResult
-bencode_decode_value(PgString s, PgArena *arena) {
+bencode_decode_value(PgString s, PgAllocator *allocator) {
   BencodeValueDecodeResult res = {0};
 
   if (0 == s.len) {
@@ -245,7 +243,7 @@ bencode_decode_value(PgString s, PgArena *arena) {
   switch (PG_SLICE_AT(s, 0)) {
   case 'd': {
     BencodeDictionaryDecodeResult res_dict =
-        bencode_decode_dictionary(s, arena);
+        bencode_decode_dictionary(s, allocator);
     if (res_dict.err) {
       res.err = res_dict.err;
       return res;
@@ -267,7 +265,7 @@ bencode_decode_value(PgString s, PgArena *arena) {
     return res;
   }
   case 'l': {
-    BencodeListDecodeResult res_list = bencode_decode_list(s, arena);
+    BencodeListDecodeResult res_list = bencode_decode_list(s, allocator);
     if (res_list.err) {
       res.err = res_list.err;
       return res;
@@ -304,7 +302,7 @@ bencode_decode_value(PgString s, PgArena *arena) {
 }
 
 [[nodiscard]] [[maybe_unused]] static PgError
-bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
+bencode_encode(BencodeValue value, PgWriter *w, PgAllocator *allocator) {
   PgError err = 0;
 
   switch (value.kind) {
@@ -352,7 +350,7 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
 
     for (u64 i = 0; i < value.list.len; i++) {
       BencodeValue v = PG_SLICE_AT(value.list, i);
-      err = bencode_encode(v, w, arena);
+      err = bencode_encode(v, w, allocator);
       if (err) {
         return err;
       }
@@ -374,12 +372,12 @@ bencode_encode(BencodeValue value, PgWriter *w, PgArena *arena) {
       PgString k = PG_SLICE_AT(value.dict.keys, i);
       BencodeValue v = PG_SLICE_AT(value.dict.values, i);
       err = bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k},
-                           w, arena);
+                           w, allocator);
       if (err) {
         return err;
       }
 
-      err = bencode_encode(v, w, arena);
+      err = bencode_encode(v, w, allocator);
       if (err) {
         return err;
       }
@@ -417,12 +415,11 @@ typedef struct {
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
 [[maybe_unused]] [[nodiscard]] static DecodeMetaInfoResult
-bencode_decode_metainfo(PgString s, PgArena *arena) {
+bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
   DecodeMetaInfoResult res = {0};
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  BencodeDictionaryDecodeResult res_dict = bencode_decode_dictionary(s, arena);
+  BencodeDictionaryDecodeResult res_dict =
+      bencode_decode_dictionary(s, allocator);
   if (res_dict.err) {
     res.err = res_dict.err;
     return res;

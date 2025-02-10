@@ -71,7 +71,7 @@ static void tracker_compute_info_hash(Metainfo metainfo, PgString hash,
 
   Pgu8Dyn sb = {0};
   PgWriter w = pg_writer_make_from_string_builder(&sb, allocator);
-  PG_ASSERT(0 == bencode_encode(value, &w, &arena));
+  PG_ASSERT(0 == bencode_encode(value, &w, allocator));
   PgString encoded = PG_DYN_SLICE(PgString, sb);
 
   u8 pg_sha1_hash[PG_SHA1_DIGEST_LENGTH] = {0};
@@ -94,11 +94,9 @@ typedef struct {
 } ParseCompactPeersResult;
 
 [[nodiscard]] static ParseCompactPeersResult
-tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
+tracker_parse_compact_peers(PgString s, PgLogger *logger,
+                            PgAllocator *allocator) {
   ParseCompactPeersResult res = {0};
-
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   if (s.len % 6 != 0) {
     res.err = TORR_ERR_COMPACT_PEERS_INVALID;
@@ -139,13 +137,14 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger, PgArena *arena) {
 }
 
 [[nodiscard]] static TrackerResponseResult
-tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
+tracker_parse_bencode_response(PgString s, PgLogger *logger,
+                               PgAllocator *allocator) {
   TrackerResponseResult res = {0};
 
   // TODO: Optimize memory usage with a temp arena.
 
   BencodeValueDecodeResult tracker_response_bencode_res =
-      bencode_decode_value(s, arena);
+      bencode_decode_value(s, allocator);
   if (tracker_response_bencode_res.err) {
     res.err = tracker_response_bencode_res.err;
     return res;
@@ -185,7 +184,7 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger, PgArena *arena) {
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
       ParseCompactPeersResult res_parse_compact_peers =
-          tracker_parse_compact_peers(value.s, logger, arena);
+          tracker_parse_compact_peers(value.s, logger, allocator);
 
       if (res_parse_compact_peers.err) {
         res.err = res_parse_compact_peers.err;
@@ -315,7 +314,7 @@ tracker_read_http_response_body(Tracker *tracker) {
       PG_ASSERT(true == pg_ring_read_slice(&tracker->http_recv, s));
 
       TrackerResponseResult res_bencode =
-          tracker_parse_bencode_response(s, tracker->logger, &tracker->arena);
+          tracker_parse_bencode_response(s, tracker->logger, allocator);
       if (res_bencode.err) {
         pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                "tracker: failed to decode bencode response",

@@ -468,7 +468,7 @@ download_verify_block_downloads(BlockDownload *block_downloads,
   u8 hash[PG_SHA1_DIGEST_LENGTH] = {0};
   PG_SHA1Final(hash, &ctx);
 
-  return memcmp(hash, hash_expected.data, hash_expected.len);
+  return 0 == memcmp(hash, hash_expected.data, hash_expected.len);
 }
 
 [[maybe_unused]] [[nodiscard]] static bool

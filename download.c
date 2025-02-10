@@ -377,33 +377,23 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
   PG_ASSERT(0 == downloading_pieces->len);
 
   u32 start =
-      pg_rand_u32_min_incl_max_excl(download->rng, 0, download->blocks_count);
-  for (u64 i = 0; i < download->blocks_count;) {
-    BlockForDownloadIndex block_for_download = {(start + i) %
-                                                download->blocks_count};
-    PG_ASSERT(block_for_download.val < download->blocks_count);
-
-    if (pg_bitfield_get(download->blocks_have, block_for_download.val)) {
-      i += 1;
+      pg_rand_u32_min_incl_max_excl(download->rng, 0, download->pieces_count);
+  for (u32 i = 0; i < download->pieces_count; i++) {
+    PieceIndex piece = {start + i % download->pieces_count};
+    if (pg_bitfield_get(download->pieces_have, piece.val)) {
       continue;
     }
-    PieceIndex piece =
-        download_get_piece_for_block(download, block_for_download);
-    if (!pg_bitfield_get(remote_pieces_have, piece.val)) {
-      BlockForPieceIndex block_for_piece =
-          download_convert_block_for_download_to_block_for_piece(
-              download, piece, block_for_download);
-      u32 blocks_count_for_piece =
-          download_compute_blocks_count_for_piece(download, piece);
-      PG_ASSERT(block_for_piece.val < blocks_count_for_piece);
 
-      i += blocks_count_for_piece - block_for_piece.val;
+    if (!pg_bitfield_get(remote_pieces_have, piece.val)) {
       continue;
     }
 
     PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
     *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) = piece;
 
+    // Start at block 0 for simplicity.
+    BlockForDownloadIndex block_for_download = {
+        (u32)(piece.val * download->piece_length)};
     res.res = block_for_download;
     res.ok = true;
     return res;

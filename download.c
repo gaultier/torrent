@@ -382,7 +382,7 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
               download, piece_download.piece, block_for_piece);
       if (!pg_bitfield_get_ptr(piece_download.blocks_have,
                                PG_STATIC_ARRAY_LEN(piece_download.blocks_have),
-                               block_for_download.val)) {
+                               block_for_piece.val)) {
         res.ok = true;
         res.res = block_for_download;
         return res;

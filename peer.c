@@ -299,7 +299,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   //
   // In this case, ignore.
   if (pg_bitfield_get_ptr(pd->blocks_have, PG_STATIC_ARRAY_LEN(pd->blocks_have),
-                          block_for_download.val)) {
+                          block_for_piece.val)) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: received block we already have",
            PG_L("address", peer->address), PG_L("piece", piece.val),
@@ -317,7 +317,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   };
 
   pg_bitfield_set_ptr(pd->blocks_have, PG_STATIC_ARRAY_LEN(pd->blocks_have),
-                      block_for_download.val, true);
+                      block_for_piece.val, true);
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
 
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);

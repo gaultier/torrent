@@ -338,7 +338,6 @@ static void peer_on_file_write(uv_fs_t *req) {
   pg_bitfield_set(peer->download->pieces_downloading, piece.val, false);
   peer->download->pieces_have_count += 1;
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
-  PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, pd_index);
 
   pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
          PG_L("address", peer->address), PG_L("piece", piece.val),
@@ -397,6 +396,7 @@ static void peer_on_file_write(uv_fs_t *req) {
          PG_L("blocks_count", peer->download->blocks_count),
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
+  PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, pd_index);
   // TODO: finish download when all pieces are there.
 
   return 0;

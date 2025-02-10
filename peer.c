@@ -857,6 +857,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
       download_get_piece_for_block(peer->download, block_for_download);
   PG_ASSERT(piece.val < peer->download->pieces_count);
   PG_ASSERT(pg_bitfield_get(peer->remote_bitfield, piece.val));
+  PG_ASSERT(pg_bitfield_get(peer->download->pieces_downloading, piece.val));
 
   BlockForPieceIndex block_for_piece =
       download_convert_block_for_download_to_block_for_piece(

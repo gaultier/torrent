@@ -377,6 +377,9 @@ static void peer_on_file_write(uv_fs_t *req) {
     PG_ASSERT(peer->download->pieces_have_count <=
               peer->download->pieces_count);
 
+    pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
+           PG_L("address", peer->address), PG_L("piece", piece.val),
+           PG_L("pieces_count", peer->download->pieces_count));
     // TODO: finish download when all pieces are there.
   }
 

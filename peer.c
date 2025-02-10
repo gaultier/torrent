@@ -154,10 +154,6 @@ peer_make(PgIpv4Address address, u8 info_hash[PG_SHA1_DIGEST_LENGTH],
   peer.local_choked = true;
   peer.local_interested = false;
 
-  /* PG_DYN_ENSURE_CAP(&peer.downloading_pieces, concurrent_pieces_download_max,
-   */
-  /*                   &peer.arena); */
-
   return peer;
 }
 
@@ -1005,7 +1001,8 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
          PG_L("address", peer->address));
 
   PG_ASSERT(0 == peer->recv.data.len);
-  peer->recv = pg_ring_make(2 * PG_KiB + 2 * BLOCK_SIZE, peer->allocator);
+  u64 recv_size = 1 * PG_MiB;
+  peer->recv = pg_ring_make(recv_size, peer->allocator);
 
   PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);
   int err_write = do_write((uv_stream_t *)&peer->uv_tcp, handshake,

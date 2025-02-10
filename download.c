@@ -186,7 +186,8 @@ download_compute_blocks_count(u64 total_file_size) {
 
   // Special case for the last piece.
   u32 res = (u32)(download_compute_piece_length(download, piece) -
-                  (u64)block_for_piece.val * BLOCK_SIZE);
+                  (u64)block_for_piece.val * BLOCK_SIZE) %
+            BLOCK_SIZE;
   PG_ASSERT(res > 0);
   PG_ASSERT(res <= BLOCK_SIZE);
 
@@ -207,10 +208,18 @@ download_file_create_if_not_exists(PgString path, u64 size) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
+  char filename_c[PG_PATH_MAX] = {0};
+  PG_ASSERT(pg_cstr_mut_from_string(filename_c, filename));
+
+  PgFileResult res = {0};
+
   PgFileFlags flags =
       PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
-  PgFileResult res = pg_file_open(filename, flags);
-  if (res.err) {
+  uv_fs_t req = {0};
+  int err_open =
+      uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
+  if (err_open < 0) {
+    res.err = (PgError)err_open;
     return res;
   }
 

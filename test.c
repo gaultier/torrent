@@ -344,6 +344,36 @@ static void test_download_compute_block_length() {
                 (PieceIndex){download.pieces_count - 1}));
 }
 
+static void test_download_has_all_blocks_for_piece() {
+  PgHeapAllocator heap_allocator = pg_make_heap_allocator();
+  PgAllocator *allocator = pg_heap_allocator_as_allocator(&heap_allocator);
+
+  Download download = {0};
+  download.pieces_count = 1981;
+  download.max_blocks_per_piece_count = 16;
+  download.piece_length = download.max_blocks_per_piece_count * BLOCK_SIZE;
+  download.total_file_size = 519174144;
+  download.blocks_count = 31688;
+  download.pieces_have =
+      pg_string_make(pg_div_ceil(download.pieces_count, 8), allocator);
+  download.blocks_have =
+      pg_string_make(pg_div_ceil(download.blocks_count, 8), allocator);
+
+  PieceIndex piece = {1};
+  PG_ASSERT(false == download_has_all_blocks_for_piece(&download, piece));
+
+  for (u64 i = 0; i < download.max_blocks_per_piece_count - 1; i++) {
+    u64 idx = piece.val * download.max_blocks_per_piece_count + i;
+    pg_bitfield_set(download.blocks_have, idx, true);
+  }
+  PG_ASSERT(false == download_has_all_blocks_for_piece(&download, piece));
+  pg_bitfield_set(download.blocks_have,
+                  piece.val * download.max_blocks_per_piece_count +
+                      download.max_blocks_per_piece_count - 1,
+                  true);
+  PG_ASSERT(true == download_has_all_blocks_for_piece(&download, piece));
+}
+
 #if 0
 static void test_download_pick_next() {
   PgRng rng = pg_rand_make();
@@ -532,6 +562,7 @@ int main() {
   test_download_compute_max_blocks_per_piece_count();
   test_download_compute_blocks_count_for_piece();
   test_download_compute_block_length();
+  test_download_has_all_blocks_for_piece();
   // test_download_pick_next();
   //  test_piece_download_pick_next_block();
 }

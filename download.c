@@ -399,7 +399,7 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
   u32 start =
       pg_rand_u32_min_incl_max_excl(download->rng, 0, download->pieces_count);
   for (u32 i = 0; i < download->pieces_count; i++) {
-    PieceIndex piece = {start + i % download->pieces_count};
+    PieceIndex piece = {(start + i) % download->pieces_count};
     if (pg_bitfield_get(download->pieces_have, piece.val)) {
       continue;
     }

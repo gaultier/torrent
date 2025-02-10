@@ -7,9 +7,12 @@ static void download_on_timer(uv_timer_t *timer) {
   PG_ASSERT(timer->data);
 
   Download *download = timer->data;
-  pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
-         PG_L("pieces_count", download->pieces_count),
-         PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
+  pg_log(
+      download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
+      PG_L("concurrent_downloads_count", download->concurrent_downloads_count),
+      PG_L("concurrent_downloads_max", download->concurrent_downloads_max),
+      PG_L("pieces_count", download->pieces_count),
+      PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
 }
 
 int main(int argc, char *argv[]) {

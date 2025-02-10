@@ -3,7 +3,7 @@ set -e
 set -f # disable globbing.
 
 CFLAGS="${CFLAGS}"
-EXTRA_FLAGS="-fpie ./submodules/libuv/build/libuv.a -flto -fno-omit-frame-pointer -gsplit-dwarf"
+EXTRA_FLAGS="-fpie -L./submodules/libuv/build/ -luv -flto -fno-omit-frame-pointer -gsplit-dwarf"
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 

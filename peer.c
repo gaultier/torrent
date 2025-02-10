@@ -252,7 +252,6 @@ static void peer_on_file_write(uv_fs_t *req) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
          PG_L("address", peer->address), PG_L("len", len),
-         PG_L("blocks_have_count", peer->download->blocks_have_count),
          PG_L("pieces_have_count", peer->download->pieces_have_count),
          PG_L("req.result", uv_fs_get_result(req)));
 }
@@ -299,7 +298,8 @@ static void peer_on_file_write(uv_fs_t *req) {
   // messages are sent in quick succession and/or transfer is going very slowly.
   //
   // In this case, ignore.
-  if (pg_bitfield_get(peer->download->blocks_have, block_for_download.val)) {
+  if (pg_bitfield_get_ptr(pd->blocks_have, PG_STATIC_ARRAY_LEN(pd->blocks_have),
+                          block_for_download.val)) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: received block we already have",
            PG_L("address", peer->address), PG_L("piece", piece.val),
@@ -316,8 +316,8 @@ static void peer_on_file_write(uv_fs_t *req) {
       .block = block_for_piece,
   };
 
-  pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);
-  peer->download->blocks_have_count += 1;
+  pg_bitfield_set_ptr(pd->blocks_have, PG_STATIC_ARRAY_LEN(pd->blocks_have),
+                      block_for_download.val, true);
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
 
   PG_ASSERT(peer->download->concurrent_downloads_count > 0);
@@ -390,7 +390,6 @@ static void peer_on_file_write(uv_fs_t *req) {
          PG_L("address", peer->address), PG_L("piece", piece.val),
          PG_L("pieces_have_count", peer->download->pieces_have_count),
          PG_L("pieces_count", peer->download->pieces_count),
-         PG_L("blocks_have_count", peer->download->blocks_have_count),
          PG_L("blocks_count", peer->download->blocks_count),
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
@@ -892,8 +891,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
          PG_L("address", peer->address),
          PG_L("block_for_download", block_for_download.val),
          PG_L("block_for_piece", block_for_piece.val), PG_L("piece", piece.val),
-         PG_L("begin", msg.request.begin), PG_L("block_length", block_length),
-         PG_L("blocks_bitfield_have", peer->download->blocks_have));
+         PG_L("begin", msg.request.begin), PG_L("block_length", block_length));
 
   PgString msg_encoded = peer_encode_message(msg, peer->allocator);
   int err_write = do_write((uv_stream_t *)&peer->uv_tcp, msg_encoded,

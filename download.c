@@ -64,6 +64,7 @@ typedef struct {
   PieceIndex piece;
   BlockDownload block_downloads[32 /* FIXME */];
   u64 block_downloads_len;
+  u8 blocks_have[4 /* FIXME */];
 } PieceDownload;
 
 PG_DYN(PieceDownload) PieceDownloadDyn;
@@ -72,9 +73,6 @@ PG_SLICE(PieceDownload) PieceDownloadSlice;
 typedef struct {
   PgString pieces_have;
   u32 pieces_have_count;
-
-  PgString blocks_have;
-  u32 blocks_have_count;
 
   u32 pieces_count;
   u32 blocks_count;
@@ -310,11 +308,6 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   d->download->pieces_have_count += eq;
   PG_ASSERT(d->download->pieces_have_count <= d->download->pieces_count);
 
-  d->download->blocks_have_count +=
-      eq * download_compute_blocks_count_for_piece(d->download,
-                                                   (PieceIndex){d->piece_i});
-  PG_ASSERT(d->download->blocks_have_count <= d->download->blocks_count);
-
   pg_log(d->download->logger, PG_LOG_LEVEL_DEBUG, "chunk",
          PG_L("len", chunk.len), PG_L("piece", d->piece_i),
          PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq),
@@ -355,23 +348,6 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   return res;
 }
 
-[[nodiscard]] [[maybe_unused]] bool static download_has_all_blocks_for_piece(
-    Download *download, PieceIndex piece) {
-  PG_ASSERT(piece.val < download->pieces_count);
-
-  BlockForDownloadIndex block_for_download = {
-      piece.val * download->max_blocks_per_piece_count};
-  u32 blocks_for_piece_count =
-      download_compute_blocks_count_for_piece(download, piece);
-
-  bool res = true;
-  for (u32 i = 0; i < blocks_for_piece_count; i++) {
-    u32 idx = block_for_download.val + i;
-    res &= pg_bitfield_get(download->blocks_have, idx);
-  }
-  return res;
-}
-
 [[maybe_unused]] [[nodiscard]] static BlockForDownloadIndexOk
 download_pick_next_block(Download *download, PgString remote_pieces_have,
                          PieceDownloadDyn *downloading_pieces) {
@@ -404,7 +380,9 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
       BlockForDownloadIndex block_for_download =
           download_convert_block_for_piece_to_block_for_download(
               download, piece_download.piece, block_for_piece);
-      if (!pg_bitfield_get(download->blocks_have, block_for_download.val)) {
+      if (!pg_bitfield_get_ptr(piece_download.blocks_have,
+                               PG_STATIC_ARRAY_LEN(piece_download.blocks_have),
+                               block_for_download.val)) {
         res.ok = true;
         res.res = block_for_download;
         return res;

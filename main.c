@@ -161,9 +161,6 @@ int main(int argc, char *argv[]) {
   Download download = {
       .pieces_have =
           pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
-      .blocks_have = pg_string_make(
-          download_compute_blocks_count(res_decode_metainfo.res.length),
-          general_allocator),
       .pieces_count = pieces_count,
       .blocks_count =
           (u32)pg_div_ceil(res_decode_metainfo.res.length, BLOCK_SIZE),

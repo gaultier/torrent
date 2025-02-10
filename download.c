@@ -256,7 +256,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
   // Open.
   {
-    int flags = O_CREAT | O_RDWR;
+    int flags = UV_FS_O_CREAT | UV_FS_O_RDWR;
     int err_open =
         uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
     if (err_open < 0) {

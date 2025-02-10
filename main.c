@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
     uv_fs_t heap_profile_open_req = {0};
     int heap_profile_file =
         uv_fs_open(uv_default_loop(), &heap_profile_open_req, heap_profile_path,
-                   O_APPEND | O_CREAT, 0600, nullptr);
+                   UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, nullptr);
     if (heap_profile_file < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
              PG_L("err", heap_profile_file),
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
   {
     uv_fs_t req = {0};
     int err_open = uv_fs_open(uv_default_loop(), &req, torrent_file_path_c,
-                              O_RDONLY, 0600, nullptr);
+                              UV_FS_O_RDONLY, 0600, nullptr);
     if (err_open < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
              PG_L("err", err_open),

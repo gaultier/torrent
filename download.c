@@ -213,20 +213,37 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
   PgFileResult res = {0};
 
-  PgFileFlags flags =
-      PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
   uv_fs_t req = {0};
-  int err_open =
-      uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
-  if (err_open < 0) {
-    res.err = (PgError)err_open;
-    return res;
+
+  // Open.
+  {
+    PgFileFlags flags =
+        PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
+    int err_open =
+        uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
+    if (err_open < 0) {
+      res.err = (PgError)err_open;
+      goto end;
+    }
+    res.res = err_open;
+    PG_ASSERT(res.res > 0);
   }
 
-  res.err = pg_file_set_size(filename, size);
+  // Truncate.
+  {
+    uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, nullptr);
+    res.err = pg_file_set_size(filename, size);
+    if (res.err) {
+      goto end;
+    }
+  }
+
+end:
   if (res.err) {
-    (void)pg_file_close(res.res);
-    return res;
+    if (res.res) {
+      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res, nullptr));
+    }
+    uv_fs_req_cleanup(&req);
   }
 
   return res;

@@ -57,23 +57,54 @@ int main(int argc, char *argv[]) {
            PG_L("_", PG_S("_")));
   }
 
-  PgString torrent_file_path = pg_cstr_to_string(argv[1]);
-  PgStringResult res_torrent_file_read = pg_file_read_full(
-      torrent_file_path, pg_arena_allocator_as_allocator(&arena_allocator));
-  if (0 != res_torrent_file_read.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
-           PG_L("err", res_torrent_file_read.err),
-           PG_L("err_s",
-                pg_cstr_to_string(strerror((i32)res_torrent_file_read.err))),
-           PG_L("path", torrent_file_path));
-    return 1;
+  char *torrent_file_path_c = argv[1];
+  PgString torrent_file_path = pg_cstr_to_string(torrent_file_path_c);
+  PgString torrent_file_data = {0};
+  {
+    uv_fs_t req = {0};
+    int err_open = uv_fs_open(uv_default_loop(), &req, torrent_file_path_c,
+                              O_RDONLY, 0600, nullptr);
+    if (err_open < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
+             PG_L("err", err_open),
+             PG_L("err_s", pg_cstr_to_string(strerror(err_open))),
+             PG_L("path", torrent_file_path));
+      return 1;
+    }
+    uv_file file = err_open;
+    PG_ASSERT(file > 0);
+
+    int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, nullptr);
+    if (err_stat < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
+             PG_L("err", err_stat),
+             PG_L("err_s", pg_cstr_to_string(strerror(err_stat))),
+             PG_L("path", torrent_file_path));
+      return 1;
+    }
+
+    torrent_file_data = pg_string_make(req.statbuf.st_size, general_allocator);
+    uv_buf_t buf = string_to_uv_buf(torrent_file_data);
+    int err_read =
+        uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
+    if (err_read < 0) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
+             PG_L("err", err_read),
+             PG_L("err_s", pg_cstr_to_string(strerror(err_read))),
+             PG_L("path", torrent_file_path));
+      return 1;
+    }
+
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
+           PG_L("path", torrent_file_path), PG_L("len", torrent_file_data.len));
+
+    (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
+    uv_fs_req_cleanup(&req);
   }
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
-         PG_L("path", torrent_file_path),
-         PG_L("len", res_torrent_file_read.res.len));
+  PG_ASSERT(torrent_file_data.len > 0);
 
   DecodeMetaInfoResult res_decode_metainfo =
-      bencode_decode_metainfo(res_torrent_file_read.res, &arena);
+      bencode_decode_metainfo(torrent_file_data, &arena);
   if (res_decode_metainfo.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
            PG_L("err", res_decode_metainfo.err),

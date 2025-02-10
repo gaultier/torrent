@@ -217,8 +217,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
   // Open.
   {
-    PgFileFlags flags =
-        PG_FILE_FLAGS_CREATE | PG_FILE_FLAGS_READ | PG_FILE_FLAGS_WRITE;
+    int flags = O_CREAT | O_RDWR;
     int err_open =
         uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
     if (err_open < 0) {
@@ -231,9 +230,10 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
   // Truncate.
   {
-    uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, nullptr);
-    res.err = pg_file_set_size(filename, size);
-    if (res.err) {
+    int err_file =
+        uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, nullptr);
+    if (err_file < 0) {
+      res.err = (PgError)err_file;
       goto end;
     }
   }

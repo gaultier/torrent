@@ -60,14 +60,6 @@ typedef struct {
 } PeerMessageReadResult;
 
 typedef struct {
-  u32 piece;
-  PgString data; // Piece data.
-  PgString blocks_bitfield_have;
-  PgString blocks_bitfield_downloading;
-} PieceDownload;
-PG_DYN(PieceDownload) PieceDownloadDyn;
-
-typedef struct {
   PgAllocator *allocator;
   PgIpv4Address address;
   PgString info_hash;
@@ -79,7 +71,7 @@ typedef struct {
   Download *download;
   PeerState state;
 
-  PieceIndexDyn downloading_pieces;
+  PieceDownloadDyn downloading_pieces;
 
   PgString piece_hashes;
 
@@ -247,8 +239,14 @@ static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(fs_req->data);
   Peer *peer = fs_req->data;
 
-  u64 len = fs_req->buf.len;
-  pg_free(peer->allocator, fs_req->buf.base, sizeof(u8), fs_req->buf.len);
+  PG_ASSERT(fs_req->bufs_len > 0);
+
+  u64 len = 0;
+  for (u64 i = 0; i < fs_req->bufs_len; i++) {
+    uv_buf_t buf = PG_C_ARRAY_AT(fs_req->bufs, fs_req->bufs_len, i);
+    len += buf.len;
+    pg_free(peer->allocator, buf.base, sizeof(u8), buf.len);
+  }
   uv_fs_req_cleanup(req);
   pg_free(peer->allocator, fs_req, sizeof(FsWriteRequest), 1);
 
@@ -267,10 +265,33 @@ static void peer_on_file_write(uv_fs_t *req) {
   BlockForDownloadIndex block_for_download = (BlockForDownloadIndex){
       (u32)(msg.index * peer->download->piece_length + msg.begin) / BLOCK_SIZE};
   PieceIndex piece = {msg.index};
+  BlockForPieceIndex block_for_piece =
+      download_convert_block_for_download_to_block_for_piece(
+          peer->download, piece, block_for_download);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
          PG_L("address", peer->address), PG_L("piece", piece.val),
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
+
+  PieceDownload *pd = nullptr;
+  u64 pd_index = 0;
+  {
+    PG_ASSERT(peer->downloading_pieces.len > 0);
+    for (; pd_index < peer->downloading_pieces.len; pd_index++) {
+      PieceDownload *it = PG_SLICE_AT_PTR(&peer->downloading_pieces, pd_index);
+      if (it->piece.val == piece.val) {
+        pd = it;
+        break;
+      }
+    }
+  }
+  if (!pd) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: received unexpected block",
+           PG_L("address", peer->address), PG_L("piece", piece.val),
+           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
+           PG_L("block_for_download", block_for_download.val));
+    return PG_ERR_INVALID_VALUE;
+  }
 
   // From the spec:
   //
@@ -287,38 +308,13 @@ static void peer_on_file_write(uv_fs_t *req) {
     return 0;
   }
 
-  // Actual data copy here, the rest is just metadata bookkeeping.
-
-  FsWriteRequest *req = pg_alloc(peer->allocator, sizeof(FsWriteRequest),
-                                 _Alignof(FsWriteRequest), 1);
-  req->buf = string_to_uv_buf(msg.data);
-  req->req.data = req;
-  req->data = peer;
-
-  u64 offset = (piece.val * peer->download->piece_length + msg.begin);
-  PG_ASSERT(offset <= peer->download->total_file_size);
-  PG_ASSERT(offset + msg.data.len <= peer->download->total_file_size);
-
-  int err_file = uv_fs_write(uv_default_loop(), &req->req, peer->download->file,
-                             &req->buf, 1, (i64)offset, peer_on_file_write);
-  if (err_file) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: failed to write block to disk",
-           PG_L("address", peer->address), PG_L("piece", piece.val),
-           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
-           PG_L("err", err_file),
-           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
-    // TODO: Retry?
-    peer_close_io_handles(peer);
-    return (PgError)err_file;
-  }
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing block to disk",
-         PG_L("address", peer->address), PG_L("piece", piece.val),
-         PG_L("pieces_have_count", peer->download->pieces_have_count),
-         PG_L("pieces_count", peer->download->pieces_count),
-         PG_L("blocks_have_count", peer->download->blocks_have_count),
-         PG_L("blocks_count", peer->download->blocks_count),
-         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
+  u32 blocks_count_for_piece =
+      download_compute_blocks_count_for_piece(peer->download, pd->piece);
+  PG_ASSERT(pd->block_downloads_len < blocks_count_for_piece);
+  pd->block_downloads[pd->block_downloads_len++] = (BlockDownload){
+      .data = msg.data,
+      .block = block_for_piece,
+  };
 
   pg_bitfield_set(peer->download->blocks_have, block_for_download.val, true);
   peer->download->blocks_have_count += 1;
@@ -331,37 +327,74 @@ static void peer_on_file_write(uv_fs_t *req) {
     return 0;
   }
 
-  PgError err_verify =
-      download_verify_piece(peer->download, piece, peer->allocator);
-  if (err_verify) {
+  // We have all blocks for this piece.
+  PG_ASSERT(pd->block_downloads_len ==
+            download_compute_blocks_count_for_piece(peer->download, pd->piece));
+
+  bool verified = download_verify_piece(peer->download, pd);
+  if (!verified) {
     // TODO: Blacklist remote?
-    peer_close_io_handles(peer);
-    return err_verify;
+    return PG_ERR_INVALID_VALUE;
   }
 
   pg_bitfield_set(peer->download->pieces_have, piece.val, true);
   peer->download->pieces_have_count += 1;
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
-
-  // Update `downloading_pieces`.
-  {
-    PG_ASSERT(peer->downloading_pieces.len > 0);
-    bool found = false;
-    u64 i = 0;
-    for (i = 0; i < peer->downloading_pieces.len; i++) {
-      if (PG_SLICE_AT(peer->downloading_pieces, i).val == piece.val) {
-        found = true;
-        break;
-      }
-    }
-
-    PG_ASSERT(found);
-    PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, i);
-  }
+  PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, pd_index);
 
   pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
          PG_L("address", peer->address), PG_L("piece", piece.val),
          PG_L("pieces_count", peer->download->pieces_count));
+
+  // Actual disk write here, the rest is just metadata bookkeeping/validation.
+
+  FsWriteRequest *req = pg_alloc(peer->allocator, sizeof(FsWriteRequest),
+                                 _Alignof(FsWriteRequest), 1);
+  req->req.data = req;
+  req->data = peer;
+  for (u64 i = 0; i < pd->block_downloads_len; i++) {
+    BlockDownload block_download =
+        PG_C_ARRAY_AT(pd->block_downloads, pd->block_downloads_len, i);
+
+    *PG_C_ARRAY_AT_PTR(req->bufs, PG_STATIC_ARRAY_LEN(req->bufs), i) =
+        string_to_uv_buf(block_download.data);
+    req->bufs_len += 1;
+
+    // Check that they are in order.
+    if (i > 0) {
+      PG_ASSERT(
+          block_download.block.val >
+          PG_C_ARRAY_AT(pd->block_downloads, pd->block_downloads_len, i - 1)
+              .block.val);
+    }
+  }
+
+  u64 offset = (piece.val * peer->download->piece_length + msg.begin);
+  PG_ASSERT(offset <= peer->download->total_file_size);
+  PG_ASSERT(offset + msg.data.len <= peer->download->total_file_size);
+
+  int err_file =
+      uv_fs_write(uv_default_loop(), &req->req, peer->download->file, req->bufs,
+                  (u32)req->bufs_len, (i64)offset, peer_on_file_write);
+  if (err_file) {
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+           "peer: failed to write piece to disk",
+           PG_L("address", peer->address), PG_L("piece", piece.val),
+           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
+           PG_L("err", err_file),
+           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
+    // TODO: Retry?
+    peer_close_io_handles(peer);
+    return (PgError)err_file;
+  }
+  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing piece to disk",
+         PG_L("address", peer->address), PG_L("piece", piece.val),
+         PG_L("pieces_have_count", peer->download->pieces_have_count),
+         PG_L("pieces_count", peer->download->pieces_count),
+         PG_L("blocks_have_count", peer->download->blocks_have_count),
+         PG_L("blocks_count", peer->download->blocks_count),
+         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
+
   // TODO: finish download when all pieces are there.
 
   return 0;

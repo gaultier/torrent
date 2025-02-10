@@ -13,7 +13,8 @@ typedef struct {
 
 typedef struct {
   uv_fs_t req;
-  uv_buf_t buf;
+  uv_buf_t bufs[32 /* FIXME */];
+  u64 bufs_len;
   void *data;
 } FsWriteRequest;
 
@@ -44,9 +45,6 @@ typedef struct {
   u32 val;
 } PieceIndex;
 
-PG_DYN(PieceIndex) PieceIndexDyn;
-PG_SLICE(PieceIndex) PieceIndexSlice;
-
 typedef struct {
   u32 val;
 } BlockForPieceIndex;
@@ -56,6 +54,20 @@ typedef struct {
 } BlockForDownloadIndex;
 
 PG_OK(BlockForDownloadIndex) BlockForDownloadIndexOk;
+
+typedef struct {
+  PgString data;
+  BlockForPieceIndex block;
+} BlockDownload;
+
+typedef struct {
+  PieceIndex piece;
+  BlockDownload block_downloads[32 /* FIXME */];
+  u64 block_downloads_len;
+} PieceDownload;
+
+PG_DYN(PieceDownload) PieceDownloadDyn;
+PG_SLICE(PieceDownload) PieceDownloadSlice;
 
 typedef struct {
   PgString pieces_have;
@@ -80,6 +92,19 @@ typedef struct {
   // All hashes (20 bytes long) for pieces, in one big string.
   PgString pieces_hash;
 } Download;
+
+[[nodiscard]] static i32 block_downloads_sort(const void *va, const void *vb) {
+  BlockDownload *a = (BlockDownload *)va;
+  BlockDownload *b = (BlockDownload *)vb;
+
+  if (a->block.val < b->block.val) {
+    return -1;
+  } else if (a->block.val == b->block.val) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
 
 [[maybe_unused]] [[nodiscard]] static u32
 download_compute_max_blocks_per_piece_count(u64 piece_length) {
@@ -209,7 +234,7 @@ download_compute_blocks_count(u64 total_file_size) {
   return res;
 }
 
-[[nodiscard]] static bool download_verify_piece_hash(PgString data,
+[[nodiscard]] static bool download_verify_piece_data(PgString data,
                                                      PgString hash_expected) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
 
@@ -279,7 +304,7 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   PgString sha_expected =
       PG_SLICE_RANGE(d->info_hash, PG_SHA1_DIGEST_LENGTH * d->piece_i,
                      PG_SHA1_DIGEST_LENGTH * (d->piece_i + 1));
-  bool eq = download_verify_piece_hash(chunk, sha_expected);
+  bool eq = download_verify_piece_data(chunk, sha_expected);
 
   pg_bitfield_set(d->download->pieces_have, d->piece_i, eq);
   d->download->pieces_have_count += eq;
@@ -349,7 +374,7 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
 
 [[maybe_unused]] [[nodiscard]] static BlockForDownloadIndexOk
 download_pick_next_block(Download *download, PgString remote_pieces_have,
-                         PieceIndexDyn *downloading_pieces) {
+                         PieceDownloadDyn *downloading_pieces) {
   PG_ASSERT(download->concurrent_downloads_count <=
             download->concurrent_downloads_max);
   PG_ASSERT(pg_div_ceil(download->pieces_count, 8) == remote_pieces_have.len);
@@ -365,19 +390,20 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
   // Prefer downloading all blocks for one piece, to identify
   // bad peers.
   for (u64 i = 0; i < downloading_pieces->len; i++) {
-    PieceIndex piece = PG_SLICE_AT(*downloading_pieces, i);
-    PG_ASSERT(piece.val < download->pieces_count);
+    PieceDownload piece_download = PG_SLICE_AT(*downloading_pieces, i);
+    PG_ASSERT(piece_download.piece.val < download->pieces_count);
 
-    PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
+    PG_ASSERT(false ==
+              pg_bitfield_get(download->pieces_have, piece_download.piece.val));
 
     u32 blocks_count_for_piece =
-        download_compute_blocks_count_for_piece(download, piece);
+        download_compute_blocks_count_for_piece(download, piece_download.piece);
 
     for (u32 j = 0; j < blocks_count_for_piece; j++) {
       BlockForPieceIndex block_for_piece = {j};
       BlockForDownloadIndex block_for_download =
           download_convert_block_for_piece_to_block_for_download(
-              download, piece, block_for_piece);
+              download, piece_download.piece, block_for_piece);
       if (!pg_bitfield_get(download->blocks_have, block_for_download.val)) {
         res.ok = true;
         res.res = block_for_download;
@@ -402,7 +428,8 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
     }
 
     PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
-    *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) = piece;
+    *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) =
+        (PieceDownload){.piece = piece};
 
     // Start at block 0 for simplicity.
     BlockForDownloadIndex block_for_download =
@@ -416,55 +443,51 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgError
-download_verify_piece(Download *download, PieceIndex piece,
-                      PgAllocator *allocator) {
-  PG_ASSERT(piece.val < download->pieces_count);
+[[nodiscard]] static bool
+download_verify_block_downloads(BlockDownload *block_downloads,
+                                u64 block_downloads_len,
+                                PgString hash_expected) {
+  PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
+
+  PG_SHA1_CTX ctx = {0};
+  PG_SHA1Init(&ctx);
+  for (u64 i = 0; i < block_downloads_len; i++) {
+    BlockDownload block_download =
+        PG_C_ARRAY_AT(block_downloads, block_downloads_len, i);
+
+    PG_SHA1Update(&ctx, block_download.data.data, block_download.data.len);
+  }
+
+  u8 hash[PG_SHA1_DIGEST_LENGTH] = {0};
+  PG_SHA1Final(hash, &ctx);
+
+  return memcmp(hash, hash_expected.data, hash_expected.len);
+}
+
+[[maybe_unused]] [[nodiscard]] static bool
+download_verify_piece(Download *download, PieceDownload *pd) {
+  PG_ASSERT(pd->piece.val < download->pieces_count);
+  PG_ASSERT(pd->block_downloads_len ==
+            download_compute_blocks_count_for_piece(download, pd->piece));
   PG_ASSERT(download->pieces_hash.len ==
             PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verifying piece",
-         PG_L("file", download->file), PG_L("piece", piece.val));
+         PG_L("file", download->file), PG_L("piece", pd->piece.val));
 
-  PgString hash_expected =
-      PG_SLICE_RANGE(download->pieces_hash, PG_SHA1_DIGEST_LENGTH * piece.val,
-                     PG_SHA1_DIGEST_LENGTH * (piece.val + 1));
+  PgString hash_expected = PG_SLICE_RANGE(
+      download->pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece.val,
+      PG_SHA1_DIGEST_LENGTH * (pd->piece.val + 1));
 
-  u32 piece_length = download_compute_piece_length(download, piece);
+  qsort(pd->block_downloads, pd->block_downloads_len, sizeof(BlockDownload),
+        block_downloads_sort);
 
-  FsWriteRequest req = {0};
-  req.req.data = &req;
-  req.data = download;
-  req.buf = string_to_uv_buf(pg_string_make(piece_length, allocator));
-
-  u64 offset = (piece.val * download->piece_length);
-  PG_ASSERT(offset <= download->total_file_size);
-  PG_ASSERT(offset + piece_length <= download->total_file_size);
-
-  int err_file =
-      uv_fs_read(uv_default_loop(), &req.req, download->file, &req.buf, 1,
-                 (i64)offset, nullptr /* TODO: Should it be async? */);
-  if (err_file) {
-    pg_log(download->logger, PG_LOG_LEVEL_ERROR,
-           "download: failed to read block from disk",
-           PG_L("file", download->file), PG_L("err", err_file),
-           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
-    uv_fs_req_cleanup(&req.req);
-    pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
-    return (PgError)err_file;
-  }
-  pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
-         "download: reading block from disk", PG_L("file", download->file));
-
-  PgError err_verify =
-      download_verify_piece_hash(uv_buf_to_string(req.buf), hash_expected);
-
-  pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
-  uv_fs_req_cleanup(&req.req);
+  bool verified = download_verify_block_downloads(
+      pd->block_downloads, pd->block_downloads_len, hash_expected);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verified piece",
-         PG_L("file", download->file), PG_L("piece", piece.val),
-         PG_L("err", err_verify));
+         PG_L("file", download->file), PG_L("piece", pd->piece.val),
+         PG_L("verified", (u64)verified));
 
-  return err_verify;
+  return verified;
 }

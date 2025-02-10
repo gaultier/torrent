@@ -112,7 +112,6 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
   return (u32)res;
 }
 
-// TODO: Consider having two separate types for these two kinds of blocks.
 [[nodiscard]] static u32 download_compute_piece_length(Download *download,
                                                        PieceIndex piece) {
   PG_ASSERT(piece.val < download->pieces_count);

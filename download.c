@@ -401,6 +401,7 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
       continue;
     }
 
+    PG_ASSERT(false == pg_bitfield_get(download->pieces_have, piece.val));
     *PG_DYN_PUSH_WITHIN_CAPACITY(downloading_pieces) = piece;
 
     res.res = block_for_download;

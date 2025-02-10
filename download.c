@@ -386,6 +386,7 @@ download_verify_piece(Download *download, PieceIndex piece,
            "download: failed to read block from disk",
            PG_L("file", download->file), PG_L("err", err_file),
            PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
+    uv_fs_req_cleanup(&req.req);
     pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
     return (PgError)err_file;
   }
@@ -396,5 +397,7 @@ download_verify_piece(Download *download, PieceIndex piece,
       download_verify_piece_hash(uv_buf_to_string(req.buf), hash_expected);
 
   pg_free(allocator, req.buf.base, sizeof(u8), req.buf.len);
+  uv_fs_req_cleanup(&req.req);
+
   return err_verify;
 }

@@ -921,33 +921,43 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
     return 0;
   }
 
-  if (peer->download->concurrent_downloads_count ==
-      peer->download->concurrent_downloads_max) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
-           "peer: not requesting remote data since max concurrent downloads is "
-           "reached",
-           PG_L("address", peer->address),
-           PG_L("concurrent_downloads",
-                peer->download->concurrent_downloads_count));
+  u64 req_max = 16;
 
-    return 0;
+  for (u64 i = 0; i < req_max; i++) {
+
+    if (peer->download->concurrent_downloads_count ==
+        peer->download->concurrent_downloads_max) {
+      pg_log(
+          peer->logger, PG_LOG_LEVEL_DEBUG,
+          "peer: not requesting remote data since max concurrent downloads is "
+          "reached",
+          PG_L("address", peer->address),
+          PG_L("concurrent_downloads",
+               peer->download->concurrent_downloads_count));
+
+      return 0;
+    }
+
+    BlockForDownloadIndexOk res_block = download_pick_next_block(
+        peer->download, peer->remote_bitfield, &peer->downloading_pieces);
+    if (!res_block.ok) {
+      pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
+             "peer: not requesting remote data since all blocks are already "
+             "downloaded",
+             PG_L("address", peer->address));
+      return 0;
+    }
+
+    peer->download->concurrent_downloads_count += 1;
+    PG_ASSERT(peer->download->concurrent_downloads_count <=
+              peer->download->concurrent_downloads_max);
+
+    PgError err = peer_request_block(peer, res_block.res);
+    if (err) {
+      return err;
+    }
   }
-
-  BlockForDownloadIndexOk res_block = download_pick_next_block(
-      peer->download, peer->remote_bitfield, &peer->downloading_pieces);
-  if (!res_block.ok) {
-    pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
-           "peer: not requesting remote data since all blocks are already "
-           "downloaded",
-           PG_L("address", peer->address));
-    return 0;
-  }
-
-  peer->download->concurrent_downloads_count += 1;
-  PG_ASSERT(peer->download->concurrent_downloads_count <=
-            peer->download->concurrent_downloads_max);
-
-  return peer_request_block(peer, res_block.res);
+  return 0;
 }
 
 [[maybe_unused]] [[nodiscard]] static PgString

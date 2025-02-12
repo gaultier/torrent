@@ -1,7 +1,6 @@
 #pragma once
 
 #include "configuration.c"
-#include "error.h"
 #include "submodules/cstd/lib.c"
 #include "uv_utils.c"
 
@@ -55,13 +54,13 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'i');
   if (!prefix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   PgParseNumberResult num_res = pg_string_parse_u64(prefix.res);
   if (!num_res.present) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
@@ -69,7 +68,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
 
   PgStringOk suffix = pg_string_consume_byte(num_res.remaining, 'e');
   if (!suffix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
   res.remaining = suffix.res;
@@ -86,23 +85,23 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
 
   PgParseNumberResult num_res = pg_string_parse_u64(s);
   if (!num_res.present) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   if (0 == num_res.n) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   PgStringOk prefix = pg_string_consume_byte(num_res.remaining, ':');
   if (!prefix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   if (prefix.res.len < num_res.n) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
@@ -122,14 +121,14 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
-      res.err = TORR_ERR_BENCODE_INVALID;
+      res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
     if ('e' == PG_SLICE_AT(remaining, 0)) {
@@ -150,7 +149,7 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
       PgString last_key = PG_SLICE_LAST(res.value.dict).key;
       PgStringCompare cmp = pg_string_cmp(last_key, key);
       if (STRING_CMP_LESS != cmp) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
     }
@@ -172,7 +171,7 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
 
   PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
   if (!suffix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
   res.remaining = suffix.res;
@@ -190,14 +189,14 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
-      res.err = TORR_ERR_BENCODE_INVALID;
+      res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
     if ('e' == PG_SLICE_AT(remaining, 0)) {
@@ -220,7 +219,7 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
 
   PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
   if (!suffix.ok) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
   res.remaining = suffix.res;
@@ -234,7 +233,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator) {
   BencodeValueDecodeResult res = {.value.start = start};
 
   if (0 == s.len) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
   switch (PG_SLICE_AT(s, 0)) {
@@ -289,7 +288,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator) {
     return res;
   }
   default:
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 }
@@ -419,7 +418,7 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
     return res;
   }
   if (0 != res_dict.remaining.len) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
@@ -429,20 +428,20 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
 
     if (pg_string_eq(kv.key, PG_S("announce"))) {
       if (BENCODE_KIND_STRING != kv.value.kind) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
 
       PgUrlResult pg_url_parse_res = pg_url_parse(kv.value.s, allocator);
       if (pg_url_parse_res.err) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
 
       res.res.announce = pg_url_parse_res.res;
     } else if (pg_string_eq(kv.key, PG_S("info"))) {
       if (BENCODE_KIND_DICTIONARY != kv.value.kind) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
       BencodeKeyValueDyn info = kv.value.dict;
@@ -454,25 +453,25 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
 
         if (pg_string_eq(info_kv.key, PG_S("name"))) {
           if (BENCODE_KIND_STRING != info_kv.value.kind) {
-            res.err = TORR_ERR_BENCODE_INVALID;
+            res.err = PG_ERR_INVALID_VALUE;
             return res;
           }
           res.res.name = info_kv.value.s;
         } else if (pg_string_eq(info_kv.key, PG_S("piece length"))) {
           if (BENCODE_KIND_NUMBER != info_kv.value.kind) {
-            res.err = TORR_ERR_BENCODE_INVALID;
+            res.err = PG_ERR_INVALID_VALUE;
             return res;
           }
           res.res.piece_length = info_kv.value.num;
         } else if (pg_string_eq(info_kv.key, PG_S("pieces"))) {
           if (BENCODE_KIND_STRING != info_kv.value.kind) {
-            res.err = TORR_ERR_BENCODE_INVALID;
+            res.err = PG_ERR_INVALID_VALUE;
             return res;
           }
           res.res.pieces = info_kv.value.s;
         } else if (pg_string_eq(info_kv.key, PG_S("length"))) {
           if (BENCODE_KIND_NUMBER != info_kv.value.kind) {
-            res.err = TORR_ERR_BENCODE_INVALID;
+            res.err = PG_ERR_INVALID_VALUE;
             return res;
           }
           res.res.length = info_kv.value.num;

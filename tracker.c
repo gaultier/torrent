@@ -56,7 +56,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger,
   ParseCompactPeersResult res = {0};
 
   if (s.len % 6 != 0) {
-    res.err = TORR_ERR_COMPACT_PEERS_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
@@ -107,12 +107,12 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
     return res;
   }
   if (tracker_response_bencode_res.remaining.len != 0) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   if (BENCODE_KIND_DICTIONARY != tracker_response_bencode_res.value.kind) {
-    res.err = TORR_ERR_BENCODE_INVALID;
+    res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
@@ -123,20 +123,20 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
 
     if (pg_string_eq(kv.key, PG_S("failure reason"))) {
       if (BENCODE_KIND_STRING != kv.value.kind) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
 
       res.res.failure = kv.value.s;
     } else if (pg_string_eq(kv.key, PG_S("interval"))) {
       if (BENCODE_KIND_NUMBER != kv.value.kind) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
       res.res.interval_secs = kv.value.num;
     } else if (pg_string_eq(kv.key, PG_S("peers"))) {
       if (BENCODE_KIND_STRING != kv.value.kind) {
-        res.err = TORR_ERR_BENCODE_INVALID;
+        res.err = PG_ERR_INVALID_VALUE;
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
       ParseCompactPeersResult res_parse_compact_peers =

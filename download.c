@@ -90,6 +90,7 @@ typedef struct {
 
   u64 concurrent_downloads_count;
   u64 concurrent_downloads_max;
+  u64 peers_active_count;
 
   // All hashes (20 bytes long) for pieces, in one big string.
   PgString pieces_hash;

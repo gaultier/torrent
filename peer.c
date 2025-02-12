@@ -157,6 +157,7 @@ peer_make(PgIpv4Address address, u8 info_hash[PG_SHA1_DIGEST_LENGTH],
   peer.local_choked = true;
   peer.local_interested = false;
 
+  download->peers_active_count += 1;
   return peer;
 }
 
@@ -167,6 +168,9 @@ static void peer_on_close(uv_handle_t *handle) {
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: closed io handles",
          PG_L("address", peer->address));
+
+  PG_ASSERT(peer->download->peers_active_count > 0);
+  peer->download->peers_active_count -= 1;
 
   // TODO: Kick-start a retry here?
 

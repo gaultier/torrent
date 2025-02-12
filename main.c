@@ -1,7 +1,5 @@
 #include "tracker.c"
 
-#include "submodules/libuv/include/uv.h"
-
 static void download_on_timer(uv_timer_t *timer) {
   PG_ASSERT(timer);
   PG_ASSERT(timer->data);
@@ -11,6 +9,7 @@ static void download_on_timer(uv_timer_t *timer) {
       download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
       PG_L("concurrent_downloads_count", download->concurrent_downloads_count),
       PG_L("concurrent_downloads_max", download->concurrent_downloads_max),
+      PG_L("peers_active", download->peers_active_count),
       PG_L("pieces_count", download->pieces_count),
       PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
 }

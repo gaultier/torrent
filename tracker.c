@@ -123,32 +123,31 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
     return res;
   }
 
-  BencodeDictionary dict = tracker_response_bencode_res.value.dict;
+  BencodeKeyValueDyn dict = tracker_response_bencode_res.value.dict;
 
-  for (u64 i = 0; i < dict.keys.len; i++) {
-    PgString key = PG_SLICE_AT(dict.keys, i);
-    BencodeValue value = PG_SLICE_AT(dict.values, i);
+  for (u64 i = 0; i < dict.len; i++) {
+    BencodeKeyValue kv = PG_SLICE_AT(dict, i);
 
-    if (pg_string_eq(key, PG_S("failure reason"))) {
-      if (BENCODE_KIND_STRING != value.kind) {
+    if (pg_string_eq(kv.key, PG_S("failure reason"))) {
+      if (BENCODE_KIND_STRING != kv.value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
-      res.res.failure = value.s;
-    } else if (pg_string_eq(key, PG_S("interval"))) {
-      if (BENCODE_KIND_NUMBER != value.kind) {
+      res.res.failure = kv.value.s;
+    } else if (pg_string_eq(kv.key, PG_S("interval"))) {
+      if (BENCODE_KIND_NUMBER != kv.value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
-      res.res.interval_secs = value.num;
-    } else if (pg_string_eq(key, PG_S("peers"))) {
-      if (BENCODE_KIND_STRING != value.kind) {
+      res.res.interval_secs = kv.value.num;
+    } else if (pg_string_eq(kv.key, PG_S("peers"))) {
+      if (BENCODE_KIND_STRING != kv.value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res; // TODO: Handle non-compact case i.e. BENCODE_LIST?
       }
       ParseCompactPeersResult res_parse_compact_peers =
-          tracker_parse_compact_peers(value.s, logger, allocator);
+          tracker_parse_compact_peers(kv.value.s, logger, allocator);
 
       if (res_parse_compact_peers.err) {
         res.err = res_parse_compact_peers.err;

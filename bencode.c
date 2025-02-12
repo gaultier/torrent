@@ -16,8 +16,8 @@ typedef struct BencodeValue BencodeValue;
 
 PG_DYN(BencodeValue) BencodeValueDyn;
 
-struct BencodeKeyValue;
-PG_DYN(struct BencodeKeyValue) BencodeKeyValueDyn;
+typedef struct BencodeKeyValue BencodeKeyValue;
+PG_DYN(BencodeKeyValue) BencodeKeyValueDyn;
 
 // TODO: Optimize size?
 struct BencodeValue {
@@ -31,10 +31,10 @@ struct BencodeValue {
   };
 };
 
-typedef struct {
+struct BencodeKeyValue {
   PgString key;
   BencodeValue value;
-} BencodeKeyValue;
+};
 
 typedef struct {
   PgError err;
@@ -175,8 +175,6 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
   }
   res.remaining = suffix.res;
   res.value.end = (u32)(start + s.len - res.remaining.len);
-
-  PG_ASSERT(res.value.dict.keys.len == res.value.dict.values.len);
 
   return res;
 }
@@ -360,24 +358,24 @@ bencode_encode(BencodeValue value, PgWriter *w, PgAllocator *allocator) {
       return err;
     }
 
-    for (u64 i = 0; i < value.dict.keys.len; i++) {
-      PgString k = PG_SLICE_AT(value.dict.keys, i);
-      BencodeValue v = PG_SLICE_AT(value.dict.values, i);
-      err = bencode_encode((BencodeValue){.kind = BENCODE_KIND_STRING, .s = k},
-                           w, allocator);
+    for (u64 i = 0; i < value.dict.len; i++) {
+      BencodeKeyValue kv = PG_SLICE_AT(value.dict, i);
+      err = bencode_encode(
+          (BencodeValue){.kind = BENCODE_KIND_STRING, .s = kv.key}, w,
+          allocator);
       if (err) {
         return err;
       }
 
-      err = bencode_encode(v, w, allocator);
+      err = bencode_encode(kv.value, w, allocator);
       if (err) {
         return err;
       }
 
       // Ensure ordering.
       if (i > 0) {
-        PgString previous_key = PG_SLICE_AT(value.dict.keys, i - 1);
-        PgStringCompare cmp = pg_string_cmp(previous_key, k);
+        PgString previous_key = PG_SLICE_AT(value.dict, i - 1).key;
+        PgStringCompare cmp = pg_string_cmp(previous_key, kv.key);
         PG_ASSERT(STRING_CMP_LESS == cmp);
       }
     }
@@ -401,7 +399,7 @@ typedef struct {
   u64 piece_length;
   PgString pieces;
   u64 length;
-  BencodeDictionary files; // TODO.
+  BencodeValueDyn files; // TODO.
   u64 info_start, info_end;
 } Metainfo;
 
@@ -422,61 +420,59 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
     return res;
   }
 
-  BencodeDictionary dict = res_dict.value.dict;
-  for (u64 i = 0; i < dict.keys.len; i++) {
-    PgString key = PG_SLICE_AT(dict.keys, i);
-    BencodeValue value = PG_SLICE_AT(dict.values, i);
+  BencodeKeyValueDyn dict = res_dict.value.dict;
+  for (u64 i = 0; i < dict.len; i++) {
+    BencodeKeyValue kv = PG_SLICE_AT(dict, i);
 
-    if (pg_string_eq(key, PG_S("announce"))) {
-      if (BENCODE_KIND_STRING != value.kind) {
+    if (pg_string_eq(kv.key, PG_S("announce"))) {
+      if (BENCODE_KIND_STRING != kv.value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
-      PgUrlResult pg_url_parse_res = pg_url_parse(value.s, allocator);
+      PgUrlResult pg_url_parse_res = pg_url_parse(kv.value.s, allocator);
       if (pg_url_parse_res.err) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
 
       res.res.announce = pg_url_parse_res.res;
-    } else if (pg_string_eq(key, PG_S("info"))) {
-      if (BENCODE_KIND_DICTIONARY != value.kind) {
+    } else if (pg_string_eq(kv.key, PG_S("info"))) {
+      if (BENCODE_KIND_DICTIONARY != kv.value.kind) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
-      BencodeDictionary info = value.dict;
-      res.res.info_start = value.start;
-      res.res.info_end = value.end;
+      BencodeKeyValueDyn info = kv.value.dict;
+      res.res.info_start = kv.value.start;
+      res.res.info_end = kv.value.end;
 
-      for (u64 j = 0; j < info.keys.len; j++) {
-        PgString info_key = PG_SLICE_AT(info.keys, j);
-        BencodeValue info_value = PG_SLICE_AT(info.values, j);
+      for (u64 j = 0; j < info.len; j++) {
+        BencodeKeyValue info_kv = PG_SLICE_AT(info, j);
 
-        if (pg_string_eq(info_key, PG_S("name"))) {
-          if (BENCODE_KIND_STRING != info_value.kind) {
+        if (pg_string_eq(info_kv.key, PG_S("name"))) {
+          if (BENCODE_KIND_STRING != info_kv.value.kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
-          res.res.name = info_value.s;
-        } else if (pg_string_eq(info_key, PG_S("piece length"))) {
-          if (BENCODE_KIND_NUMBER != info_value.kind) {
+          res.res.name = info_kv.value.s;
+        } else if (pg_string_eq(info_kv.key, PG_S("piece length"))) {
+          if (BENCODE_KIND_NUMBER != info_kv.value.kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
-          res.res.piece_length = info_value.num;
-        } else if (pg_string_eq(info_key, PG_S("pieces"))) {
-          if (BENCODE_KIND_STRING != info_value.kind) {
+          res.res.piece_length = info_kv.value.num;
+        } else if (pg_string_eq(info_kv.key, PG_S("pieces"))) {
+          if (BENCODE_KIND_STRING != info_kv.value.kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
-          res.res.pieces = info_value.s;
-        } else if (pg_string_eq(info_key, PG_S("length"))) {
-          if (BENCODE_KIND_NUMBER != info_value.kind) {
+          res.res.pieces = info_kv.value.s;
+        } else if (pg_string_eq(info_kv.key, PG_S("length"))) {
+          if (BENCODE_KIND_NUMBER != info_kv.value.kind) {
             res.err = TORR_ERR_BENCODE_INVALID;
             return res;
           }
-          res.res.length = info_value.num;
+          res.res.length = info_kv.value.num;
         }
         // TODO: `files`.
       }

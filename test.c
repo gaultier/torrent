@@ -189,28 +189,27 @@ static void test_bencode_decode() {
     PG_ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
 
-    BencodeDictionary dict = res.value.dict;
-    PG_ASSERT(2 == dict.keys.len);
-    PG_ASSERT(2 == dict.values.len);
+    BencodeKeyValueDyn dict = res.value.dict;
+    PG_ASSERT(2 == dict.len);
 
     {
-      PgString k1 = PG_SLICE_AT(dict.keys, 0);
+      PgString k1 = PG_SLICE_AT(dict, 0).key;
       PG_ASSERT(pg_string_eq(PG_S("ab"), k1));
     }
 
     {
-      PgString k2 = PG_SLICE_AT(dict.keys, 1);
+      PgString k2 = PG_SLICE_AT(dict, 1).key;
       PG_ASSERT(pg_string_eq(PG_S("xyz"), k2));
     }
 
     {
-      BencodeValue v1 = PG_SLICE_AT(dict.values, 0);
+      BencodeValue v1 = PG_SLICE_AT(dict, 0).value;
       PG_ASSERT(BENCODE_KIND_NUMBER == v1.kind);
       PG_ASSERT(123 == v1.num);
     }
 
     {
-      BencodeValue v2 = PG_SLICE_AT(dict.values, 1);
+      BencodeValue v2 = PG_SLICE_AT(dict, 1).value;
       PG_ASSERT(BENCODE_KIND_STRING == v2.kind);
       PG_ASSERT(pg_string_eq(PG_S("hello"), v2.s));
     }

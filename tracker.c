@@ -37,14 +37,6 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   }
 }
 
-[[maybe_unused]]
-static void tracker_compute_info_hash(PgString info,
-                                      u8 hash[PG_SHA1_DIGEST_LENGTH]) {
-  u8 pg_sha1_hash[PG_SHA1_DIGEST_LENGTH] = {0};
-  pg_sha1(info, pg_sha1_hash);
-  memcpy(hash, pg_sha1_hash, PG_SHA1_DIGEST_LENGTH);
-}
-
 typedef struct {
   PgIpv4AddressDyn peer_addresses;
   PgString failure;

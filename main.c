@@ -147,13 +147,14 @@ int main(int argc, char *argv[]) {
       .event = TRACKER_EVENT_STARTED,
       .announce = metainfo.announce,
   };
-  tracker_compute_info_hash(
+  torrent_compute_info_hash(
       PG_SLICE_RANGE(torrent.file_data, metainfo.info_start, metainfo.info_end),
       tracker_metadata.info_hash);
   u32 pieces_count =
       download_compute_pieces_count(metainfo.piece_length, metainfo.length);
   PG_ASSERT(pieces_count > 0);
 
+  // Download.
   Download download =
       download_make(&logger, &rng, &cfg, metainfo.piece_length, metainfo.length,
                     metainfo.pieces, res_target_file.res);

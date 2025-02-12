@@ -9,6 +9,9 @@
 #include "submodules/cstd/lib.c"
 
 #define HANDSHAKE_LENGTH 68
+#define PEER_MESSAGE_HEADER_LENGTH 5
+#define PEER_MESSAGE_MAX_SIZE                                                  \
+  (PEER_MESSAGE_HEADER_LENGTH + 2 * sizeof(u32) + BLOCK_SIZE)
 
 typedef enum {
   PEER_STATE_NONE,
@@ -1010,8 +1013,11 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
 
   PG_ASSERT(0 == peer->recv.data.len);
   i32 recv_size = 0;
-  uv_recv_buffer_size(((uv_handle_t *)&peer->uv_tcp), &recv_size);
+  PG_ASSERT(0 == uv_recv_buffer_size((uv_handle_t *)&peer->uv_tcp, &recv_size));
   PG_ASSERT(recv_size > 0);
+  if (recv_size < (i32)(2 * PEER_MESSAGE_MAX_SIZE)) {
+    recv_size = 2 * PEER_MESSAGE_MAX_SIZE;
+  }
   peer->recv = pg_ring_make((u64)recv_size, peer->allocator);
 
   PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);

@@ -8,18 +8,19 @@
 //   pieces/blocks counts/sizes for validation of requests. All of that does not
 //   required dynamic allocation. So we can tear down the download when all
 //   pieces are downloaded. That allows for freeing the pieces hash which is big
-//   (~40Kib to even more).
+//   (~40Kib or even more).
 // - Tracker: one tracker per torrent file download. One time allocation with
-// its own arena. When all pieces are download, still keep it to report stats to
-// the tracker so that
+// its own arena. When all pieces are downloaded, still keep it to report stats
+// to the tracker so that
 //   other peers can find us. The tracker only needs a recv/send buffer which
 //   are limited by the configuration before creating the tracker so the tracker
 //   arena can be sized exactly.
-// - Peer: Each peer has its own arena (check if that works). Ideally, exactly
-// (i.e. minimally) sized ahead of time.
+// - Peer: Each peer has its own arena (check if that really is feasible).
+// Ideally, exactly (i.e. minimally) sized ahead of time.
 // - Download->Peer relationship: a Download spawns peers.
-//   But: we should also spawn peers with a periodic timer to serve pieces, once
-//   we implement this.
+//   But: we should also spawn peers with a periodic timer to serve pieces, if
+//   there are zero peers running, once we implement this. Or, just have one
+//   socket listener that spawns peers on a new connection.
 // - read/write peer data: handled by the peer. Should use a pool allocator for
 // efficiency since there lifetime is short and the rate is high. The pool
 // should support

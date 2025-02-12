@@ -533,7 +533,7 @@ torrent_file_read_file(PgString path, PgLogger *logger) {
   // Read entire file.
   u64 file_size = req.statbuf.st_size;
   res.res.arena = pg_arena_make_from_virtual_mem(
-      file_size + 4 * PG_KiB /* becoding entities */);
+      file_size + 8 * PG_KiB /* bencoding entities */);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 

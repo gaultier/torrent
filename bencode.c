@@ -16,11 +16,10 @@ typedef struct BencodeValue BencodeValue;
 
 PG_DYN(BencodeValue) BencodeValueDyn;
 
-typedef struct {
-  PgStringDyn keys;
-  BencodeValueDyn values;
-} BencodeDictionary;
+struct BencodeKeyValue;
+PG_DYN(struct BencodeKeyValue) BencodeKeyValueDyn;
 
+// TODO: Optimize size?
 struct BencodeValue {
   BencodeKind kind;
   u32 start, end;
@@ -28,9 +27,14 @@ struct BencodeValue {
     u64 num;
     PgString s; // Non-owning.
     BencodeValueDyn list;
-    BencodeDictionary dict;
+    BencodeKeyValueDyn dict;
   };
 };
+
+typedef struct {
+  PgString key;
+  BencodeValue value;
+} BencodeKeyValue;
 
 typedef struct {
   PgError err;
@@ -121,10 +125,6 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
     return res;
   }
 
-  u64 initial_cap = 16;
-  PG_DYN_ENSURE_CAP(&res.value.dict.keys, initial_cap, allocator);
-  PG_DYN_ENSURE_CAP(&res.value.dict.values, initial_cap, allocator);
-
   PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
     if (0 == remaining.len) {
@@ -145,16 +145,14 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
     PgString key = res_key.value.s;
 
     // Ensure ordering.
-    if (res.value.dict.keys.len > 0) {
-      PgString last_key = PG_SLICE_LAST(res.value.dict.keys);
+    if (res.value.dict.len > 0) {
+      PgString last_key = PG_SLICE_LAST(res.value.dict).key;
       PgStringCompare cmp = pg_string_cmp(last_key, key);
       if (STRING_CMP_LESS != cmp) {
         res.err = TORR_ERR_BENCODE_INVALID;
         return res;
       }
     }
-
-    *PG_DYN_PUSH(&res.value.dict.keys, allocator) = key;
 
     // TODO: Address stack overflow.
     BencodeValueDecodeResult res_value = bencode_decode_value(
@@ -164,7 +162,8 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
       return res;
     }
 
-    *PG_DYN_PUSH(&res.value.dict.values, allocator) = res_value.value;
+    BencodeKeyValue kv = {.key = res_key.value.s, .value = res_value.value};
+    *PG_DYN_PUSH(&res.value.dict, allocator) = kv;
 
     remaining = res_value.remaining;
   }

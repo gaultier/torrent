@@ -14,7 +14,7 @@ typedef enum {
 } TrackerMetadataEvent;
 
 typedef struct {
-  u8 info_hash[PG_SHA1_DIGEST_LENGTH];
+  PgSha1 info_hash;
   u8 peer_id[20];
   u32 ip;
   u16 port;
@@ -168,8 +168,8 @@ tracker_make_http_request(TrackerMetadata *req_tracker, PgArena *arena) {
       .key = PG_S("info_hash"),
       .value =
           (PgString){
-              .data = req_tracker->info_hash,
-              .len = PG_STATIC_ARRAY_LEN(req_tracker->info_hash),
+              .data = req_tracker->info_hash.data,
+              .len = PG_STATIC_ARRAY_LEN(req_tracker->info_hash.data),
           },
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&res.url.query_parameters) = (PgKeyValue){
@@ -239,9 +239,9 @@ typedef struct {
 
 [[maybe_unused]] [[nodiscard]]
 static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
-                            u16 port, TrackerMetadata metadata,
-                            Download *download, PgString piece_hashes,
-                            PgAllocator *allocator) {
+                            u16 port, Download *download, PgString piece_hashes,
+                            u16 port_torrent_ours, PgUrl announce_url,
+                            PgSha1 info_hash, PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Tracker tracker = {0};
@@ -249,10 +249,17 @@ static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
   tracker.cfg = cfg;
   tracker.host = host;
   tracker.port = port;
-  tracker.metadata = metadata;
   tracker.download = download;
   tracker.piece_hashes = piece_hashes;
   tracker.allocator = allocator;
+
+  tracker.metadata = (TrackerMetadata){
+      .info_hash = info_hash,
+      .port = port_torrent_ours,
+      .left = download->total_size, // FIXME
+      .event = TRACKER_EVENT_STARTED,
+      .announce = announce_url,
+  };
 
   // Need to hold the HTTP request and response simultaneously (currently).
   tracker.arena =

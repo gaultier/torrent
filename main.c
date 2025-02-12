@@ -140,17 +140,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  u16 port_ours_torrent = 6881;
-  TrackerMetadata tracker_metadata = {
-      .port = port_ours_torrent,
-      .left = metainfo.length,
-      .event = TRACKER_EVENT_STARTED,
-      .announce = metainfo.announce,
-  };
-  torrent_compute_info_hash(
-      PG_SLICE_RANGE(torrent.file_data, metainfo.info_start, metainfo.info_end),
-      tracker_metadata.info_hash);
-
   // Download.
   Download download =
       download_make(&logger, &rng, &cfg, metainfo.piece_length, metainfo.length,
@@ -190,9 +179,13 @@ int main(int argc, char *argv[]) {
               pg_bitfield_count(download.pieces_have)));
 
   // Start tracker client.
-  Tracker tracker = tracker_make(&logger, &cfg, metainfo.announce.host,
-                                 metainfo.announce.port, tracker_metadata,
-                                 &download, metainfo.pieces, general_allocator);
+  u16 port_torrent_ours = 6881;
+  PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(
+      torrent.file_data, metainfo.info_start, metainfo.info_end));
+  Tracker tracker = tracker_make(
+      &logger, &cfg, metainfo.announce.host, metainfo.announce.port, &download,
+      metainfo.pieces, port_torrent_ours, metainfo.announce, info_hash,
+      general_allocator);
   if (tracker_start_dns_resolve(&tracker, metainfo.announce)) {
     return 1;
   }

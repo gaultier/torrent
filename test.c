@@ -305,16 +305,16 @@ static void test_tracker_compute_info_hash() {
       bencode_decode_metainfo(torrent_file_content, allocator);
   PG_ASSERT(0 == res.err);
 
-  u8 hash[PG_SHA1_DIGEST_LENGTH] = {0};
   PgString info_encoded = PG_SLICE_RANGE(torrent_file_content,
                                          res.res.info_start, res.res.info_end);
-  tracker_compute_info_hash(info_encoded, hash);
+  PgSha1 hash = pg_sha1(info_encoded);
 
-  u8 expected_hash[PG_SHA1_DIGEST_LENGTH] = {
-      0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,
-      0x90, 0xe8, 0x7d, 0x3a, 0x01, 0x4f, 0x8a, 0x07, 0x2d, 0x7a,
-  };
-  PG_ASSERT(0 == memcmp(hash, expected_hash, PG_SHA1_DIGEST_LENGTH));
+  PgSha1 expected_hash = {.data = {
+                              0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86,
+                              0xd3, 0x06, 0xc3, 0x90, 0xe8, 0x7d, 0x3a,
+                              0x01, 0x4f, 0x8a, 0x07, 0x2d, 0x7a,
+                          }};
+  PG_ASSERT(0 == memcmp(hash.data, expected_hash.data, PG_SHA1_DIGEST_LENGTH));
 }
 
 static void test_peer_make_handshake() {
@@ -322,8 +322,8 @@ static void test_peer_make_handshake() {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString info_hash = PG_S("abcdefghijklmnopqrst");
-  PgString handshake = peer_make_handshake(info_hash.data, allocator);
+  PgSha1 info_hash = {.data = "abcdefghijklmnopqrst"};
+  PgString handshake = peer_make_handshake(info_hash, allocator);
 
   PG_ASSERT(HANDSHAKE_LENGTH == handshake.len);
   PG_ASSERT(pg_string_starts_with(handshake, PG_S("\x13"

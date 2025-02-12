@@ -278,9 +278,8 @@ download_compute_blocks_count(u64 total_file_size) {
                                                      PgString hash_expected) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
 
-  u8 hash_got[PG_SHA1_DIGEST_LENGTH] = {0};
-  pg_sha1(data, hash_got);
-  return memcmp(hash_got, hash_expected.data, hash_expected.len) == 0;
+  PgSha1 hash_got = pg_sha1(data);
+  return memcmp(hash_got.data, hash_expected.data, hash_expected.len) == 0;
 }
 
 [[maybe_unused]] [[nodiscard]] static PgFileResult

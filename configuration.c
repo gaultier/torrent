@@ -17,4 +17,6 @@ typedef struct {
 
   // Peer.
 
+  // Metrics
+  u64 metrics_interval_ns;
 } Configuration;

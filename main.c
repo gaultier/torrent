@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
       .tracker_max_http_request_bytes = 64 * PG_KiB,
       .tracker_max_http_response_bytes = 64 * PG_KiB,
       .tracker_round_trip_timeout_ns = 20 * PG_Seconds,
-
+      .metrics_interval_ns = 1 * PG_Seconds,
   };
 
   char *torrent_file_path_c = argv[1];
@@ -224,8 +224,10 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    int err_timer_start = uv_timer_start(&download_metrics_timer,
-                                         download_on_timer, 1'000, 1'000);
+    int err_timer_start =
+        uv_timer_start(&download_metrics_timer, download_on_timer,
+                       pg_ns_to_ms(cfg.metrics_interval_ns),
+                       pg_ns_to_ms(cfg.metrics_interval_ns));
     if (err_timer_start < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to start download metrics timer",

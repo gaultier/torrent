@@ -663,7 +663,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
   tracker->uv_tcp_timeout.data = tracker;
 
-  u64 timeout_ms = tracker->cfg->tracker_round_trip_timeout_ns / 1000'000;
+  u64 timeout_ms = pg_ns_to_ms(tracker->cfg->tracker_round_trip_timeout_ns);
   int err_timer = uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout,
                                  timeout_ms, 0);
   if (err_timer < 0) {

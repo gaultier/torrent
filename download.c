@@ -1,4 +1,5 @@
 #pragma once
+#include "configuration.c"
 #include "submodules/cstd/lib.c"
 #include "uv_utils.c"
 
@@ -69,16 +70,16 @@ typedef struct {
 
   u32 pieces_count;
   u32 blocks_count;
-  u32 max_blocks_per_piece_count;
+  u32 blocks_per_piece_max;
   u64 piece_length;
   u64 total_file_size;
   // TODO: Multiple files.
   PgFile file;
   PgLogger *logger;
   PgRng *rng;
+  Configuration *cfg;
 
   u64 concurrent_downloads_count;
-  u64 concurrent_downloads_max;
   u64 peers_active_count;
 
   // All hashes (20 bytes long) for pieces, in one big string.
@@ -137,15 +138,15 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
   PG_ASSERT(pieces_count > 0);
 
   if (piece.val < pieces_count - 1) {
-    PG_ASSERT(download->max_blocks_per_piece_count > 0);
-    return download->max_blocks_per_piece_count;
+    PG_ASSERT(download->blocks_per_piece_max > 0);
+    return download->blocks_per_piece_max;
   }
 
   u64 rem = download->total_file_size - piece.val * download->piece_length;
 
   u64 res = pg_div_ceil(rem, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);
-  PG_ASSERT(res <= download->max_blocks_per_piece_count);
+  PG_ASSERT(res <= download->blocks_per_piece_max);
   return (u32)res;
 }
 
@@ -153,10 +154,9 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
 download_convert_block_for_piece_to_block_for_download(
     Download *download, PieceIndex piece, BlockForPieceIndex block_for_piece) {
   PG_ASSERT(piece.val < download->pieces_count);
-  PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
+  PG_ASSERT(block_for_piece.val < download->blocks_per_piece_max);
 
-  u32 res =
-      piece.val * download->max_blocks_per_piece_count + block_for_piece.val;
+  u32 res = piece.val * download->blocks_per_piece_max + block_for_piece.val;
   PG_ASSERT(res < download->blocks_count);
 
   return (BlockForDownloadIndex){res};
@@ -181,7 +181,7 @@ download_convert_block_for_download_to_block_for_piece(
 
   u64 res = (block_offset - piece_offset_start) / BLOCK_SIZE;
   PG_ASSERT(res <= UINT32_MAX);
-  PG_ASSERT(res < download->max_blocks_per_piece_count);
+  PG_ASSERT(res < download->blocks_per_piece_max);
   PG_ASSERT(res < download_compute_blocks_count_for_piece(download, piece));
 
   return (BlockForPieceIndex){(u32)res};
@@ -192,7 +192,7 @@ download_get_piece_for_block(Download *download,
                              BlockForDownloadIndex block_for_download) {
   PG_ASSERT(block_for_download.val < download->blocks_count);
 
-  u32 res = block_for_download.val / download->max_blocks_per_piece_count;
+  u32 res = block_for_download.val / download->blocks_per_piece_max;
   PG_ASSERT(res < download->pieces_count);
 
   return (PieceIndex){res};
@@ -208,7 +208,7 @@ download_compute_blocks_count(u64 total_file_size) {
 [[maybe_unused]] [[nodiscard]] static u32 download_compute_block_length(
     Download *download, BlockForPieceIndex block_for_piece, PieceIndex piece) {
   PG_ASSERT(piece.val < download->pieces_count);
-  PG_ASSERT(block_for_piece.val < download->max_blocks_per_piece_count);
+  PG_ASSERT(block_for_piece.val < download->blocks_per_piece_max);
   PG_ASSERT(block_for_piece.val * BLOCK_SIZE < download->piece_length);
 
   if (piece.val + 1 < download->pieces_count) { // General case.
@@ -351,14 +351,15 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
 download_pick_next_block(Download *download, PgString remote_pieces_have,
                          PieceDownloadDyn *downloading_pieces) {
   PG_ASSERT(download->concurrent_downloads_count <=
-            download->concurrent_downloads_max);
+            download->cfg->download_max_concurrent_downloads);
   PG_ASSERT(pg_div_ceil(download->pieces_count, 8) == remote_pieces_have.len);
-  PG_ASSERT(downloading_pieces->len <= download->concurrent_downloads_max);
+  PG_ASSERT(downloading_pieces->len <=
+            download->cfg->download_max_concurrent_downloads);
 
   BlockForDownloadIndexOk res = {0};
 
   if (download->concurrent_downloads_count ==
-      download->concurrent_downloads_max) {
+      download->cfg->download_max_concurrent_downloads) {
     return res;
   }
 

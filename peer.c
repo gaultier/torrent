@@ -150,7 +150,8 @@ peer_make(PgIpv4Address address, u8 info_hash[PG_SHA1_DIGEST_LENGTH],
   peer.remote_bitfield =
       pg_string_make(pg_div_ceil(download->pieces_count, 8), peer.allocator);
   PG_DYN_ENSURE_CAP(&peer.downloading_pieces,
-                    download->concurrent_downloads_max, peer.allocator);
+                    download->cfg->download_max_concurrent_downloads,
+                    peer.allocator);
   PG_ASSERT(peer.downloading_pieces.cap > 0);
 
   peer.local_choked = true;
@@ -920,7 +921,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
 
 [[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(peer->download->concurrent_downloads_count <=
-            peer->download->concurrent_downloads_max);
+            peer->download->cfg->download_max_concurrent_downloads);
 
   // TODO: Should we send 'interested' first?
   if (peer->remote_choked) {
@@ -936,7 +937,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   for (u64 i = 0; i < req_max; i++) {
 
     if (peer->download->concurrent_downloads_count ==
-        peer->download->concurrent_downloads_max) {
+        peer->download->cfg->download_max_concurrent_downloads) {
       pg_log(
           peer->logger, PG_LOG_LEVEL_DEBUG,
           "peer: not requesting remote data since max concurrent downloads is "
@@ -960,7 +961,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
 
     peer->download->concurrent_downloads_count += 1;
     PG_ASSERT(peer->download->concurrent_downloads_count <=
-              peer->download->concurrent_downloads_max);
+              peer->download->cfg->download_max_concurrent_downloads);
 
     PgError err = peer_request_block(peer, res_block.res);
     if (err) {

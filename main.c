@@ -46,7 +46,8 @@ static void download_on_timer(uv_timer_t *timer) {
   pg_log(
       download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
       PG_L("concurrent_downloads_count", download->concurrent_downloads_count),
-      PG_L("concurrent_downloads_max", download->concurrent_downloads_max),
+      PG_L("concurrent_downloads_max",
+           download->cfg->download_max_concurrent_downloads),
       PG_L("peers_active", download->peers_active_count),
       PG_L("pieces_count", download->pieces_count),
       PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
@@ -105,6 +106,7 @@ int main(int argc, char *argv[]) {
       .tracker_max_http_response_bytes = 64 * PG_KiB,
       .tracker_round_trip_timeout_ns = 20 * PG_Seconds,
       .metrics_interval_ns = 1 * PG_Seconds,
+      .download_max_concurrent_downloads = 500,
   };
 
   char *torrent_file_path_c = argv[1];
@@ -151,8 +153,6 @@ int main(int argc, char *argv[]) {
       download_compute_pieces_count(metainfo.piece_length, metainfo.length);
   PG_ASSERT(pieces_count > 0);
 
-  // TODO: Tweak.
-  u64 concurrent_download_max = 500;
   Download download = {
       .pieces_have =
           pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
@@ -160,37 +160,36 @@ int main(int argc, char *argv[]) {
       .pieces_downloading =
           pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
       .blocks_count = (u32)pg_div_ceil(metainfo.length, BLOCK_SIZE),
-      .max_blocks_per_piece_count =
+      .blocks_per_piece_max =
           download_compute_max_blocks_per_piece_count(metainfo.piece_length),
       .piece_length = metainfo.piece_length,
       .total_file_size = metainfo.length,
       .file = target_file_res.res,
       .logger = &logger,
       .rng = &rng,
-      .concurrent_downloads_max = concurrent_download_max,
+      .cfg = &cfg,
       .pieces_hash = metainfo.pieces,
   };
-  PG_ASSERT(download.max_blocks_per_piece_count > 0);
-  pg_log(
-      &logger, PG_LOG_LEVEL_DEBUG, "download", PG_L("path", metainfo.name),
-      PG_L("pieces_count", download.pieces_count),
-      PG_L("blocks_count", download.blocks_count),
-      PG_L("max_blocks_per_piece_count", download.max_blocks_per_piece_count),
-      PG_L("piece_length", download.piece_length),
-      PG_L("total_file_size", download.total_file_size),
-      PG_L("last_piece_blocks_count",
-           download_compute_blocks_count_for_piece(
-               &download, (PieceIndex){download.pieces_count - 1})),
-      PG_L("last_piece_size",
-           download_compute_piece_length(
-               &download, (PieceIndex){download.pieces_count - 1})),
-      PG_L("last_block_size",
-           download_compute_piece_length(
-               &download, (PieceIndex){download.pieces_count - 1}) -
-               (download_compute_blocks_count_for_piece(
-                    &download, (PieceIndex){download.pieces_count - 1}) -
-                1) *
-                   BLOCK_SIZE));
+  PG_ASSERT(download.blocks_per_piece_max > 0);
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "download", PG_L("path", metainfo.name),
+         PG_L("pieces_count", download.pieces_count),
+         PG_L("blocks_count", download.blocks_count),
+         PG_L("max_blocks_per_piece_count", download.blocks_per_piece_max),
+         PG_L("piece_length", download.piece_length),
+         PG_L("total_file_size", download.total_file_size),
+         PG_L("last_piece_blocks_count",
+              download_compute_blocks_count_for_piece(
+                  &download, (PieceIndex){download.pieces_count - 1})),
+         PG_L("last_piece_size",
+              download_compute_piece_length(
+                  &download, (PieceIndex){download.pieces_count - 1})),
+         PG_L("last_block_size",
+              download_compute_piece_length(
+                  &download, (PieceIndex){download.pieces_count - 1}) -
+                  (download_compute_blocks_count_for_piece(
+                       &download, (PieceIndex){download.pieces_count - 1}) -
+                   1) *
+                      BLOCK_SIZE));
 
   PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
       &download, metainfo.name, metainfo.pieces);

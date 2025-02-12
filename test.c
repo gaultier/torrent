@@ -340,12 +340,12 @@ static void test_download_compute_max_blocks_per_piece_count() {
 static void test_download_compute_blocks_count_for_piece() {
   Download download = {0};
   download.pieces_count = 1981;
-  download.max_blocks_per_piece_count = 16;
-  download.piece_length = download.max_blocks_per_piece_count * BLOCK_SIZE;
+  download.blocks_per_piece_max = 16;
+  download.piece_length = download.blocks_per_piece_max * BLOCK_SIZE;
   download.total_file_size = 519174144;
   download.blocks_count = 31688;
 
-  PG_ASSERT(download.max_blocks_per_piece_count ==
+  PG_ASSERT(download.blocks_per_piece_max ==
             download_compute_blocks_count_for_piece(
                 &download, (PieceIndex){download.pieces_count - 2}));
   PG_ASSERT(8 == download_compute_blocks_count_for_piece(
@@ -356,8 +356,8 @@ static void test_download_compute_blocks_count_for_piece() {
 static void test_download_compute_block_length() {
   Download download = {0};
   download.pieces_count = 1981;
-  download.max_blocks_per_piece_count = 16;
-  download.piece_length = download.max_blocks_per_piece_count * BLOCK_SIZE;
+  download.blocks_per_piece_max = 16;
+  download.piece_length = download.blocks_per_piece_max * BLOCK_SIZE;
   download.total_file_size = 519174144;
   download.blocks_count = 31688;
 

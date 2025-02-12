@@ -37,49 +37,10 @@ tracker_metadata_event_to_string(TrackerMetadataEvent event) {
 }
 
 [[maybe_unused]]
-static void tracker_compute_info_hash(Metainfo metainfo,
-                                      u8 hash[PG_SHA1_DIGEST_LENGTH],
-                                      PgArena arena) {
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
-  BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
-  u64 initial_cap = 4;
-  PG_DYN_ENSURE_CAP(&value.dict.keys, initial_cap, allocator);
-  PG_DYN_ENSURE_CAP(&value.dict.values, initial_cap, allocator);
-
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("length");
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
-      .kind = BENCODE_KIND_NUMBER,
-      .num = metainfo.length,
-  };
-
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("name");
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
-      .kind = BENCODE_KIND_STRING,
-      .s = metainfo.name,
-  };
-
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("piece length");
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
-      .kind = BENCODE_KIND_NUMBER,
-      .num = metainfo.piece_length,
-  };
-
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("pieces");
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
-      .kind = BENCODE_KIND_STRING,
-      .s = metainfo.pieces,
-  };
-
-  // TODO: Add unknown keys in `info`?
-
-  Pgu8Dyn sb = {0};
-  PgWriter w = pg_writer_make_from_string_builder(&sb, allocator);
-  PG_ASSERT(0 == bencode_encode(value, &w, allocator));
-  PgString encoded = PG_DYN_SLICE(PgString, sb);
-
+static void tracker_compute_info_hash(PgString info,
+                                      u8 hash[PG_SHA1_DIGEST_LENGTH]) {
   u8 pg_sha1_hash[PG_SHA1_DIGEST_LENGTH] = {0};
-  pg_sha1(encoded, pg_sha1_hash);
+  pg_sha1(info, pg_sha1_hash);
   memcpy(hash, pg_sha1_hash, PG_SHA1_DIGEST_LENGTH);
 }
 

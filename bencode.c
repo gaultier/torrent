@@ -403,6 +403,7 @@ typedef struct {
   PgString pieces;
   u64 length;
   BencodeDictionary files; // TODO.
+  u64 info_start, info_end;
 } Metainfo;
 
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
@@ -446,6 +447,8 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
         return res;
       }
       BencodeDictionary info = value.dict;
+      res.res.info_start = value.start;
+      res.res.info_end = value.end;
 
       for (u64 j = 0; j < info.keys.len; j++) {
         PgString info_key = PG_SLICE_AT(info.keys, j);
@@ -488,6 +491,7 @@ typedef struct {
   PgArena arena;
   PgLogger *logger;
   Metainfo metainfo;
+  PgString file_data;
 } TorrentFile;
 
 PG_RESULT(TorrentFile) TorrentFileResult;
@@ -533,8 +537,8 @@ torrent_file_read_file(PgString path, PgLogger *logger) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString file_data = pg_string_make(file_size, allocator);
-  uv_buf_t buf = string_to_uv_buf(file_data);
+  res.res.file_data = pg_string_make(file_size, allocator);
+  uv_buf_t buf = string_to_uv_buf(res.res.file_data);
   int err_read = uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
   if (err_read < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
@@ -544,10 +548,10 @@ torrent_file_read_file(PgString path, PgLogger *logger) {
     res.err = (PgError)err_read;
     goto end;
   }
-  PG_ASSERT(file_size == file_data.len);
+  PG_ASSERT(file_size == res.res.file_data.len);
 
   pg_log(logger, PG_LOG_LEVEL_DEBUG, "read torrent file", PG_L("path", path),
-         PG_L("len", file_data.len));
+         PG_L("len", res.res.file_data.len));
 
   // Close file.
   (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
@@ -555,7 +559,7 @@ torrent_file_read_file(PgString path, PgLogger *logger) {
 
   // Decode metainfo.
   DecodeMetaInfoResult res_decode_metainfo =
-      bencode_decode_metainfo(file_data, allocator);
+      bencode_decode_metainfo(res.res.file_data, allocator);
   if (res_decode_metainfo.err) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
            PG_L("path", path), PG_L("err", res_decode_metainfo.err),

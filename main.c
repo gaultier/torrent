@@ -100,7 +100,9 @@ int main(int argc, char *argv[]) {
   if (res_torrent_file.err) {
     return 1;
   }
-  Metainfo metainfo = res_torrent_file.res.metainfo;
+  // Shorthands.
+  TorrentFile torrent = res_torrent_file.res;
+  Metainfo metainfo = torrent.metainfo;
 
   if (pg_string_eq(PG_S("https"), metainfo.announce.scheme)) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR,
@@ -128,9 +130,9 @@ int main(int argc, char *argv[]) {
       .event = TRACKER_EVENT_STARTED,
       .announce = metainfo.announce,
   };
-  // FIXME
-  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
-  tracker_compute_info_hash(metainfo, tracker_metadata.info_hash, arena);
+  tracker_compute_info_hash(
+      PG_SLICE_RANGE(torrent.file_data, metainfo.info_start, metainfo.info_end),
+      tracker_metadata.info_hash);
   u32 pieces_count =
       download_compute_pieces_count(metainfo.piece_length, metainfo.length);
   PG_ASSERT(pieces_count > 0);

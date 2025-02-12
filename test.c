@@ -3,74 +3,79 @@
 
 static void test_bencode_decode_u64() {
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S(""));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S(""), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("a"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("a"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("i"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("ie"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("ie"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i123"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("i123"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("123"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("123"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i-123e"));
+    BencodeValueDecodeResult res = bencode_decode_number(PG_S("i-123e"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeNumberDecodeResult res = bencode_decode_number(PG_S("i123ehello"));
+    BencodeValueDecodeResult res =
+        bencode_decode_number(PG_S("i123ehello"), 99);
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(123 == res.num);
+    PG_ASSERT(123 == res.value.num);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 5 == res.value.end);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("hello")));
   }
 }
 
 static void test_bencode_decode_string() {
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S(""));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S(""), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("a"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("a"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("1"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("1"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("0"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("0"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("0:"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("0:"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("1:"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("1:"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("2:a"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("2:a"), 0);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeStringDecodeResult res = bencode_decode_string(PG_S("2:abc"));
+    BencodeValueDecodeResult res = bencode_decode_string(PG_S("2:abc"), 99);
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(pg_string_eq(res.s, PG_S("ab")));
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 4 == res.value.end);
+    PG_ASSERT(pg_string_eq(res.value.s, PG_S("ab")));
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("c")));
   }
 }
@@ -80,52 +85,63 @@ static void test_bencode_decode_list() {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S(""), allocator);
+    BencodeValueDecodeResult res = bencode_decode_list(PG_S(""), 0, allocator);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("a"), allocator);
+    BencodeValueDecodeResult res = bencode_decode_list(PG_S("a"), 0, allocator);
     PG_ASSERT(0 != res.err);
   }
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("l"), allocator);
+    BencodeValueDecodeResult res = bencode_decode_list(PG_S("l"), 0, allocator);
     PG_ASSERT(0 != res.err);
   }
 
   {
-    BencodeListDecodeResult res = bencode_decode_list(PG_S("lefoo"), allocator);
+    BencodeValueDecodeResult res =
+        bencode_decode_list(PG_S("lefoo"), 99, allocator);
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(0 == res.values.len);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 2 == res.value.end);
+    PG_ASSERT(0 == res.value.list.len);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
   }
 
   {
-    BencodeListDecodeResult res =
-        bencode_decode_list(PG_S("l2:abi123eefoo"), allocator);
+    BencodeValueDecodeResult res =
+        bencode_decode_list(PG_S("l2:abi123eefoo"), 99, allocator);
     PG_ASSERT(0 == res.err);
-    PG_ASSERT(2 == res.values.len);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 11 == res.value.end);
+    PG_ASSERT(2 == res.value.list.len);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
 
     {
-      BencodeValue v1 = PG_SLICE_AT(res.values, 0);
+      BencodeValue v1 = PG_SLICE_AT(res.value.list, 0);
+      PG_ASSERT(99 + 1 == v1.start);
+      PG_ASSERT(99 + 5 == v1.end);
       PG_ASSERT(BENCODE_KIND_STRING == v1.kind);
       PG_ASSERT(pg_string_eq(PG_S("ab"), v1.s));
     }
 
     {
-      BencodeValue v2 = PG_SLICE_AT(res.values, 1);
+      BencodeValue v2 = PG_SLICE_AT(res.value.list, 1);
+      PG_ASSERT(99 + 5 == v2.start);
+      PG_ASSERT(99 + 10 == v2.end);
       PG_ASSERT(BENCODE_KIND_NUMBER == v2.kind);
       PG_ASSERT(123 == v2.num);
     }
   }
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("l2:abi123eefoo"), allocator);
+        bencode_decode_value(PG_S("l2:abi123eefoo"), 99, allocator);
     PG_ASSERT(0 == res.err);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 11 == res.value.end);
     PG_ASSERT(BENCODE_KIND_LIST == res.value.kind);
     PG_ASSERT(pg_string_eq(res.remaining, PG_S("foo")));
 
-    DynBencodeValues values = res.value.list;
+    BencodeValueDyn values = res.value.list;
     PG_ASSERT(2 == values.len);
 
     {
@@ -148,8 +164,10 @@ static void test_bencode_decode() {
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("i123ei456e"), allocator);
+        bencode_decode_value(PG_S("i123ei456e"), 99, allocator);
     PG_ASSERT(0 == res.err);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 5 == res.value.end);
     PG_ASSERT(BENCODE_KIND_NUMBER == res.value.kind);
     PG_ASSERT(123 == res.value.num);
     PG_ASSERT(pg_string_eq(PG_S("i456e"), res.remaining));
@@ -158,14 +176,16 @@ static void test_bencode_decode() {
   // Unordered keys.
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("d2:abi123e2:ab5:helloefoo"), allocator);
+        bencode_decode_value(PG_S("d2:abi123e2:ab5:helloefoo"), 99, allocator);
     PG_ASSERT(0 != res.err);
   }
 
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), allocator);
+        bencode_decode_value(PG_S("d2:abi123e3:xyz5:helloefoo"), 99, allocator);
     PG_ASSERT(0 == res.err);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 23 == res.value.end);
     PG_ASSERT(BENCODE_KIND_DICTIONARY == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
 
@@ -197,8 +217,10 @@ static void test_bencode_decode() {
   }
   {
     BencodeValueDecodeResult res =
-        bencode_decode_value(PG_S("2:abfoo"), allocator);
+        bencode_decode_value(PG_S("2:abfoo"), 99, allocator);
     PG_ASSERT(0 == res.err);
+    PG_ASSERT(99 == res.value.start);
+    PG_ASSERT(99 + 4 == res.value.end);
     PG_ASSERT(BENCODE_KIND_STRING == res.value.kind);
     PG_ASSERT(pg_string_eq(PG_S("ab"), res.value.s));
     PG_ASSERT(pg_string_eq(PG_S("foo"), res.remaining));
@@ -253,8 +275,10 @@ static void test_bencode_decode_encode() {
       "lengthi262144e6:pieces8:abcdefghe8:url-list65:http://"
       "openbsd.somedomain.net/pub/OpenBSD_7.4_alpha_install74.isoe");
   BencodeValueDecodeResult res =
-      bencode_decode_value(torrent_file_content, allocator);
+      bencode_decode_value(torrent_file_content, 0, allocator);
   PG_ASSERT(0 == res.err);
+  PG_ASSERT(0 == res.value.start);
+  PG_ASSERT(torrent_file_content.len == res.value.end);
 
   Pgu8Dyn sb = {0};
   PgWriter w = pg_writer_make_from_string_builder(&sb, allocator);

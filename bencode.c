@@ -14,14 +14,11 @@ typedef enum {
 
 typedef struct BencodeValue BencodeValue;
 
-typedef struct {
-  BencodeValue *data;
-  u64 len, cap;
-} DynBencodeValues;
+PG_DYN(BencodeValue) BencodeValueDyn;
 
 typedef struct {
   PgStringDyn keys;
-  DynBencodeValues values;
+  BencodeValueDyn values;
 } BencodeDictionary;
 
 struct BencodeValue {
@@ -30,7 +27,7 @@ struct BencodeValue {
   union {
     u64 num;
     PgString s; // Non-owning.
-    DynBencodeValues list;
+    BencodeValueDyn list;
     BencodeDictionary dict;
   };
 };
@@ -117,15 +114,16 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
       .value.start = start,
       .value.kind = BENCODE_KIND_DICTIONARY,
   };
-  u64 initial_cap = 16;
-  PG_DYN_ENSURE_CAP(&res.value.dict.keys, initial_cap, allocator);
-  PG_DYN_ENSURE_CAP(&res.value.dict.values, initial_cap, allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.ok) {
     res.err = TORR_ERR_BENCODE_INVALID;
     return res;
   }
+
+  u64 initial_cap = 16;
+  PG_DYN_ENSURE_CAP(&res.value.dict.keys, initial_cap, allocator);
+  PG_DYN_ENSURE_CAP(&res.value.dict.values, initial_cap, allocator);
 
   PgString remaining = prefix.res;
   for (u64 lim = 0; lim < remaining.len; lim++) {
@@ -190,8 +188,6 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
       .value.start = start,
       .value.kind = BENCODE_KIND_LIST,
   };
-  u64 initial_cap = 16;
-  PG_DYN_ENSURE_CAP(&res.value.list, initial_cap, allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.ok) {

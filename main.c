@@ -1,5 +1,41 @@
 #include "tracker.c"
 
+// Lifetimes:
+// - Download: when a torrent file is added => create a Download from it. Keep
+// Download around until all pieces are downloaded (and verified).
+//   Serving pieces does not require the pieces hash, only the info_hash and the
+//   pieces/blocks counts/sizes for validation of requests. All of that does not
+//   required dynamic allocation. So we can tear down the download when all
+//   pieces are downloaded. That allows for freeing the pieces hash which is big
+//   (~40Kib to even more).
+// - Tracker: one tracker per torrent file download. One time allocation with
+// its own arena. When all pieces are download, still keep it to report stats to
+// the tracker so that
+//   other peers can find us. The tracker only needs a recv/send buffer which
+//   are limited by the configuration before creating the tracker so the tracker
+//   arena can be sized exactly.
+// - Peer: Each peer has its own arena (check if that works). Ideally, exactly
+// (i.e. minimally) sized ahead of time.
+// - Download->Peer relationship: a Download spawns peers.
+//   But: we should also spawn peers with a periodic timer to serve pieces, once
+//   we implement this.
+// - read/write peer data: handled by the peer. Should use a pool allocator for
+// efficiency since there lifetime is short and the rate is high. The pool
+// should support
+//   heterogeneous sizes since some rw requests are very short (e.g.
+//   keep-alives) but others are big (e.g. bitfield, blocks).
+//   Pool implementation: contiguous array with metadata for each slot
+//   containing the size, or free list where items come from the arena.
+// - read peer data: allocated by libuv due to `uv_read_start` with the
+// allocator we provide (should be a pool allocator).
+//   Released (returned to pool) when stored to disk (be it with an error or
+//   not) or failing verification.
+//  - write peer data: same.
+//  - Peers should come from a pool with a handle and a generation counter to
+//  avoid the case of a async callback trying to use a `Peer*` where the peer
+//  has already been 'freed'.
+//
+
 static void download_on_timer(uv_timer_t *timer) {
   PG_ASSERT(timer);
   PG_ASSERT(timer->data);

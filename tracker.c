@@ -43,27 +43,30 @@ static void tracker_compute_info_hash(Metainfo metainfo,
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
   BencodeValue value = {.kind = BENCODE_KIND_DICTIONARY};
+  u64 initial_cap = 4;
+  PG_DYN_ENSURE_CAP(&value.dict.keys, initial_cap, allocator);
+  PG_DYN_ENSURE_CAP(&value.dict.values, initial_cap, allocator);
 
-  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("length");
-  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("length");
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.length,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("name");
-  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("name");
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.name,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("piece length");
-  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("piece length");
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
       .kind = BENCODE_KIND_NUMBER,
       .num = metainfo.piece_length,
   };
 
-  *PG_DYN_PUSH(&value.dict.keys, allocator) = PG_S("pieces");
-  *PG_DYN_PUSH(&value.dict.values, allocator) = (BencodeValue){
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.keys) = PG_S("pieces");
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&value.dict.values) = (BencodeValue){
       .kind = BENCODE_KIND_STRING,
       .s = metainfo.pieces,
   };

@@ -219,6 +219,7 @@ typedef enum {
 } TrackerState;
 
 typedef struct {
+  // FIXME: Only used to spawn peers. Use a pool instead.
   PgAllocator *allocator;
   PgLogger *logger;
   TrackerState state;

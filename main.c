@@ -64,40 +64,46 @@ int main(int argc, char *argv[]) {
   PgTracingAllocator tracing_allocator = {0};
   PgHeapAllocator heap_allocator = {0};
 
-  if (0 ==
-      uv_os_getenv("HEAPPROFILE", heap_profile_path, &heap_profile_path_len)) {
-    uv_fs_t heap_profile_open_req = {0};
-    int heap_profile_file =
-        uv_fs_open(uv_default_loop(), &heap_profile_open_req, heap_profile_path,
-                   UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, nullptr);
-    if (heap_profile_file < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
-             PG_L("err", heap_profile_file),
-             PG_L("err_s", pg_cstr_to_string(strerror(heap_profile_file))),
-             PG_L("path", pg_cstr_to_string(heap_profile_path)));
-    } else {
-      PG_ASSERT(heap_profile_file > 0);
-      tracing_allocator = pg_make_tracing_allocator(heap_profile_file);
-      general_allocator = pg_tracing_allocator_as_allocator(&tracing_allocator);
+  // Pick a general allocator.
+  {
+    if (0 == uv_os_getenv("HEAPPROFILE", heap_profile_path,
+                          &heap_profile_path_len)) {
+      uv_fs_t heap_profile_open_req = {0};
+      int heap_profile_file = uv_fs_open(
+          uv_default_loop(), &heap_profile_open_req, heap_profile_path,
+          UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, nullptr);
+      if (heap_profile_file < 0) {
+        pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
+               PG_L("err", heap_profile_file),
+               PG_L("err_s", pg_cstr_to_string(strerror(heap_profile_file))),
+               PG_L("path", pg_cstr_to_string(heap_profile_path)));
+      } else {
+        PG_ASSERT(heap_profile_file > 0);
+        tracing_allocator = pg_make_tracing_allocator(heap_profile_file);
+        general_allocator =
+            pg_tracing_allocator_as_allocator(&tracing_allocator);
 
-      pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using tracing allocator",
-             PG_L("heap_profile_file", heap_profile_file));
+        pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using tracing allocator",
+               PG_L("heap_profile_file", heap_profile_file));
+      }
+    }
+    // The tracing allocator could not be properly initialized, resort to the
+    // standard (libc) allocator.
+    if (!general_allocator) {
+      heap_allocator = pg_make_heap_allocator();
+      general_allocator = pg_heap_allocator_as_allocator(&heap_allocator);
+
+      pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using general heap allocator",
+             PG_L("_", PG_S("_")));
     }
   }
-  // The tracing allocator could not be properly initialized, resort to the
-  // standard (libc) allocator.
-  if (!general_allocator) {
-    heap_allocator = pg_make_heap_allocator();
-    general_allocator = pg_heap_allocator_as_allocator(&heap_allocator);
 
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using general heap allocator",
-           PG_L("_", PG_S("_")));
-  }
+  Configuration cfg = {};
 
   char *torrent_file_path_c = argv[1];
   PgString torrent_file_path = pg_cstr_to_string(torrent_file_path_c);
   TorrentFileResult res_torrent_file =
-      torrent_file_read_file(torrent_file_path, &logger);
+      torrent_file_read_file(torrent_file_path, cfg, &logger);
   if (res_torrent_file.err) {
     return 1;
   }

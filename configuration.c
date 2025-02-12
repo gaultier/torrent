@@ -16,6 +16,7 @@ typedef struct {
   u64 tracker_round_trip_timeout_ns;
 
   // Peer.
+  // TODO
 
   // Metrics
   u64 metrics_interval_ns;

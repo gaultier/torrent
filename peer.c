@@ -84,7 +84,6 @@ typedef struct {
   uv_connect_t uv_req_connect;
 
   PgRing recv;
-  /* PgFile file; // TODO: Support multiple files. */
 } Peer;
 
 PG_DYN(Peer) PeerDyn;

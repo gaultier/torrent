@@ -1009,8 +1009,10 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
          PG_L("address", peer->address));
 
   PG_ASSERT(0 == peer->recv.data.len);
-  u64 recv_size = 1 * PG_MiB;
-  peer->recv = pg_ring_make(recv_size, peer->allocator);
+  i32 recv_size = 0;
+  uv_recv_buffer_size(((uv_handle_t *)&peer->uv_tcp), &recv_size);
+  PG_ASSERT(recv_size > 0);
+  peer->recv = pg_ring_make((u64)recv_size, peer->allocator);
 
   PgString handshake = peer_make_handshake(peer->info_hash, peer->allocator);
   int err_write = do_write((uv_stream_t *)&peer->uv_tcp, handshake,

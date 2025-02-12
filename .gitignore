@@ -4,3 +4,4 @@ a.out
 *dwo
 *.json.gz
 .build
+*.zst

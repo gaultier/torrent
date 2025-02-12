@@ -307,7 +307,9 @@ static void test_tracker_compute_info_hash() {
   PG_ASSERT(0 == res.err);
 
   u8 hash[PG_SHA1_DIGEST_LENGTH] = {0};
-  tracker_compute_info_hash(res.res, hash, arena);
+  PgString info_encoded = PG_SLICE_RANGE(torrent_file_content,
+                                         res.res.info_start, res.res.info_end);
+  tracker_compute_info_hash(info_encoded, hash);
 
   u8 expected_hash[PG_SHA1_DIGEST_LENGTH] = {
       0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86, 0xd3, 0x06, 0xc3,

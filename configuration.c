@@ -11,8 +11,9 @@ typedef struct {
   u64 download_max_concurrent_downloads;
 
   // Tracker.
-  u64 tracker_max_http_recv_size;
-  u64 tracker_round_trip_timeout_seconds;
+  u64 tracker_max_http_request_bytes;
+  u64 tracker_max_http_response_bytes;
+  u64 tracker_round_trip_timeout_ns;
 
   // Peer.
 

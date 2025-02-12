@@ -2,6 +2,7 @@
 
 // TODO: Re-query tracker every N minutes.
 // TODO: Retry on failure (with exp backoff?).
+// TODO: Use `try` allocations.
 
 #include "bencode.c"
 #include "peer.c"
@@ -221,6 +222,7 @@ typedef struct {
   // FIXME: Only used to spawn peers. Use a pool instead.
   PgAllocator *allocator;
   PgLogger *logger;
+  Configuration *cfg;
   TrackerState state;
   PgString host;
   u16 port;
@@ -244,13 +246,15 @@ typedef struct {
 } Tracker;
 
 [[maybe_unused]] [[nodiscard]]
-static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
-                            TrackerMetadata metadata, Download *download,
-                            PgString piece_hashes, PgAllocator *allocator) {
+static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
+                            u16 port, TrackerMetadata metadata,
+                            Download *download, PgString piece_hashes,
+                            PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   Tracker tracker = {0};
   tracker.logger = logger;
+  tracker.cfg = cfg;
   tracker.host = host;
   tracker.port = port;
   tracker.metadata = metadata;
@@ -259,10 +263,13 @@ static Tracker tracker_make(PgLogger *logger, PgString host, u16 port,
   tracker.allocator = allocator;
 
   // Need to hold the HTTP request and response simultaneously (currently).
-  tracker.arena = pg_arena_make_from_virtual_mem(32 * PG_KiB);
+  tracker.arena =
+      pg_arena_make_from_virtual_mem(cfg->tracker_max_http_request_bytes +
+                                     cfg->tracker_max_http_response_bytes);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker.arena);
-  tracker.http_recv = pg_ring_make(
-      16 * PG_KiB, pg_arena_allocator_as_allocator(&arena_allocator));
+  tracker.http_recv =
+      pg_ring_make(cfg->tracker_max_http_request_bytes,
+                   pg_arena_allocator_as_allocator(&arena_allocator));
 
   return tracker;
 }
@@ -656,8 +663,9 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
   tracker->uv_tcp_timeout.data = tracker;
 
-  int err_timer =
-      uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout, 20'000, 0);
+  u64 timeout_ms = tracker->cfg->tracker_round_trip_timeout_ns / 1000'000;
+  int err_timer = uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout,
+                                 timeout_ms, 0);
   if (err_timer < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start timeout timer", PG_L("host", url.host),

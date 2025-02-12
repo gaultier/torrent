@@ -495,7 +495,7 @@ typedef struct {
 PG_RESULT(TorrentFile) TorrentFileResult;
 
 [[maybe_unused]] [[nodiscard]] static TorrentFileResult
-torrent_file_read_file(PgString path, Configuration cfg, PgLogger *logger) {
+torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   TorrentFileResult res = {0};
   char path_c[PG_PATH_MAX] = {0};
   PG_ASSERT(pg_cstr_mut_from_string(path_c, path));
@@ -530,18 +530,18 @@ torrent_file_read_file(PgString path, Configuration cfg, PgLogger *logger) {
 
   // Read entire file.
   u64 file_size = req.statbuf.st_size;
-  if (file_size > cfg.torrent_file_max_size) {
+  if (file_size > cfg->torrent_file_max_size) {
     res.err = PG_ERR_TOO_BIG;
     pg_log(logger, PG_LOG_LEVEL_ERROR,
            "torrent file exceeds the maximum allowed size",
            PG_L("err", res.err),
            PG_L("err_s", pg_cstr_to_string(strerror((i32)res.err))),
-           PG_L("max", cfg.torrent_file_max_size), PG_L("path", path));
+           PG_L("max", cfg->torrent_file_max_size), PG_L("path", path));
     goto end;
   }
   res.res.arena = pg_arena_make_from_virtual_mem(
       file_size +
-      /* bencoding entities */ cfg.torrent_file_max_bencode_alloc_bytes *
+      /* bencoding entities */ cfg->torrent_file_max_bencode_alloc_bytes *
           PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);

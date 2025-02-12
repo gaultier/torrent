@@ -98,12 +98,19 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  Configuration cfg = {};
+  Configuration cfg = {
+      .torrent_file_max_size = 5 * PG_MiB,
+      .torrent_file_max_bencode_alloc_bytes = 12 * PG_KiB,
+      .tracker_max_http_request_bytes = 64 * PG_KiB,
+      .tracker_max_http_response_bytes = 64 * PG_KiB,
+      .tracker_round_trip_timeout_ns = 20 * PG_Seconds,
+
+  };
 
   char *torrent_file_path_c = argv[1];
   PgString torrent_file_path = pg_cstr_to_string(torrent_file_path_c);
   TorrentFileResult res_torrent_file =
-      torrent_file_read_file(torrent_file_path, cfg, &logger);
+      torrent_file_read_file(torrent_file_path, &cfg, &logger);
   if (res_torrent_file.err) {
     return 1;
   }
@@ -201,9 +208,9 @@ int main(int argc, char *argv[]) {
 
   PgUrl announce = metainfo.announce;
 
-  Tracker tracker =
-      tracker_make(&logger, announce.host, announce.port, tracker_metadata,
-                   &download, metainfo.pieces, general_allocator);
+  Tracker tracker = tracker_make(&logger, &cfg, announce.host, announce.port,
+                                 tracker_metadata, &download, metainfo.pieces,
+                                 general_allocator);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;

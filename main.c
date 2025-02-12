@@ -191,12 +191,15 @@ int main(int argc, char *argv[]) {
          PG_L("local_bitfield_have_count",
               pg_bitfield_count(download.pieces_have)));
 
-  PgUrl announce = metainfo.announce;
+  // Start tracker client.
+  Tracker tracker = tracker_make(&logger, &cfg, metainfo.announce.host,
+                                 metainfo.announce.port, tracker_metadata,
+                                 &download, metainfo.pieces, general_allocator);
+  if (tracker_start_dns_resolve(&tracker, metainfo.announce)) {
+    return 1;
+  }
 
-  Tracker tracker = tracker_make(&logger, &cfg, announce.host, announce.port,
-                                 tracker_metadata, &download, metainfo.pieces,
-                                 general_allocator);
-
+  // Metrics.
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;
   {
@@ -219,10 +222,6 @@ int main(int argc, char *argv[]) {
              PG_L("path", metainfo.name), PG_L("err", err_timer_start));
       return 1;
     }
-  }
-
-  if (tracker_start_dns_resolve(&tracker, announce)) {
-    return 1;
   }
 
   uv_run(uv_default_loop(), UV_RUN_DEFAULT);

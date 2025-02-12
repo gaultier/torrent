@@ -56,7 +56,8 @@ static void download_on_timer(uv_timer_t *timer) {
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
   PgAllocator *general_allocator = nullptr;
@@ -129,13 +130,13 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  PgFileResult target_file_res =
+  PgFileResult res_target_file =
       download_file_create_if_not_exists(metainfo.name, metainfo.length);
-  if (target_file_res.err) {
+  if (res_target_file.err) {
     pg_log(
         &logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
-        PG_L("path", metainfo.name), PG_L("err", target_file_res.err),
-        PG_L("err_s", pg_cstr_to_string(strerror((i32)target_file_res.err))));
+        PG_L("path", metainfo.name), PG_L("err", res_target_file.err),
+        PG_L("err_s", pg_cstr_to_string(strerror((i32)res_target_file.err))));
     return 1;
   }
 
@@ -153,30 +154,15 @@ int main(int argc, char *argv[]) {
       download_compute_pieces_count(metainfo.piece_length, metainfo.length);
   PG_ASSERT(pieces_count > 0);
 
-  Download download = {
-      .pieces_have =
-          pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
-      .pieces_count = pieces_count,
-      .pieces_downloading =
-          pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
-      .blocks_count = (u32)pg_div_ceil(metainfo.length, BLOCK_SIZE),
-      .blocks_per_piece_max =
-          download_compute_max_blocks_per_piece_count(metainfo.piece_length),
-      .piece_length = metainfo.piece_length,
-      .total_file_size = metainfo.length,
-      .file = target_file_res.res,
-      .logger = &logger,
-      .rng = &rng,
-      .cfg = &cfg,
-      .pieces_hash = metainfo.pieces,
-  };
-  PG_ASSERT(download.blocks_per_piece_max > 0);
+  Download download =
+      download_make(&logger, &rng, &cfg, metainfo.piece_length, metainfo.length,
+                    metainfo.pieces, res_target_file.res);
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "download", PG_L("path", metainfo.name),
          PG_L("pieces_count", download.pieces_count),
          PG_L("blocks_count", download.blocks_count),
          PG_L("max_blocks_per_piece_count", download.blocks_per_piece_max),
          PG_L("piece_length", download.piece_length),
-         PG_L("total_file_size", download.total_file_size),
+         PG_L("total_file_size", download.total_size),
          PG_L("last_piece_blocks_count",
               download_compute_blocks_count_for_piece(
                   &download, (PieceIndex){download.pieces_count - 1})),

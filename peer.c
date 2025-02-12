@@ -379,7 +379,7 @@ static void peer_on_file_write(uv_fs_t *req) {
 
   u64 offset = (piece.val * peer->download->piece_length);
   u32 piece_length = download_compute_piece_length(peer->download, piece);
-  PG_ASSERT(offset + piece_length <= peer->download->total_file_size);
+  PG_ASSERT(offset + piece_length <= peer->download->total_size);
   PG_ASSERT(piece_length == len_total);
 
   int err_file =

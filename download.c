@@ -64,27 +64,84 @@ PG_DYN(PieceDownload) PieceDownloadDyn;
 PG_SLICE(PieceDownload) PieceDownloadSlice;
 
 typedef struct {
+  // Bookkeeping.
   PgString pieces_have;
   u32 pieces_have_count;
   PgString pieces_downloading;
 
+  // (Derived) constants from the torrent file.
   u32 pieces_count;
   u32 blocks_count;
   u32 blocks_per_piece_max;
   u64 piece_length;
-  u64 total_file_size;
+  u64 total_size;
+  // All hashes (20 bytes long) for pieces, in one big string.
+  PgString pieces_hash;
+
   // TODO: Multiple files.
+
   PgFile file;
   PgLogger *logger;
   PgRng *rng;
+  PgArena arena;
+
   Configuration *cfg;
 
+  // Counters.
   u64 concurrent_downloads_count;
   u64 peers_active_count;
 
-  // All hashes (20 bytes long) for pieces, in one big string.
-  PgString pieces_hash;
 } Download;
+
+[[nodiscard]] static u32 download_compute_pieces_count(u64 piece_length,
+                                                       u64 total_file_size) {
+  u64 res = pg_div_ceil(total_file_size, piece_length);
+  PG_ASSERT(res <= UINT32_MAX);
+  return (u32)res;
+}
+
+[[nodiscard]] static u32
+download_compute_max_blocks_per_piece_count(u64 piece_length) {
+  u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
+  PG_ASSERT(res <= UINT32_MAX);
+  return (u32)res;
+}
+
+[[nodiscard]] [[maybe_unused]] static Download
+download_make(PgLogger *logger, PgRng *rng, Configuration *cfg,
+              u64 piece_length, u64 total_size, PgString pieces_hash,
+              PgFile file /* TODO: multiple files */) {
+  PG_ASSERT(0 == pieces_hash.len % PG_SHA1_DIGEST_LENGTH);
+  PG_ASSERT(pieces_hash.len > 0);
+
+  Download download = {0};
+  download.logger = logger;
+  download.rng = rng;
+  download.cfg = cfg;
+  download.piece_length = piece_length;
+  download.total_size = total_size;
+  download.pieces_hash = pieces_hash;
+  download.file = file;
+
+  // (Derived) constants from the torrent file.
+  download.pieces_count =
+      download_compute_pieces_count(piece_length, total_size);
+  download.blocks_count = (u32)pg_div_ceil(total_size, BLOCK_SIZE);
+  download.blocks_per_piece_max =
+      download_compute_max_blocks_per_piece_count(piece_length);
+
+  u64 pieces_bitfield_size = pg_div_ceil(download.pieces_count, 8);
+  download.arena = pg_arena_make_from_virtual_mem(2 * pieces_bitfield_size);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&download.arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  download.pieces_have = pg_string_make(pieces_bitfield_size, allocator);
+  download.pieces_downloading = pg_string_make(pieces_bitfield_size, allocator);
+
+  PG_ASSERT(download.blocks_per_piece_max > 0);
+
+  return download;
+}
 
 [[nodiscard]] static i32 block_downloads_sort(const void *va, const void *vb) {
   BlockDownload *a = (BlockDownload *)va;
@@ -99,13 +156,6 @@ typedef struct {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static u32
-download_compute_max_blocks_per_piece_count(u64 piece_length) {
-  u64 res = pg_div_ceil(piece_length, BLOCK_SIZE);
-  PG_ASSERT(res <= UINT32_MAX);
-  return (u32)res;
-}
-
 [[nodiscard]] static u32 download_compute_piece_length(Download *download,
                                                        PieceIndex piece) {
   PG_ASSERT(piece.val < download->pieces_count);
@@ -113,7 +163,7 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
   PG_ASSERT(download->piece_length <= UINT32_MAX);
 
   u64 res = (piece.val + 1) == download->pieces_count
-                ? download->total_file_size - piece.val * download->piece_length
+                ? download->total_size - piece.val * download->piece_length
                 : download->piece_length;
 
   PG_ASSERT(res <= UINT32_MAX);
@@ -123,18 +173,11 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
 }
 
 [[maybe_unused]] [[nodiscard]] static u32
-download_compute_pieces_count(u64 piece_length, u64 total_file_size) {
-  u64 res = pg_div_ceil(total_file_size, piece_length);
-  PG_ASSERT(res <= UINT32_MAX);
-  return (u32)res;
-}
-
-[[maybe_unused]] [[nodiscard]] static u32
 download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
-  PG_ASSERT(piece.val * download->piece_length <= download->total_file_size);
+  PG_ASSERT(piece.val * download->piece_length <= download->total_size);
 
   u32 pieces_count = download_compute_pieces_count(download->piece_length,
-                                                   download->total_file_size);
+                                                   download->total_size);
   PG_ASSERT(pieces_count > 0);
 
   if (piece.val < pieces_count - 1) {
@@ -142,7 +185,7 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
     return download->blocks_per_piece_max;
   }
 
-  u64 rem = download->total_file_size - piece.val * download->piece_length;
+  u64 rem = download->total_size - piece.val * download->piece_length;
 
   u64 res = pg_div_ceil(rem, BLOCK_SIZE);
   PG_ASSERT(res <= UINT32_MAX);

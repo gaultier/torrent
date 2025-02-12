@@ -2,6 +2,7 @@
 
 #include "error.h"
 #include "submodules/cstd/lib.c"
+#include "uv_utils.c"
 
 typedef enum {
   BENCODE_KIND_NONE,
@@ -27,7 +28,7 @@ struct BencodeValue {
   BencodeValueKind kind;
   union {
     u64 num;
-    PgString s;
+    PgString s; // Non-owning.
     DynBencodeValues list;
     BencodeDictionary dict;
   };
@@ -36,7 +37,7 @@ struct BencodeValue {
 typedef struct {
   PgError err;
   BencodeValue value;
-  PgString remaining;
+  PgString remaining; // Non-owning.
 } BencodeValueDecodeResult;
 
 [[nodiscard]] static BencodeValueDecodeResult
@@ -122,6 +123,9 @@ typedef struct {
 [[nodiscard]] static BencodeDictionaryDecodeResult
 bencode_decode_dictionary(PgString s, PgAllocator *allocator) {
   BencodeDictionaryDecodeResult res = {0};
+  u64 initial_cap = 16;
+  PG_DYN_ENSURE_CAP(&res.dict.keys, initial_cap, allocator);
+  PG_DYN_ENSURE_CAP(&res.dict.values, initial_cap, allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'd');
   if (!prefix.ok) {
@@ -192,6 +196,8 @@ typedef struct {
 [[nodiscard]] static BencodeListDecodeResult
 bencode_decode_list(PgString s, PgAllocator *allocator) {
   BencodeListDecodeResult res = {0};
+  u64 initial_cap = 16;
+  PG_DYN_ENSURE_CAP(&res.values, initial_cap, allocator);
 
   PgStringOk prefix = pg_string_consume_byte(s, 'l');
   if (!prefix.ok) {
@@ -487,5 +493,98 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
     }
   }
 
+  return res;
+}
+
+typedef struct {
+  PgArena arena;
+  PgLogger *logger;
+  Metainfo metainfo;
+} TorrentFile;
+
+PG_RESULT(TorrentFile) TorrentFileResult;
+
+[[maybe_unused]] [[nodiscard]] static TorrentFileResult
+torrent_file_read_file(PgString path, PgLogger *logger) {
+  TorrentFileResult res = {0};
+  char path_c[PG_PATH_MAX] = {0};
+  PG_ASSERT(pg_cstr_mut_from_string(path_c, path));
+
+  res.res.logger = logger;
+
+  // Open file
+  uv_fs_t req = {0};
+  int err_open = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY,
+                            0600, nullptr);
+  if (err_open < 0) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
+           PG_L("err", err_open),
+           PG_L("err_s", pg_cstr_to_string(strerror(err_open))),
+           PG_L("path", path));
+    res.err = (PgError)err_open;
+    goto end;
+  }
+  uv_file file = err_open;
+  PG_ASSERT(file > 0);
+
+  // Get file size.
+  int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, nullptr);
+  if (err_stat < 0) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
+           PG_L("err", err_stat),
+           PG_L("err_s", pg_cstr_to_string(strerror(err_stat))),
+           PG_L("path", path));
+    res.err = (PgError)err_stat;
+    goto end;
+  }
+
+  // Read entire file.
+  u64 file_size = req.statbuf.st_size;
+  res.res.arena = pg_arena_make_from_virtual_mem(
+      file_size + 4 * PG_KiB /* becoding entities */);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PgString file_data = pg_string_make(file_size, allocator);
+  uv_buf_t buf = string_to_uv_buf(file_data);
+  int err_read = uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
+  if (err_read < 0) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
+           PG_L("err", err_read),
+           PG_L("err_s", pg_cstr_to_string(strerror(err_read))),
+           PG_L("path", path));
+    res.err = (PgError)err_read;
+    goto end;
+  }
+  PG_ASSERT(file_size == file_data.len);
+
+  pg_log(logger, PG_LOG_LEVEL_DEBUG, "read torrent file", PG_L("path", path),
+         PG_L("len", file_data.len));
+
+  // Close file.
+  (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
+  uv_fs_req_cleanup(&req);
+
+  // Decode metainfo.
+  DecodeMetaInfoResult res_decode_metainfo =
+      bencode_decode_metainfo(file_data, allocator);
+  if (res_decode_metainfo.err) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
+           PG_L("path", path), PG_L("err", res_decode_metainfo.err),
+           PG_L("err_s", PG_S("TODO")));
+    res.err = res_decode_metainfo.err;
+    goto end;
+  }
+
+  res.res.metainfo = res_decode_metainfo.res;
+
+  pg_log(logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file", PG_L("path", path),
+         PG_L("mem_use", pg_arena_mem_use(res.res.arena)),
+         PG_L("mem_available", pg_arena_mem_available(res.res.arena)));
+
+end:
+  if (res.err) {
+    (void)pg_arena_release(&res.res.arena);
+  }
   return res;
 }

@@ -1,6 +1,7 @@
 #include "tracker.c"
 
 // Lifetimes:
+// - Logger: whole program duration, creating in main at the start.
 // - Download: when a torrent file is added => create a Download from it. Keep
 // Download around until all pieces are downloaded (and verified).
 //   Serving pieces does not require the pieces hash, only the info_hash and the
@@ -53,11 +54,8 @@ static void download_on_timer(uv_timer_t *timer) {
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
-
-  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
 
   PgAllocator *general_allocator = nullptr;
   char heap_profile_path[PG_PATH_MAX] = {0};
@@ -97,79 +95,28 @@ int main(int argc, char *argv[]) {
 
   char *torrent_file_path_c = argv[1];
   PgString torrent_file_path = pg_cstr_to_string(torrent_file_path_c);
-  PgString torrent_file_data = {0};
-  {
-    uv_fs_t req = {0};
-    int err_open = uv_fs_open(uv_default_loop(), &req, torrent_file_path_c,
-                              UV_FS_O_RDONLY, 0600, nullptr);
-    if (err_open < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
-             PG_L("err", err_open),
-             PG_L("err_s", pg_cstr_to_string(strerror(err_open))),
-             PG_L("path", torrent_file_path));
-      return 1;
-    }
-    uv_file file = err_open;
-    PG_ASSERT(file > 0);
-
-    int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, nullptr);
-    if (err_stat < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
-             PG_L("err", err_stat),
-             PG_L("err_s", pg_cstr_to_string(strerror(err_stat))),
-             PG_L("path", torrent_file_path));
-      return 1;
-    }
-
-    torrent_file_data = pg_string_make(req.statbuf.st_size, general_allocator);
-    uv_buf_t buf = string_to_uv_buf(torrent_file_data);
-    int err_read =
-        uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
-    if (err_read < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
-             PG_L("err", err_read),
-             PG_L("err_s", pg_cstr_to_string(strerror(err_read))),
-             PG_L("path", torrent_file_path));
-      return 1;
-    }
-
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
-           PG_L("path", torrent_file_path), PG_L("len", torrent_file_data.len));
-
-    (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
-    uv_fs_req_cleanup(&req);
-  }
-  PG_ASSERT(torrent_file_data.len > 0);
-
-  DecodeMetaInfoResult res_decode_metainfo = bencode_decode_metainfo(
-      torrent_file_data, pg_arena_allocator_as_allocator(&arena_allocator));
-  if (res_decode_metainfo.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to decode metainfo",
-           PG_L("err", res_decode_metainfo.err),
-           PG_L("err_s",
-                pg_cstr_to_string(strerror((i32)res_decode_metainfo.err))));
+  TorrentFileResult res_torrent_file =
+      torrent_file_read_file(torrent_file_path, &logger);
+  if (res_torrent_file.err) {
     return 1;
   }
+  Metainfo metainfo = res_torrent_file.res.metainfo;
 
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "decoded torrent file",
-         PG_L("path", torrent_file_path));
-
-  if (pg_string_eq(PG_S("https"), res_decode_metainfo.res.announce.scheme)) {
+  if (pg_string_eq(PG_S("https"), metainfo.announce.scheme)) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR,
            "announce url is using https but it is not yet implemented",
            PG_L("path", torrent_file_path),
-           PG_L("announce.scheme", res_decode_metainfo.res.announce.scheme),
-           PG_L("announce.host", res_decode_metainfo.res.announce.host));
+           PG_L("announce.scheme", metainfo.announce.scheme),
+           PG_L("announce.host", metainfo.announce.host));
     return 1;
   }
 
-  PgFileResult target_file_res = download_file_create_if_not_exists(
-      res_decode_metainfo.res.name, res_decode_metainfo.res.length);
+  PgFileResult target_file_res =
+      download_file_create_if_not_exists(metainfo.name, metainfo.length);
   if (target_file_res.err) {
     pg_log(
         &logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
-        PG_L("path", res_decode_metainfo.res.name),
-        PG_L("err", target_file_res.err),
+        PG_L("path", metainfo.name), PG_L("err", target_file_res.err),
         PG_L("err_s", pg_cstr_to_string(strerror((i32)target_file_res.err))));
     return 1;
   }
@@ -177,14 +124,15 @@ int main(int argc, char *argv[]) {
   u16 port_ours_torrent = 6881;
   TrackerMetadata tracker_metadata = {
       .port = port_ours_torrent,
-      .left = res_decode_metainfo.res.length,
+      .left = metainfo.length,
       .event = TRACKER_EVENT_STARTED,
-      .announce = res_decode_metainfo.res.announce,
+      .announce = metainfo.announce,
   };
-  tracker_compute_info_hash(res_decode_metainfo.res, tracker_metadata.info_hash,
-                            arena);
-  u32 pieces_count = download_compute_pieces_count(
-      res_decode_metainfo.res.piece_length, res_decode_metainfo.res.length);
+  // FIXME
+  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
+  tracker_compute_info_hash(metainfo, tracker_metadata.info_hash, arena);
+  u32 pieces_count =
+      download_compute_pieces_count(metainfo.piece_length, metainfo.length);
   PG_ASSERT(pieces_count > 0);
 
   // TODO: Tweak.
@@ -195,22 +143,20 @@ int main(int argc, char *argv[]) {
       .pieces_count = pieces_count,
       .pieces_downloading =
           pg_string_make(pg_div_ceil(pieces_count, 8), general_allocator),
-      .blocks_count =
-          (u32)pg_div_ceil(res_decode_metainfo.res.length, BLOCK_SIZE),
-      .max_blocks_per_piece_count = download_compute_max_blocks_per_piece_count(
-          res_decode_metainfo.res.piece_length),
-      .piece_length = res_decode_metainfo.res.piece_length,
-      .total_file_size = res_decode_metainfo.res.length,
+      .blocks_count = (u32)pg_div_ceil(metainfo.length, BLOCK_SIZE),
+      .max_blocks_per_piece_count =
+          download_compute_max_blocks_per_piece_count(metainfo.piece_length),
+      .piece_length = metainfo.piece_length,
+      .total_file_size = metainfo.length,
       .file = target_file_res.res,
       .logger = &logger,
       .rng = &rng,
       .concurrent_downloads_max = concurrent_download_max,
-      .pieces_hash = res_decode_metainfo.res.pieces,
+      .pieces_hash = metainfo.pieces,
   };
   PG_ASSERT(download.max_blocks_per_piece_count > 0);
   pg_log(
-      &logger, PG_LOG_LEVEL_DEBUG, "download",
-      PG_L("path", res_decode_metainfo.res.name),
+      &logger, PG_LOG_LEVEL_DEBUG, "download", PG_L("path", metainfo.name),
       PG_L("pieces_count", download.pieces_count),
       PG_L("blocks_count", download.blocks_count),
       PG_L("max_blocks_per_piece_count", download.max_blocks_per_piece_count),
@@ -231,25 +177,24 @@ int main(int argc, char *argv[]) {
                    BLOCK_SIZE));
 
   PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
-      &download, res_decode_metainfo.res.name, res_decode_metainfo.res.pieces);
+      &download, metainfo.name, metainfo.pieces);
   if (res_bitfield_pieces.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
-           PG_L("path", res_decode_metainfo.res.name),
-           PG_L("err", res_bitfield_pieces.err),
+           PG_L("path", metainfo.name), PG_L("err", res_bitfield_pieces.err),
            PG_L("err_s",
                 pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
     return 1;
   }
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
-         PG_L("path", res_decode_metainfo.res.name),
+         PG_L("path", metainfo.name),
          PG_L("local_bitfield_have_count",
               pg_bitfield_count(download.pieces_have)));
 
-  PgUrl announce = res_decode_metainfo.res.announce;
+  PgUrl announce = metainfo.announce;
 
-  Tracker tracker = tracker_make(
-      &logger, announce.host, announce.port, tracker_metadata, &download,
-      res_decode_metainfo.res.pieces, general_allocator);
+  Tracker tracker =
+      tracker_make(&logger, announce.host, announce.port, tracker_metadata,
+                   &download, metainfo.pieces, general_allocator);
 
   uv_timer_t download_metrics_timer = {0};
   download_metrics_timer.data = &download;
@@ -259,8 +204,7 @@ int main(int argc, char *argv[]) {
     if (err_timer_init < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to init download metrics timer",
-             PG_L("path", res_decode_metainfo.res.name),
-             PG_L("err", err_timer_init));
+             PG_L("path", metainfo.name), PG_L("err", err_timer_init));
       return 1;
     }
 
@@ -269,8 +213,7 @@ int main(int argc, char *argv[]) {
     if (err_timer_start < 0) {
       pg_log(&logger, PG_LOG_LEVEL_ERROR,
              "failed to start download metrics timer",
-             PG_L("path", res_decode_metainfo.res.name),
-             PG_L("err", err_timer_start));
+             PG_L("path", metainfo.name), PG_L("err", err_timer_start));
       return 1;
     }
   }

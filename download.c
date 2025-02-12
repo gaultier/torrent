@@ -1,7 +1,6 @@
 #pragma once
 #include "submodules/cstd/lib.c"
-
-#include "submodules/libuv/include/uv.h"
+#include "uv_utils.c"
 
 #define BLOCK_SIZE (1UL << 14)
 
@@ -17,16 +16,6 @@ typedef struct {
   u64 bufs_len;
   void *data;
 } FsWriteRequest;
-
-[[nodiscard]] [[maybe_unused]]
-static PgString uv_buf_to_string(uv_buf_t buf) {
-  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
-}
-
-[[nodiscard]]
-static uv_buf_t string_to_uv_buf(PgString s) {
-  return (uv_buf_t){.base = (char *)s.data, .len = s.len};
-}
 
 [[maybe_unused]] [[nodiscard]] static int do_write(uv_stream_t *stream,
                                                    PgString data,

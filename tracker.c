@@ -264,8 +264,10 @@ static PgError tracker_init(Tracker *tracker, PgLogger *logger,
       .announce = announce_url,
   };
 
+  tracker->uv_tcp_timeout.data = tracker;
   (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
 
+  tracker->uv_tcp.data = tracker;
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker->uv_tcp);
   if (err_tcp_init < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker-> failed to tcp init",
@@ -500,7 +502,7 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   }
 }
 
-static void tracker_on_tcp_write(uv_write_t *req, int status) {
+static void tracker_on_tcp_write(uv_write_t *req, int err_write) {
   PG_ASSERT(req->data);
   WriteRequest *wq = req->data;
   PG_ASSERT(wq->data);
@@ -510,10 +512,11 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
   pg_free(tracker->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
   pg_free(tracker->allocator, wq, sizeof(*wq), 1);
 
-  if (status < 0) {
+  if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
            PG_L("port", tracker->port), PG_L("len", len),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+           PG_L("err", err_write),
+           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_write))));
     tracker_close_io_handles(tracker);
     return;
   }
@@ -526,7 +529,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int status) {
   if (err_read < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start tcp read", PG_L("port", tracker->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+           PG_L("err", err_read),
+           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_read))));
     tracker_close_io_handles(tracker);
     return;
   }

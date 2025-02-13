@@ -40,6 +40,8 @@
 //  has already been 'freed'.
 //
 
+static uv_timer_t download_metrics_timer = {0};
+
 static void download_on_timer(uv_timer_t *timer) {
   PG_ASSERT(timer);
   PG_ASSERT(timer->data);
@@ -53,6 +55,97 @@ static void download_on_timer(uv_timer_t *timer) {
       PG_L("peers_active", download->peers_active_count),
       PG_L("pieces_count", download->pieces_count),
       PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
+}
+
+typedef struct {
+  Download *download;
+  Metainfo *metainfo;
+  TorrentFile *torrent;
+  Configuration *cfg;
+  PgAllocator *general_allocator;
+} Prepare;
+
+static void on_prepare(uv_prepare_t *uv_prepare) {
+  PG_ASSERT(uv_prepare);
+  PG_ASSERT(uv_prepare->data);
+  Prepare *prepare = uv_prepare->data;
+
+  PgError err = 0;
+
+  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
+      prepare->download, prepare->metainfo->name, prepare->metainfo->pieces);
+  if (res_bitfield_pieces.err) {
+    pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
+           "failed to load bitfield from file",
+           PG_L("path", prepare->metainfo->name),
+           PG_L("err", res_bitfield_pieces.err),
+           PG_L("err_s",
+                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
+
+    err = res_bitfield_pieces.err;
+    goto end;
+  }
+  pg_log(prepare->download->logger, PG_LOG_LEVEL_DEBUG,
+         "loaded bitfield from file", PG_L("path", prepare->metainfo->name),
+         PG_L("local_bitfield_have_count",
+              pg_bitfield_count(prepare->download->pieces_have)));
+
+  // Start tracker client.
+  u16 port_torrent_ours = 6881;
+  PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(prepare->torrent->file_data,
+                                            prepare->metainfo->info_start,
+                                            prepare->metainfo->info_end));
+  Tracker *tracker = calloc(sizeof(Tracker), 1);
+  PgError err_tracker = tracker_init(
+      tracker, prepare->download->logger, prepare->cfg,
+      prepare->metainfo->announce.host, prepare->metainfo->announce.port,
+      prepare->download, prepare->metainfo->pieces, port_torrent_ours,
+      prepare->metainfo->announce, info_hash, prepare->general_allocator);
+  if (err_tracker) {
+    pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
+           "failed to create tracker", PG_L("path", prepare->metainfo->name),
+           PG_L("err", err_tracker),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_tracker))));
+
+    err = err_tracker;
+    goto end;
+  }
+
+  err = tracker_start_dns_resolve(tracker, prepare->metainfo->announce);
+  if (err) {
+    goto end;
+  }
+
+  // Metrics.
+  download_metrics_timer.data = prepare->download;
+  {
+    PG_ASSERT(0 == uv_timer_init(uv_default_loop(), &download_metrics_timer));
+
+    int err_timer_start =
+        uv_timer_start(&download_metrics_timer, download_on_timer,
+                       pg_ns_to_ms(prepare->cfg->metrics_interval_ns),
+                       pg_ns_to_ms(prepare->cfg->metrics_interval_ns));
+    if (err_timer_start < 0) {
+      pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
+             "failed to start download metrics timer",
+             PG_L("path", prepare->metainfo->name),
+             PG_L("err", err_timer_start));
+
+      err = (PgError)err_timer_start;
+      goto end;
+    }
+  }
+
+end:
+  if (err) {
+    pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
+           "setup failed, stopping", PG_L("path", prepare->metainfo->name));
+    uv_stop(uv_default_loop());
+  }
+  uv_prepare_stop(uv_prepare);
+
+  pg_log(prepare->download->logger, PG_LOG_LEVEL_INFO, "setup finished",
+         PG_L("path", prepare->metainfo->name));
 }
 
 int main(int argc, char *argv[]) {
@@ -166,64 +259,17 @@ int main(int argc, char *argv[]) {
                    1) *
                       BLOCK_SIZE));
 
-  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
-      &download, metainfo.name, metainfo.pieces);
-  if (res_bitfield_pieces.err) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
-           PG_L("path", metainfo.name), PG_L("err", res_bitfield_pieces.err),
-           PG_L("err_s",
-                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
-    return 1;
-  }
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "loaded bitfield from file",
-         PG_L("path", metainfo.name),
-         PG_L("local_bitfield_have_count",
-              pg_bitfield_count(download.pieces_have)));
-
-  // Start tracker client.
-  u16 port_torrent_ours = 6881;
-  PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(
-      torrent.file_data, metainfo.info_start, metainfo.info_end));
-  Tracker tracker = {0};
-  PgError err_tracker = tracker_init(
-      &tracker, &logger, &cfg, metainfo.announce.host, metainfo.announce.port,
-      &download, metainfo.pieces, port_torrent_ours, metainfo.announce,
-      info_hash, general_allocator);
-  if (err_tracker) {
-    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create tracker",
-           PG_L("path", metainfo.name), PG_L("err", err_tracker),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_tracker))));
-    return 1;
-  }
-
-  if (tracker_start_dns_resolve(&tracker, metainfo.announce)) {
-    return 1;
-  }
-
-  // Metrics.
-  uv_timer_t download_metrics_timer = {0};
-  download_metrics_timer.data = &download;
-  {
-    int err_timer_init =
-        uv_timer_init(uv_default_loop(), &download_metrics_timer);
-    if (err_timer_init < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to init download metrics timer",
-             PG_L("path", metainfo.name), PG_L("err", err_timer_init));
-      return 1;
-    }
-
-    int err_timer_start =
-        uv_timer_start(&download_metrics_timer, download_on_timer,
-                       pg_ns_to_ms(cfg.metrics_interval_ns),
-                       pg_ns_to_ms(cfg.metrics_interval_ns));
-    if (err_timer_start < 0) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR,
-             "failed to start download metrics timer",
-             PG_L("path", metainfo.name), PG_L("err", err_timer_start));
-      return 1;
-    }
-  }
+  // libuv async operations from this point on.
+  Prepare prepare = {
+      .download = &download,
+      .cfg = &cfg,
+      .metainfo = &metainfo,
+      .torrent = &torrent,
+      .general_allocator = general_allocator,
+  };
+  uv_prepare_t uv_prepare = {.data = &prepare};
+  PG_ASSERT(0 == uv_prepare_init(uv_default_loop(), &uv_prepare));
+  uv_prepare_start(&uv_prepare, on_prepare);
 
   uv_run(uv_default_loop(), UV_RUN_DEFAULT);
 }

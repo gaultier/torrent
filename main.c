@@ -184,10 +184,18 @@ int main(int argc, char *argv[]) {
   u16 port_torrent_ours = 6881;
   PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(
       torrent.file_data, metainfo.info_start, metainfo.info_end));
-  Tracker tracker = tracker_make(
+  TrackerResult res_tracker = tracker_make(
       &logger, &cfg, metainfo.announce.host, metainfo.announce.port, &download,
       metainfo.pieces, port_torrent_ours, metainfo.announce, info_hash,
       general_allocator);
+  if (res_tracker.err) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create tracker",
+           PG_L("path", metainfo.name), PG_L("err", res_tracker.err),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tracker.err))));
+    return 1;
+  }
+  Tracker tracker = res_tracker.res;
+
   if (tracker_start_dns_resolve(&tracker, metainfo.announce)) {
     return 1;
   }

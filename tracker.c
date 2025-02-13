@@ -237,12 +237,16 @@ typedef struct {
 
 } Tracker;
 
+PG_RESULT(Tracker) TrackerResult;
+
 [[maybe_unused]] [[nodiscard]]
-static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
-                            u16 port, Download *download, PgString piece_hashes,
-                            u16 port_torrent_ours, PgUrl announce_url,
-                            PgSha1 info_hash, PgAllocator *allocator) {
+static TrackerResult
+tracker_make(PgLogger *logger, Configuration *cfg, PgString host, u16 port,
+             Download *download, PgString piece_hashes, u16 port_torrent_ours,
+             PgUrl announce_url, PgSha1 info_hash, PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
+
+  TrackerResult res = {0};
 
   Tracker tracker = {0};
   tracker.logger = logger;
@@ -261,6 +265,14 @@ static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
       .announce = announce_url,
   };
 
+  int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker.uv_tcp);
+  if (err_tcp_init < 0) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp init",
+           PG_L("port", port), PG_L("host", host));
+    res.err = (PgError)err_tcp_init;
+    return res;
+  }
+
   // Need to hold the HTTP request and response simultaneously (currently).
   tracker.arena =
       pg_arena_make_from_virtual_mem(cfg->tracker_max_http_request_bytes +
@@ -270,7 +282,8 @@ static Tracker tracker_make(PgLogger *logger, Configuration *cfg, PgString host,
       pg_ring_make(cfg->tracker_max_http_request_bytes,
                    pg_arena_allocator_as_allocator(&arena_allocator));
 
-  return tracker;
+  res.res = tracker;
+  return res;
 }
 
 [[nodiscard]] static PgBoolResult
@@ -575,15 +588,6 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
          PG_L("port", tracker->port),
          PG_L("address", pg_cstr_to_string(human_readable_ip)));
 
-  int err_tcp_init = uv_tcp_init(req->loop, &tracker->uv_tcp);
-  if (err_tcp_init < 0) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp init",
-           PG_L("port", tracker->port),
-           PG_L("address", pg_cstr_to_string(human_readable_ip)));
-    uv_freeaddrinfo(res);
-    tracker_close_io_handles(tracker);
-    return;
-  }
   tracker->uv_tcp.data = tracker;
   tracker->uv_req_connect.data = tracker;
 

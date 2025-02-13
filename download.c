@@ -363,6 +363,9 @@ download_file_on_chunk(PgString chunk, void *ctx) {
 download_load_bitfield_pieces_from_disk(Download *download, PgString path,
                                         PgString info_hash) {
   PG_ASSERT(download->pieces_have.len > 0);
+  u64 start = pg_time_ns_now(PG_CLOCK_KIND_MONOTONIC).res;
+  pg_log(download->logger, PG_LOG_LEVEL_ERROR,
+         "download_load_bitfield_pieces_from_disk start", PG_L("path", path));
 
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
@@ -386,6 +389,10 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
     }
   }
 
+  u64 end = pg_time_ns_now(PG_CLOCK_KIND_MONOTONIC).res;
+  pg_log(download->logger, PG_LOG_LEVEL_ERROR,
+         "download_load_bitfield_pieces_from_disk end", PG_L("path", path),
+         PG_L("duration_ms", pg_ns_to_ms(end - start)));
   return res;
 }
 

@@ -18,7 +18,7 @@ case $1 in
   debug)
     CFLAGS="${CFLAGS} -O0"
     ;;
-  sanitizer)
+  debug_sanitizer)
     CFLAGS="${CFLAGS} -O0 -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
   release)
@@ -31,6 +31,9 @@ case $1 in
 		error "Build mode \"$1\" unsupported!"
 		;;
 esac
+
+cd submodules/libuv/ && cmake -G Ninja -S . -B build -DCMAKE_INSTALL_MESSAGE=NEVER -DCMAKE_MESSAGE_LOG_LEVEL="ERROR" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLIBUV_BUILD_SHARED=OFF && ninja -C build && cd ../..
+cd submodules/aws-lc && cmake -G Ninja -S . -B build -DCMAKE_INSTALL_MESSAGE=NEVER -DCMAKE_MESSAGE_LOG_LEVEL="ERROR" -DCMAKE_BUILD_TYPE=Release -DBUILD_LIBSSL=OFF -DBUILD_TESTING=OFF -DBUILD_TOOL=OFF -DDISABLE_GO=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON && ninja -C build && cd ../..
 
 # shellcheck disable=SC2086
 $CC $WARNINGS -g3 main.c -o main.bin $CFLAGS $LDFLAGS

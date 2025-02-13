@@ -1,6 +1,8 @@
 
 ## Build
 
+*Requirements: cmake, ninja, (perl?).*
+
 ```sh
 $ ./build_sh debug
 $ ./build_sh debug_sanitizer

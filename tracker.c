@@ -666,8 +666,6 @@ static void tracker_on_timeout(uv_timer_t *timer) {
     return (PgError)-err_getaddrinfo;
   }
 
-  tracker->uv_tcp_timeout.data = tracker;
-
   u64 timeout_ms = pg_ns_to_ms(tracker->cfg->tracker_round_trip_timeout_ns);
   int err_timer = uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout,
                                  timeout_ms, 0);

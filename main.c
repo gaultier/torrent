@@ -85,6 +85,9 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
     err = res_bitfield_pieces.err;
     goto end;
   }
+  // TODO: Use `uv_fs_xxx` functions to read the file asynchronously, instead of
+  // blocking I/O, which forces us to update the loop time manually.
+  uv_update_time(uv_default_loop());
   pg_log(prepare->download->logger, PG_LOG_LEVEL_DEBUG,
          "loaded bitfield from file", PG_L("path", prepare->metainfo->name),
          PG_L("local_bitfield_have_count",

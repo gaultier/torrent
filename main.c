@@ -58,8 +58,8 @@ static void download_on_timer(uv_timer_t *timer) {
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
-  // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
+  // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
   PgAllocator *general_allocator = nullptr;
@@ -184,17 +184,17 @@ int main(int argc, char *argv[]) {
   u16 port_torrent_ours = 6881;
   PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(
       torrent.file_data, metainfo.info_start, metainfo.info_end));
-  TrackerResult res_tracker = tracker_make(
-      &logger, &cfg, metainfo.announce.host, metainfo.announce.port, &download,
-      metainfo.pieces, port_torrent_ours, metainfo.announce, info_hash,
-      general_allocator);
-  if (res_tracker.err) {
+  Tracker tracker = {0};
+  PgError err_tracker = tracker_init(
+      &tracker, &logger, &cfg, metainfo.announce.host, metainfo.announce.port,
+      &download, metainfo.pieces, port_torrent_ours, metainfo.announce,
+      info_hash, general_allocator);
+  if (err_tracker) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create tracker",
-           PG_L("path", metainfo.name), PG_L("err", res_tracker.err),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)res_tracker.err))));
+           PG_L("path", metainfo.name), PG_L("err", err_tracker),
+           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_tracker))));
     return 1;
   }
-  Tracker tracker = res_tracker.res;
 
   if (tracker_start_dns_resolve(&tracker, metainfo.announce)) {
     return 1;

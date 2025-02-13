@@ -240,24 +240,23 @@ typedef struct {
 PG_RESULT(Tracker) TrackerResult;
 
 [[maybe_unused]] [[nodiscard]]
-static TrackerResult
-tracker_make(PgLogger *logger, Configuration *cfg, PgString host, u16 port,
-             Download *download, PgString piece_hashes, u16 port_torrent_ours,
-             PgUrl announce_url, PgSha1 info_hash, PgAllocator *allocator) {
+static PgError tracker_init(Tracker *tracker, PgLogger *logger,
+                            Configuration *cfg, PgString host, u16 port,
+                            Download *download, PgString piece_hashes,
+                            u16 port_torrent_ours, PgUrl announce_url,
+                            PgSha1 info_hash, PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
-  TrackerResult res = {0};
+  *tracker = (Tracker){0};
+  tracker->logger = logger;
+  tracker->cfg = cfg;
+  tracker->host = host;
+  tracker->port = port;
+  tracker->download = download;
+  tracker->piece_hashes = piece_hashes;
+  tracker->allocator = allocator;
 
-  Tracker tracker = {0};
-  tracker.logger = logger;
-  tracker.cfg = cfg;
-  tracker.host = host;
-  tracker.port = port;
-  tracker.download = download;
-  tracker.piece_hashes = piece_hashes;
-  tracker.allocator = allocator;
-
-  tracker.metadata = (TrackerMetadata){
+  tracker->metadata = (TrackerMetadata){
       .info_hash = info_hash,
       .port = port_torrent_ours,
       .left = download->total_size, // FIXME
@@ -265,27 +264,25 @@ tracker_make(PgLogger *logger, Configuration *cfg, PgString host, u16 port,
       .announce = announce_url,
   };
 
-  (void)uv_timer_init(uv_default_loop(), &tracker.uv_tcp_timeout);
+  (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
 
-  int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker.uv_tcp);
+  int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker->uv_tcp);
   if (err_tcp_init < 0) {
-    pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp init",
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker-> failed to tcp init",
            PG_L("port", port), PG_L("host", host));
-    res.err = (PgError)err_tcp_init;
-    return res;
+    return (PgError)err_tcp_init;
   }
 
   // Need to hold the HTTP request and response simultaneously (currently).
-  tracker.arena =
+  tracker->arena =
       pg_arena_make_from_virtual_mem(cfg->tracker_max_http_request_bytes +
                                      cfg->tracker_max_http_response_bytes);
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker.arena);
-  tracker.http_recv =
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
+  tracker->http_recv =
       pg_ring_make(cfg->tracker_max_http_request_bytes,
                    pg_arena_allocator_as_allocator(&arena_allocator));
 
-  res.res = tracker;
-  return res;
+  return 0;
 }
 
 [[nodiscard]] static PgBoolResult

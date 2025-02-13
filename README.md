@@ -2,7 +2,8 @@
 ## Build
 
 ```sh
-$ cd submodules/libuv/ && ./autogen.sh && ./configure && make
+$ cd submodules/libuv/ cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLIBUV_BUILD_SHARED=OFF && ninja -C build && cd ../..
+$ cd submodules/aws-lc && cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_LIBSSL=OFF -DBUILD_TESTING=OFF -DBUILD_TOOL=OFF -DDISABLE_GO=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON && ninja -C build && cd ../..
 $ ./build_sh debug
 $ ./build_sh sanitizer
 $ ./build_sh release

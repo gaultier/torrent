@@ -2,8 +2,9 @@
 set -e
 set -f # disable globbing.
 
-CFLAGS="${CFLAGS}"
-EXTRA_FLAGS="-fpie -L./submodules/libuv/build/ -luv -flto -fno-omit-frame-pointer -gsplit-dwarf -march=native"
+CFLAGS="${CFLAGS} -fpie -flto -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=lld"
+LDFLAGS="${LDFLAGS} -L./submodules/libuv/build/ -L./submodules/aws-lc/build/ -luv -lcrypto -Wl,--gc-sections"
+
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 
@@ -15,16 +16,16 @@ error() {
 build() {
 case $1 in 
   debug)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O0"
+    CFLAGS="${CFLAGS} -O0"
     ;;
   sanitizer)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O0 -fsanitize=address,undefined -fsanitize-trap=all"
+    CFLAGS="${CFLAGS} -O0 -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
   release)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O3 -Wl,--gc-sections"
+    CFLAGS="${CFLAGS} -O3"
     ;;
   release_sanitizer)
-    EXTRA_FLAGS="${EXTRA_FLAGS} -O1 -fsanitize=address,undefined -fsanitize-trap=all -Wl,--gc-sections"
+    CFLAGS="${CFLAGS} -O1 -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
 	*)
 		error "Build mode \"$1\" unsupported!"
@@ -32,7 +33,7 @@ case $1 in
 esac
 
 # shellcheck disable=SC2086
-$CC $WARNINGS -g3 main.c -o main.bin $EXTRA_FLAGS $CFLAGS
+$CC $WARNINGS -g3 main.c -o main.bin $CFLAGS $LDFLAGS
 }
 
 if [ $# -eq 0 ]; then

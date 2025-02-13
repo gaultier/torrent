@@ -1,7 +1,8 @@
 #pragma once
 
-#include "configuration.c"
 #include "submodules/cstd/lib.c"
+
+#include "configuration.c"
 #include "uv_utils.c"
 
 typedef enum {

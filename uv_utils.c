@@ -1,7 +1,7 @@
 #pragma once
 
 #include "submodules/cstd/lib.c"
-#include "submodules/libuv/include/uv.h"
+#include "uv.h"
 
 [[nodiscard]] [[maybe_unused]]
 static PgString uv_buf_to_string(uv_buf_t buf) {

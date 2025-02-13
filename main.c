@@ -95,9 +95,9 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
 
   // Start tracker client.
   u16 port_torrent_ours = 6881;
-  PgSha1 info_hash = pg_sha1(PG_SLICE_RANGE(prepare->torrent->file_data,
-                                            prepare->metainfo->info_start,
-                                            prepare->metainfo->info_end));
+  PgSha1 info_hash = sha1_optimized(
+      PG_SLICE_RANGE(prepare->torrent->file_data, prepare->metainfo->info_start,
+                     prepare->metainfo->info_end));
   Tracker *tracker = calloc(sizeof(Tracker), 1);
   PgError err_tracker = tracker_init(
       tracker, prepare->download->logger, prepare->cfg,

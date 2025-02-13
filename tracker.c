@@ -265,6 +265,8 @@ tracker_make(PgLogger *logger, Configuration *cfg, PgString host, u16 port,
       .announce = announce_url,
   };
 
+  (void)uv_timer_init(uv_default_loop(), &tracker.uv_tcp_timeout);
+
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker.uv_tcp);
   if (err_tcp_init < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp init",
@@ -663,7 +665,6 @@ static void tracker_on_timeout(uv_timer_t *timer) {
     return (PgError)-err_getaddrinfo;
   }
 
-  (void)uv_timer_init(uv_default_loop(), &tracker->uv_tcp_timeout);
   tracker->uv_tcp_timeout.data = tracker;
 
   u64 timeout_ms = pg_ns_to_ms(tracker->cfg->tracker_round_trip_timeout_ns);

@@ -307,7 +307,7 @@ static void test_tracker_compute_info_hash() {
 
   PgString info_encoded = PG_SLICE_RANGE(torrent_file_content,
                                          res.res.info_start, res.res.info_end);
-  PgSha1 hash = sha1_optimized(info_encoded);
+  PgSha1 hash = pg_sha1(info_encoded);
 
   PgSha1 expected_hash = {.data = {
                               0xe8, 0xa4, 0x67, 0x8c, 0x48, 0x5d, 0x86,

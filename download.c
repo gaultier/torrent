@@ -2,7 +2,6 @@
 #include "submodules/cstd/lib.c"
 
 #include "configuration.c"
-#include "sha_optimized.c"
 #include "uv_utils.c"
 
 #define BLOCK_SIZE (1UL << 14)
@@ -280,7 +279,7 @@ download_compute_blocks_count(u64 total_file_size) {
                                                      PgString hash_expected) {
   PG_ASSERT(PG_SHA1_DIGEST_LENGTH == hash_expected.len);
 
-  PgSha1 hash_got = sha1_optimized(data);
+  PgSha1 hash_got = pg_sha1(data);
   return memcmp(hash_got.data, hash_expected.data, hash_expected.len) == 0;
 }
 

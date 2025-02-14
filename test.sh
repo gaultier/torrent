@@ -2,8 +2,8 @@
 set -e
 set -f # disable globbing.
 
-CFLAGS="${CFLAGS} -fpie -flto -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=lld -I./submodules/libuv/include -I./submodules/aws-lc/include"
-LDFLAGS="${LDFLAGS} -L./submodules/libuv/build/ -L./submodules/aws-lc/build/ -luv -lcrypto -Wl,--gc-sections"
+CFLAGS="${CFLAGS} -fpie -flto -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=lld -I./submodules/libuv/include"
+LDFLAGS="${LDFLAGS} -L./submodules/libuv/build/ -luv -Wl,--gc-sections"
 CC="${CC:-clang}"
 WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 

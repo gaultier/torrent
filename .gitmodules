@@ -4,6 +4,3 @@
 [submodule "submodules/libuv"]
 	path = submodules/libuv
 	url = https://github.com/libuv/libuv.git
-[submodule "submodules/aws-lc"]
-	path = submodules/aws-lc
-	url = https://github.com/aws/aws-lc.git

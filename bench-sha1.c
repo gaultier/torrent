@@ -1,4 +1,4 @@
-#include "sha1_sw.h"
+#include "sha1_sw.c"
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -552,9 +552,9 @@ static bool is_chunk_valid(uint8_t *chunk, uint64_t chunk_len,
   // Process as many 4 bytes chunks as possible.
   uint64_t len_rounded_down = (chunk_len / 64) * 64;
   uint64_t rem = chunk_len % 64;
-  // uint64_t steps = len_rounded_down / 64;
-  // sha1_sse_step(ctx.state, chunk, steps);
-  sha1_sha_ext(ctx.state, chunk, (uint32_t)len_rounded_down);
+  uint64_t steps = len_rounded_down / 64;
+  sha1_sse_step(ctx.state, chunk, steps);
+  // sha1_sha_ext(ctx.state, chunk, (uint32_t)len_rounded_down);
 
   memcpy(ctx.buffer, chunk + len_rounded_down, rem);
 

@@ -161,6 +161,7 @@ static inline uint32_t f60_79(uint32_t x, uint32_t y, uint32_t z) {
     (xt) += ((xe) + rol((xa), 5));                                             \
   } while (0)
 
+[[maybe_unused]]
 static void sha1_sse_step(uint32_t *restrict H, const uint32_t *restrict inputu,
                           size_t num_steps) {
   const __m128i *restrict input = (const __m128i *)inputu;
@@ -332,8 +333,9 @@ static void sha1_sse_step(uint32_t *restrict H, const uint32_t *restrict inputu,
 }
 
 // Process as many 64 bytes chunks as possible.
-static void pg_sha1_process_x86(uint32_t state[5], const uint8_t data[],
-                                uint32_t length) {
+[[maybe_unused]]
+static void sha1_sha_ext(uint32_t state[5], const uint8_t data[],
+                         uint32_t length) {
   __m128i ABCD, ABCD_SAVE, E0, E0_SAVE, E1;
   __m128i MSG0, MSG1, MSG2, MSG3;
   const __m128i MASK =
@@ -550,8 +552,9 @@ static bool is_chunk_valid(uint8_t *chunk, uint64_t chunk_len,
   // Process as many 4 bytes chunks as possible.
   uint64_t len_rounded_down = (chunk_len / 64) * 64;
   uint64_t rem = chunk_len % 64;
-  uint64_t steps = len_rounded_down / 64;
-  sha1_sse_step(ctx.state, chunk, steps);
+  // uint64_t steps = len_rounded_down / 64;
+  // sha1_sse_step(ctx.state, chunk, steps);
+  sha1_sha_ext(ctx.state, chunk, (uint32_t)len_rounded_down);
 
   memcpy(ctx.buffer, chunk + len_rounded_down, rem);
 

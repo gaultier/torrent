@@ -14,6 +14,10 @@ static void pg_sha1_process_x86(uint32_t state[5], const uint8_t data[],
   __m128i ABCD, ABCD_SAVE, E0, E0_SAVE, E1;
   __m128i MSG0, MSG1, MSG2, MSG3;
   const __m128i MASK =
+      // First u64:
+      // 0000_0000'0000_0001'0000_0010'0000_0011'0000_0100'0000_0101'0000_0110'0000_0111
+      // Second u64:
+      // 0000_1000'0000_1001'0000_1010'0000_1011'0000_1100'0000_1101'0000_1110'0000_1111
       _mm_set_epi64x(0x0001020304050607ULL, 0x08090a0b0c0d0e0fULL);
 
   /* Load initial values */

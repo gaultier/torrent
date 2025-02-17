@@ -15,3 +15,4 @@
 -Wno-disabled-macro-expansion
 -Wno-unknown-warning-option
 -Werror
+-I./submodules/libuv/include/

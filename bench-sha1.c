@@ -31,7 +31,7 @@ static void pg_sha1_process_x86(uint32_t state[5], const uint8_t data[],
   // [63:32] == [95:64] (due to bits [3:2] being `10`).
   // [95:64] == [63:32] (due to bits [5:4] being `01`).
   // [127:96] == [31:0] (due to bits [7:6] being `00`).
-  // I.e.: Transform chunk to big-endian.
+  // I.e.: Transform state to big-endian.
   ABCD = _mm_shuffle_epi32(ABCD, 0x1B);
 
   while (length >= 64) {
@@ -42,6 +42,15 @@ static void pg_sha1_process_x86(uint32_t state[5], const uint8_t data[],
     /* Rounds 0-3 */
     // Load first 16 bytes of data in `MSG0`.
     MSG0 = _mm_loadu_si128((const __m128i *)(void *)(data + 0));
+
+    // for each byte in src:
+    //    Bit 7: \n
+    //    1: Clear the corresponding byte in the destination. \n
+    //    0: Copy the selected source byte to the corresponding byte in the
+    //    destination. \n
+    //    Bits [6:4] Reserved.  \n
+    //    Bits [3:0] select the source byte to be copied.
+    //    Since MASK is 0..=15, we copy MSG0
     MSG0 = _mm_shuffle_epi8(MSG0, MASK);
     E0 = _mm_add_epi32(E0, MSG0);
     E1 = ABCD;

@@ -24,6 +24,14 @@ static void pg_sha1_process_x86(uint32_t state[5], const uint8_t data[],
   /* Load initial values */
   ABCD = _mm_loadu_si128((const __m128i *)(void *)state);
   E0 = _mm_set_epi32((int)state[4], 0, 0, 0);
+
+  // `0x1b` == `0b0001_1011`.
+  // Will result in:
+  // [31:0] == [127:96] (due to bits [1:0] being `11`).
+  // [63:32] == [95:64] (due to bits [3:2] being `10`).
+  // [95:64] == [63:32] (due to bits [5:4] being `01`).
+  // [127:96] == [31:0] (due to bits [7:6] being `00`).
+  // I.e.: Transform chunk to big-endian.
   ABCD = _mm_shuffle_epi32(ABCD, 0x1B);
 
   while (length >= 64) {

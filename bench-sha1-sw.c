@@ -1,6 +1,6 @@
+#include "sha1_sw.c"
 #include <fcntl.h>
 #include <inttypes.h>
-#include <openssl/sha.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -9,13 +9,13 @@
 
 static bool is_chunk_valid(uint8_t *chunk, uint64_t chunk_len,
                            uint8_t digest_expected[20]) {
-  SHA_CTX ctx = {0};
-  SHA1_Init(&ctx);
+  SHA1_CTX ctx = {0};
+  SHA1Init(&ctx);
 
-  SHA1_Update(&ctx, chunk, chunk_len);
+  SHA1Update(&ctx, chunk, chunk_len);
 
   uint8_t digest_actual[20] = {0};
-  SHA1_Final(digest_actual, &ctx);
+  SHA1Final(digest_actual, &ctx);
 
   return !memcmp(digest_actual, digest_expected, 20);
 }

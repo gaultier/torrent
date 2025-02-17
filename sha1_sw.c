@@ -14,17 +14,17 @@
  *   34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
  */
 
+#include <inttypes.h>
 #include <string.h>
-#include <sys/types.h>
 
 #define SHA1_BLOCK_LENGTH 64
 #define SHA1_DIGEST_LENGTH 20
 #define SHA1_DIGEST_STRING_LENGTH (SHA1_DIGEST_LENGTH * 2 + 1)
 
 typedef struct {
-  u_int32_t state[5];
-  u_int64_t count;
-  u_int8_t buffer[SHA1_BLOCK_LENGTH];
+  uint32_t state[5];
+  uint64_t count;
+  uint8_t buffer[SHA1_BLOCK_LENGTH];
 } SHA1_CTX;
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
@@ -32,13 +32,9 @@ typedef struct {
  * blk0() and blk() perform the initial expand.
  * I got the idea of expanding during the round function from SSLeay
  */
-#if BYTE_ORDER == LITTLE_ENDIAN
 #define blk0(i)                                                                \
   (block->l[i] = (rol(block->l[i], 24) & 0xFF00FF00) |                         \
                  (rol(block->l[i], 8) & 0x00FF00FF))
-#else
-#define blk0(i) block->l[i]
-#endif
 #define blk(i)                                                                 \
   (block->l[i & 15] = rol(block->l[(i + 13) & 15] ^ block->l[(i + 8) & 15] ^   \
                               block->l[(i + 2) & 15] ^ block->l[i & 15],       \
@@ -64,17 +60,16 @@ typedef struct {
   w = rol(w, 30);
 
 typedef union {
-  u_int8_t c[64];
-  u_int32_t l[16];
+  uint8_t c[64];
+  uint32_t l[16];
 } CHAR64LONG16;
 
 /*
  * Hash a single 512-bit block. This is the core of the algorithm.
  */
-void SHA1Transform(u_int32_t state[5],
-                   const u_int8_t buffer[SHA1_BLOCK_LENGTH]) {
-  u_int32_t a, b, c, d, e;
-  u_int8_t workspace[SHA1_BLOCK_LENGTH];
+void SHA1Transform(uint32_t state[5], const uint8_t buffer[SHA1_BLOCK_LENGTH]) {
+  uint32_t a, b, c, d, e;
+  uint8_t workspace[SHA1_BLOCK_LENGTH];
   CHAR64LONG16 *block = (CHAR64LONG16 *)workspace;
 
   (void)memcpy(block, buffer, SHA1_BLOCK_LENGTH);
@@ -196,16 +191,16 @@ void SHA1Init(SHA1_CTX *context) {
 /*
  * Run your data through this.
  */
-void SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len) {
+void SHA1Update(SHA1_CTX *context, const uint8_t *data, size_t len) {
   size_t i, j;
 
   j = (size_t)((context->count >> 3) & 63);
-  context->count += ((u_int64_t)len << 3);
+  context->count += ((uint64_t)len << 3);
   if ((j + len) > 63) {
     (void)memcpy(&context->buffer[j], data, (i = 64 - j));
     SHA1Transform(context->state, context->buffer);
     for (; i + 63 < len; i += 64)
-      SHA1Transform(context->state, (u_int8_t *)&data[i]);
+      SHA1Transform(context->state, (uint8_t *)&data[i]);
     j = 0;
   } else {
     i = 0;
@@ -217,26 +212,26 @@ void SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len) {
  * Add padding and return the message digest.
  */
 void SHA1Pad(SHA1_CTX *context) {
-  u_int8_t finalcount[8];
-  u_int i;
+  uint8_t finalcount[8];
+  size_t i;
 
   for (i = 0; i < 8; i++) {
-    finalcount[i] = (u_int8_t)((context->count >> ((7 - (i & 7)) * 8)) &
-                               255); /* Endian independent */
+    finalcount[i] = (uint8_t)((context->count >> ((7 - (i & 7)) * 8)) &
+                              255); /* Endian independent */
   }
-  SHA1Update(context, (u_int8_t *)"\200", 1);
+  SHA1Update(context, (uint8_t *)"\200", 1);
   while ((context->count & 504) != 448)
-    SHA1Update(context, (u_int8_t *)"\0", 1);
+    SHA1Update(context, (uint8_t *)"\0", 1);
   SHA1Update(context, finalcount, 8); /* Should cause a SHA1Transform() */
 }
 
-void SHA1Final(u_int8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context) {
-  u_int i;
+void SHA1Final(uint8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context) {
+  size_t i;
 
   SHA1Pad(context);
   for (i = 0; i < SHA1_DIGEST_LENGTH; i++) {
     digest[i] =
-        (u_int8_t)((context->state[i >> 2] >> ((3 - (i & 3)) * 8)) & 255);
+        (uint8_t)((context->state[i >> 2] >> ((3 - (i & 3)) * 8)) & 255);
   }
   explicit_bzero(context, sizeof(*context));
 }

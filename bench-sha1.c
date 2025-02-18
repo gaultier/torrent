@@ -368,14 +368,6 @@ static void sha1_sha_ext(uint32_t state[5], const uint8_t data[],
     // Load first 16 bytes of data in `MSG0`.
     MSG0 = _mm_loadu_si128((const __m128i *)(void *)(data + 0));
 
-    // for each byte in src:
-    //    Bit 7: \n
-    //    1: Clear the corresponding byte in the destination. \n
-    //    0: Copy the selected source byte to the corresponding byte in the
-    //    destination. \n
-    //    Bits [6:4] Reserved.  \n
-    //    Bits [3:0] select the source byte to be copied.
-    //    Since MASK is 0..=15, we copy MSG0
     MSG0 = _mm_shuffle_epi8(MSG0, MASK);
     E0 = _mm_add_epi32(E0, MSG0);
     E1 = ABCD;

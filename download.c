@@ -242,13 +242,6 @@ download_get_piece_for_block(Download *download,
   return (PieceIndex){res};
 }
 
-[[maybe_unused]] [[nodiscard]] static u32
-download_compute_blocks_count(u64 total_file_size) {
-  u64 res = pg_div_ceil(total_file_size, BLOCK_SIZE);
-  PG_ASSERT(res <= UINT32_MAX);
-  return (u32)res;
-}
-
 [[maybe_unused]] [[nodiscard]] static u32 download_compute_block_length(
     Download *download, BlockForPieceIndex block_for_piece, PieceIndex piece) {
   PG_ASSERT(piece.val < download->pieces_count);

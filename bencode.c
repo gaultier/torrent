@@ -43,10 +43,10 @@ typedef struct {
   PgString remaining; // Non-owning.
 } BencodeValueDecodeResult;
 
-[[nodiscard]] static BencodeValueDecodeResult
+__attribute((warn_unused_result)) static BencodeValueDecodeResult
 bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
 
-[[nodiscard]] static BencodeValueDecodeResult bencode_decode_number(PgString s,
+__attribute((warn_unused_result)) static BencodeValueDecodeResult bencode_decode_number(PgString s,
                                                                     u32 start) {
   BencodeValueDecodeResult res = {
       .value.start = start,
@@ -77,7 +77,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
   return res;
 }
 
-[[nodiscard]] static BencodeValueDecodeResult bencode_decode_string(PgString s,
+__attribute((warn_unused_result)) static BencodeValueDecodeResult bencode_decode_string(PgString s,
                                                                     u32 start) {
   BencodeValueDecodeResult res = {
       .value.start = start,
@@ -113,7 +113,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
   return res;
 }
 
-[[nodiscard]] static BencodeValueDecodeResult
+__attribute((warn_unused_result)) static BencodeValueDecodeResult
 bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
   BencodeValueDecodeResult res = {
       .value.start = start,
@@ -181,7 +181,7 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
   return res;
 }
 
-[[nodiscard]] static BencodeValueDecodeResult
+__attribute((warn_unused_result)) static BencodeValueDecodeResult
 bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
   BencodeValueDecodeResult res = {
       .value.start = start,
@@ -229,7 +229,7 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
   return res;
 }
 
-[[nodiscard]] static BencodeValueDecodeResult
+__attribute((warn_unused_result)) static BencodeValueDecodeResult
 bencode_decode_value(PgString s, u32 start, PgAllocator *allocator) {
   BencodeValueDecodeResult res = {.value.start = start};
 
@@ -294,7 +294,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator) {
   }
 }
 
-[[nodiscard]] __attribute((unused)) static PgError
+__attribute((warn_unused_result)) __attribute((unused)) static PgError
 bencode_encode(BencodeValue value, PgWriter *w, PgAllocator *allocator) {
   PgError err = 0;
 
@@ -408,7 +408,7 @@ typedef struct {
 
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
-__attribute((unused)) [[nodiscard]] static DecodeMetaInfoResult
+__attribute((unused)) __attribute((warn_unused_result)) static DecodeMetaInfoResult
 bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
   DecodeMetaInfoResult res = {0};
 
@@ -494,7 +494,7 @@ typedef struct {
 
 PG_RESULT(TorrentFile) TorrentFileResult;
 
-__attribute((unused)) [[nodiscard]] static TorrentFileResult
+__attribute((unused)) __attribute((warn_unused_result)) static TorrentFileResult
 torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   TorrentFileResult res = {0};
   char path_c[PG_PATH_MAX] = {0};

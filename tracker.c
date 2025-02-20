@@ -23,7 +23,7 @@ typedef struct {
   PgUrl announce;
 } TrackerMetadata;
 
-[[nodiscard]] static PgString
+__attribute((warn_unused_result)) static PgString
 tracker_metadata_event_to_string(TrackerMetadataEvent event) {
   switch (event) {
   case TRACKER_EVENT_STARTED:
@@ -50,7 +50,7 @@ typedef struct {
   PgIpv4AddressDyn peer_addresses;
 } ParseCompactPeersResult;
 
-[[nodiscard]] static ParseCompactPeersResult
+__attribute((warn_unused_result)) static ParseCompactPeersResult
 tracker_parse_compact_peers(PgString s, PgLogger *logger,
                             PgAllocator *allocator) {
   ParseCompactPeersResult res = {0};
@@ -93,7 +93,7 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger,
   return res;
 }
 
-[[nodiscard]] static TrackerResponseResult
+__attribute((warn_unused_result)) static TrackerResponseResult
 tracker_parse_bencode_response(PgString s, PgLogger *logger,
                                PgAllocator *allocator) {
   TrackerResponseResult res = {0};
@@ -153,7 +153,7 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
   return res;
 }
 
-__attribute((unused)) [[nodiscard]] static PgHttpRequest
+__attribute((unused)) __attribute((warn_unused_result)) static PgHttpRequest
 tracker_make_http_request(TrackerMetadata *req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
@@ -239,7 +239,7 @@ typedef struct {
 
 PG_RESULT(Tracker) TrackerResult;
 
-__attribute((unused)) [[nodiscard]]
+__attribute((unused)) __attribute((warn_unused_result))
 static PgError tracker_init(Tracker *tracker, PgLogger *logger,
                             Configuration *cfg, PgString host, u16 port,
                             Download *download, PgString piece_hashes,
@@ -287,7 +287,7 @@ static PgError tracker_init(Tracker *tracker, PgLogger *logger,
   return 0;
 }
 
-[[nodiscard]] static PgBoolResult
+__attribute((warn_unused_result)) static PgBoolResult
 tracker_read_http_response_body(Tracker *tracker) {
   PG_ASSERT(TRACKER_STATE_WILL_READ_BODY == tracker->state);
 
@@ -352,7 +352,7 @@ tracker_read_http_response_body(Tracker *tracker) {
   return res;
 }
 
-[[nodiscard]] static PgError tracker_try_parse_http_response(Tracker *tracker) {
+__attribute((warn_unused_result)) static PgError tracker_try_parse_http_response(Tracker *tracker) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 

@@ -100,9 +100,9 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   buf->len = suggested_size;
 }
 
-[[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer);
+__attribute((warn_unused_result)) static PgError peer_request_remote_data_maybe(Peer *peer);
 
-__attribute((unused)) [[nodiscard]] static PgString
+__attribute((unused)) __attribute((warn_unused_result)) static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -130,7 +130,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-__attribute((unused)) [[nodiscard]] static Peer
+__attribute((unused)) __attribute((warn_unused_result)) static Peer
 peer_make(PgIpv4Address address, PgSha1 info_hash, PgLogger *logger,
           Download *download, PgString piece_hashes, PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
@@ -189,7 +189,7 @@ static void peer_close_io_handles(Peer *peer) {
   uv_close((uv_handle_t *)&peer->uv_tcp, peer_on_close);
 }
 
-[[nodiscard]] static PgError peer_read_handshake(Peer *peer) {
+__attribute((warn_unused_result)) static PgError peer_read_handshake(Peer *peer) {
   PG_ASSERT(PEER_STATE_NONE == peer->state);
 
   u8 data[HANDSHAKE_LENGTH] = {0};
@@ -260,7 +260,7 @@ static void peer_on_file_write(uv_fs_t *req) {
          PG_L("req.result", uv_fs_get_result(req)));
 }
 
-[[nodiscard]] static PgError peer_receive_block(Peer *peer,
+__attribute((warn_unused_result)) static PgError peer_receive_block(Peer *peer,
                                                 PeerMessagePiece msg) {
   PG_ASSERT(msg.data.len <= BLOCK_SIZE);
   PG_ASSERT(msg.data.len >= 0);
@@ -409,7 +409,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   return 0;
 }
 
-__attribute((unused)) [[nodiscard]] static PgString
+__attribute((unused)) __attribute((warn_unused_result)) static PgString
 peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
   Pgu8Dyn sb = {0};
@@ -482,7 +482,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   return s;
 }
 
-[[nodiscard]] static PeerMessageReadResult peer_read_any_message(Peer *peer) {
+__attribute((warn_unused_result)) static PeerMessageReadResult peer_read_any_message(Peer *peer) {
   PeerMessageReadResult res = {0};
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: reading any message",
@@ -690,7 +690,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   return res;
 }
 
-[[nodiscard]] static PgError peer_react_to_message(Peer *peer,
+__attribute((warn_unused_result)) static PgError peer_react_to_message(Peer *peer,
                                                    PeerMessage msg) {
   switch (msg.kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -734,7 +734,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   return 0;
 }
 
-[[nodiscard]] static PgError peer_handle_recv_data(Peer *peer) {
+__attribute((warn_unused_result)) static PgError peer_handle_recv_data(Peer *peer) {
   for (u64 _i = 0; _i < 128; _i++) {
     switch (peer->state) {
     case PEER_STATE_NONE: {
@@ -838,7 +838,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
          PG_L("address", peer->address), PG_L("len", len));
 }
 
-[[nodiscard]] static PgError peer_ensure_local_interested(Peer *peer) {
+__attribute((warn_unused_result)) static PgError peer_ensure_local_interested(Peer *peer) {
   if (peer->local_interested) {
     return 0;
   }
@@ -864,7 +864,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   return 0;
 }
 
-[[nodiscard]] static PgError
+__attribute((warn_unused_result)) static PgError
 peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   PG_ASSERT(block_for_download.val < peer->download->blocks_count);
   PieceIndex piece =
@@ -919,7 +919,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   return 0;
 }
 
-[[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer) {
+__attribute((warn_unused_result)) static PgError peer_request_remote_data_maybe(Peer *peer) {
   PG_ASSERT(peer->download->concurrent_downloads_count <=
             peer->download->cfg->download_max_concurrent_downloads);
 
@@ -971,7 +971,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   return 0;
 }
 
-__attribute((unused)) [[nodiscard]] static PgString
+__attribute((unused)) __attribute((warn_unused_result)) static PgString
 peer_make_handshake(PgSha1 info_hash, PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, HANDSHAKE_LENGTH, allocator);
@@ -1047,7 +1047,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   }
 }
 
-__attribute((unused)) [[nodiscard]] static PgError peer_start(Peer *peer) {
+__attribute((unused)) __attribute((warn_unused_result)) static PgError peer_start(Peer *peer) {
   peer->uv_tcp.data = peer;
 
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &peer->uv_tcp);

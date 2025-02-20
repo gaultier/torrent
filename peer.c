@@ -102,7 +102,7 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
 
 [[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer);
 
-[[maybe_unused]] [[nodiscard]] static PgString
+__attribute((unused)) [[nodiscard]] static PgString
 peer_message_kind_to_string(PeerMessageKind kind) {
   switch (kind) {
   case PEER_MSG_KIND_CHOKE:
@@ -130,7 +130,7 @@ peer_message_kind_to_string(PeerMessageKind kind) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Peer
+__attribute((unused)) [[nodiscard]] static Peer
 peer_make(PgIpv4Address address, PgSha1 info_hash, PgLogger *logger,
           Download *download, PgString piece_hashes, PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
@@ -409,7 +409,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   return 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
+__attribute((unused)) [[nodiscard]] static PgString
 peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
   Pgu8Dyn sb = {0};
@@ -971,7 +971,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   return 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgString
+__attribute((unused)) [[nodiscard]] static PgString
 peer_make_handshake(PgSha1 info_hash, PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, HANDSHAKE_LENGTH, allocator);
@@ -1047,7 +1047,7 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static PgError peer_start(Peer *peer) {
+__attribute((unused)) [[nodiscard]] static PgError peer_start(Peer *peer) {
   peer->uv_tcp.data = peer;
 
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &peer->uv_tcp);

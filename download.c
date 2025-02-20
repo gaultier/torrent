@@ -19,7 +19,7 @@ typedef struct {
   void *data;
 } FsWriteRequest;
 
-[[maybe_unused]] [[nodiscard]] static int do_write(uv_stream_t *stream,
+__attribute((unused)) [[nodiscard]] static int do_write(uv_stream_t *stream,
                                                    PgString data,
                                                    PgAllocator *allocator,
                                                    uv_write_cb cb, void *ctx) {
@@ -108,7 +108,7 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
   return (u32)res;
 }
 
-[[nodiscard]] [[maybe_unused]] static Download
+[[nodiscard]] __attribute((unused)) static Download
 download_make(PgLogger *logger, PgRng *rng, Configuration *cfg,
               u64 piece_length, u64 total_size, PgString pieces_hash,
               PgFile file /* TODO: multiple files */) {
@@ -173,7 +173,7 @@ download_make(PgLogger *logger, PgRng *rng, Configuration *cfg,
   return (u32)res;
 }
 
-[[maybe_unused]] [[nodiscard]] static u32
+__attribute((unused)) [[nodiscard]] static u32
 download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
   PG_ASSERT(piece.val * download->piece_length <= download->total_size);
 
@@ -194,7 +194,7 @@ download_compute_blocks_count_for_piece(Download *download, PieceIndex piece) {
   return (u32)res;
 }
 
-[[maybe_unused]] [[nodiscard]] static BlockForDownloadIndex
+__attribute((unused)) [[nodiscard]] static BlockForDownloadIndex
 download_convert_block_for_piece_to_block_for_download(
     Download *download, PieceIndex piece, BlockForPieceIndex block_for_piece) {
   PG_ASSERT(piece.val < download->pieces_count);
@@ -206,7 +206,7 @@ download_convert_block_for_piece_to_block_for_download(
   return (BlockForDownloadIndex){res};
 }
 
-[[maybe_unused]] [[nodiscard]] static BlockForPieceIndex
+__attribute((unused)) [[nodiscard]] static BlockForPieceIndex
 download_convert_block_for_download_to_block_for_piece(
     Download *download, PieceIndex piece,
     BlockForDownloadIndex block_for_download) {
@@ -231,7 +231,7 @@ download_convert_block_for_download_to_block_for_piece(
   return (BlockForPieceIndex){(u32)res};
 }
 
-[[maybe_unused]] [[nodiscard]] static PieceIndex
+__attribute((unused)) [[nodiscard]] static PieceIndex
 download_get_piece_for_block(Download *download,
                              BlockForDownloadIndex block_for_download) {
   PG_ASSERT(block_for_download.val < download->blocks_count);
@@ -242,7 +242,7 @@ download_get_piece_for_block(Download *download,
   return (PieceIndex){res};
 }
 
-[[maybe_unused]] [[nodiscard]] static u32 download_compute_block_length(
+__attribute((unused)) [[nodiscard]] static u32 download_compute_block_length(
     Download *download, BlockForPieceIndex block_for_piece, PieceIndex piece) {
   PG_ASSERT(piece.val < download->pieces_count);
   PG_ASSERT(block_for_piece.val < download->blocks_per_piece_max);
@@ -276,7 +276,7 @@ download_get_piece_for_block(Download *download,
   return memcmp(hash_got.data, hash_expected.data, hash_expected.len) == 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgFileResult
+__attribute((unused)) [[nodiscard]] static PgFileResult
 download_file_create_if_not_exists(PgString path, u64 size) {
   PgString filename = pg_string_to_filename(path);
   PG_ASSERT(pg_string_eq(filename, path));
@@ -328,7 +328,7 @@ typedef struct {
   Download *download;
 } DownloadLoadBitfieldFromDiskCtx;
 
-[[maybe_unused]] [[nodiscard]] static PgError
+__attribute((unused)) [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
   (void)chunk;
   DownloadLoadBitfieldFromDiskCtx *d = ctx;
@@ -353,7 +353,7 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   return 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgStringResult
+__attribute((unused)) [[nodiscard]] static PgStringResult
 download_load_bitfield_pieces_from_disk(Download *download, PgString path,
                                         PgString info_hash) {
   PG_ASSERT(download->pieces_have.len > 0);
@@ -390,7 +390,7 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static BlockForDownloadIndexOk
+__attribute((unused)) [[nodiscard]] static BlockForDownloadIndexOk
 download_pick_next_block(Download *download, PgString remote_pieces_have,
                          PieceDownloadDyn *downloading_pieces) {
   PG_ASSERT(download->concurrent_downloads_count <=
@@ -537,7 +537,7 @@ download_verify_block_downloads(BlockDownload *block_downloads,
   return 0 == memcmp(hash, hash_expected.data, hash_expected.len);
 }
 
-[[maybe_unused]] [[nodiscard]] static bool
+__attribute((unused)) [[nodiscard]] static bool
 download_verify_piece(Download *download, PieceDownload *pd) {
   PG_ASSERT(pd->piece.val < download->pieces_count);
   PG_ASSERT(pd->block_downloads_len ==

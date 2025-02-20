@@ -153,7 +153,7 @@ tracker_parse_bencode_response(PgString s, PgLogger *logger,
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgHttpRequest
+__attribute((unused)) [[nodiscard]] static PgHttpRequest
 tracker_make_http_request(TrackerMetadata *req_tracker, PgArena *arena) {
   PgHttpRequest res = {0};
   res.method = HTTP_METHOD_GET;
@@ -239,7 +239,7 @@ typedef struct {
 
 PG_RESULT(Tracker) TrackerResult;
 
-[[maybe_unused]] [[nodiscard]]
+__attribute((unused)) [[nodiscard]]
 static PgError tracker_init(Tracker *tracker, PgLogger *logger,
                             Configuration *cfg, PgString host, u16 port,
                             Download *download, PgString piece_hashes,
@@ -639,7 +639,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   // TODO: Start another timer to retry in X seconds?
 }
 
-[[maybe_unused]] static PgError tracker_start_dns_resolve(Tracker *tracker,
+__attribute((unused)) static PgError tracker_start_dns_resolve(Tracker *tracker,
                                                           PgUrl url) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
          PG_L("host", url.host), PG_L("port", url.port));

@@ -3,7 +3,7 @@
 #include "submodules/cstd/lib.c"
 #include "uv.h"
 
-[[nodiscard]] [[maybe_unused]]
+[[nodiscard]] __attribute((unused))
 static PgString uv_buf_to_string(uv_buf_t buf) {
   return (PgString){.data = (u8 *)buf.base, .len = buf.len};
 }

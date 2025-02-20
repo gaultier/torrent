@@ -294,7 +294,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator) {
   }
 }
 
-[[nodiscard]] [[maybe_unused]] static PgError
+[[nodiscard]] __attribute((unused)) static PgError
 bencode_encode(BencodeValue value, PgWriter *w, PgAllocator *allocator) {
   PgError err = 0;
 
@@ -408,7 +408,7 @@ typedef struct {
 
 PG_RESULT(Metainfo) DecodeMetaInfoResult;
 
-[[maybe_unused]] [[nodiscard]] static DecodeMetaInfoResult
+__attribute((unused)) [[nodiscard]] static DecodeMetaInfoResult
 bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
   DecodeMetaInfoResult res = {0};
 
@@ -494,7 +494,7 @@ typedef struct {
 
 PG_RESULT(TorrentFile) TorrentFileResult;
 
-[[maybe_unused]] [[nodiscard]] static TorrentFileResult
+__attribute((unused)) [[nodiscard]] static TorrentFileResult
 torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   TorrentFileResult res = {0};
   char path_c[PG_PATH_MAX] = {0};

@@ -1,4 +1,4 @@
--std=c23
+-std=c11
 -Weverything 
 -Wno-gnu-alignof-expression 
 -Wno-strict-prototypes 
@@ -9,10 +9,10 @@
 -Wno-reserved-identifier
 -Wno-covered-switch-default
 -Wno-class-varargs 
--Wno-pre-c23-compat
 -Wno-pre-c11-compat
 -Wno-cast-qual
 -Wno-disabled-macro-expansion
 -Wno-unknown-warning-option
+-Wno-used-but-marked-unused
 -Werror
 -I./submodules/libuv/include/

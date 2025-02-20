@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
   // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
-  PgAllocator *general_allocator = nullptr;
+  PgAllocator *general_allocator = NULL;
   char heap_profile_path[PG_PATH_MAX] = {0};
   u64 heap_profile_path_len = PG_PATH_MAX;
   PgTracingAllocator tracing_allocator = {0};
@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
       uv_fs_t heap_profile_open_req = {0};
       int heap_profile_file = uv_fs_open(
           uv_default_loop(), &heap_profile_open_req, heap_profile_path,
-          UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, nullptr);
+          UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, NULL);
       if (heap_profile_file < 0) {
         pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
                PG_L("err", heap_profile_file),

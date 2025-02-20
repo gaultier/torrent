@@ -505,7 +505,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   // Open file
   uv_fs_t req = {0};
   int err_open = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY,
-                            0600, nullptr);
+                            0600, NULL);
   if (err_open < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
            PG_L("err", err_open),
@@ -518,7 +518,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   PG_ASSERT(file > 0);
 
   // Get file size.
-  int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, nullptr);
+  int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, NULL);
   if (err_stat < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
            PG_L("err", err_stat),
@@ -548,7 +548,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
 
   res.res.file_data = pg_string_make(file_size, allocator);
   uv_buf_t buf = string_to_uv_buf(res.res.file_data);
-  int err_read = uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
+  int err_read = uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, NULL);
   if (err_read < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
            PG_L("err", err_read),
@@ -563,7 +563,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
          PG_L("len", res.res.file_data.len));
 
   // Close file.
-  (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
+  (void)uv_fs_close(uv_default_loop(), &req, file, NULL);
   uv_fs_req_cleanup(&req);
 
   // Decode metainfo.

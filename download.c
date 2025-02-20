@@ -292,7 +292,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
   {
     int flags = UV_FS_O_CREAT | UV_FS_O_RDWR;
     int err_open =
-        uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
+        uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, NULL);
     if (err_open < 0) {
       res.err = (PgError)err_open;
       goto end;
@@ -304,7 +304,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
   // Truncate.
   {
     int err_file =
-        uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, nullptr);
+        uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, NULL);
     if (err_file < 0) {
       res.err = (PgError)err_file;
       goto end;
@@ -314,7 +314,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 end:
   if (res.err) {
     if (res.res) {
-      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res, nullptr));
+      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res, NULL));
     }
     uv_fs_req_cleanup(&req);
   }

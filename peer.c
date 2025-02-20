@@ -276,7 +276,7 @@ __attribute((warn_unused_result)) static PgError peer_receive_block(Peer *peer,
          PG_L("address", peer->address), PG_L("piece", piece.val),
          PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
 
-  PieceDownload *pd = nullptr;
+  PieceDownload *pd = NULL;
   u64 pd_index = 0;
   {
     PG_ASSERT(peer->downloading_pieces.len > 0);
@@ -565,7 +565,7 @@ __attribute((warn_unused_result)) static PeerMessageReadResult peer_read_any_mes
       return res;
     }
 
-    PG_ASSERT(nullptr != peer->remote_bitfield.data);
+    PG_ASSERT(NULL != peer->remote_bitfield.data);
     PG_ASSERT(pg_ring_read_slice(&peer->recv, peer->remote_bitfield));
     for (u64 i = 0; i < peer->remote_bitfield.len; i++) {
       u8 *ptr = PG_SLICE_AT_PTR(&peer->remote_bitfield, i);

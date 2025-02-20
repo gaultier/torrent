@@ -239,12 +239,11 @@ typedef struct {
 
 PG_RESULT(Tracker) TrackerResult;
 
-__attribute((unused)) __attribute((warn_unused_result))
-static PgError tracker_init(Tracker *tracker, PgLogger *logger,
-                            Configuration *cfg, PgString host, u16 port,
-                            Download *download, PgString piece_hashes,
-                            u16 port_torrent_ours, PgUrl announce_url,
-                            PgSha1 info_hash, PgAllocator *allocator) {
+__attribute((unused)) __attribute((warn_unused_result)) static PgError
+tracker_init(Tracker *tracker, PgLogger *logger, Configuration *cfg,
+             PgString host, u16 port, Download *download, PgString piece_hashes,
+             u16 port_torrent_ours, PgUrl announce_url, PgSha1 info_hash,
+             PgAllocator *allocator) {
   PG_ASSERT(piece_hashes.len == PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   *tracker = (Tracker){0};
@@ -352,7 +351,8 @@ tracker_read_http_response_body(Tracker *tracker) {
   return res;
 }
 
-__attribute((warn_unused_result)) static PgError tracker_try_parse_http_response(Tracker *tracker) {
+__attribute((warn_unused_result)) static PgError
+tracker_try_parse_http_response(Tracker *tracker) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
@@ -405,7 +405,7 @@ __attribute((warn_unused_result)) static PgError tracker_try_parse_http_response
       return 0;
     }
 
-    [[fallthrough]];
+    __attribute((fallthrough));
   }
   case TRACKER_STATE_WILL_READ_BODY: {
     PgBoolResult res_body = tracker_read_http_response_body(tracker);
@@ -640,7 +640,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
 }
 
 __attribute((unused)) static PgError tracker_start_dns_resolve(Tracker *tracker,
-                                                          PgUrl url) {
+                                                               PgUrl url) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
          PG_L("host", url.host), PG_L("port", url.port));
 

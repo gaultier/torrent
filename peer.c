@@ -167,7 +167,7 @@ static void peer_on_close(uv_handle_t *handle) {
   Peer *peer = handle->data;
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: closed io handles",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   PG_ASSERT(peer->download->peers_active_count > 0);
   peer->download->peers_active_count -= 1;
@@ -185,7 +185,7 @@ static void peer_on_close(uv_handle_t *handle) {
 
 static void peer_close_io_handles(Peer *peer) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: start closing io handles",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   uv_close((uv_handle_t *)&peer->uv_tcp, peer_on_close);
 }
@@ -204,7 +204,8 @@ static void peer_close_io_handles(Peer *peer) {
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received handshake",
-         PG_L("address", peer->address), PG_L("handshake", handshake));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cs("handshake", handshake));
 
   PgString prefix = PG_SLICE_RANGE(handshake, 0, PG_SHA1_DIGEST_LENGTH);
   PgString prefix_expected = PG_S("\x13"
@@ -231,7 +232,7 @@ static void peer_close_io_handles(Peer *peer) {
   // Ignore remote_peer_id for now.
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received valid handshake",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   peer->state = PEER_STATE_HANDSHAKED;
 
@@ -256,9 +257,9 @@ static void peer_on_file_write(uv_fs_t *req) {
   pg_free(peer->allocator, fs_req, sizeof(FsWriteRequest), 1);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
-         PG_L("address", peer->address), PG_L("len", len),
-         PG_L("pieces_have_count", peer->download->pieces_have_count),
-         PG_L("req.result", (i64)uv_fs_get_result(req)));
+         pg_log_cipv4("address", peer->address), pg_log_cu64("len", len),
+         pg_log_cu64("pieces_have_count", peer->download->pieces_have_count),
+         pg_log_ci64("req.result", (i64)uv_fs_get_result(req)));
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer,
@@ -274,8 +275,9 @@ static void peer_on_file_write(uv_fs_t *req) {
           peer->download, piece, block_for_download);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received piece message",
-         PG_L("address", peer->address), PG_L("piece", piece.val),
-         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cu64("piece", piece.val), pg_log_cu64("begin", msg.begin),
+         pg_log_cu64("data_len", msg.data.len));
 
   PieceDownload *pd = nullptr;
   u64 pd_index = 0;
@@ -291,9 +293,10 @@ static void peer_on_file_write(uv_fs_t *req) {
   }
   if (!pd) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: received unexpected block",
-           PG_L("address", peer->address), PG_L("piece", piece.val),
-           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
-           PG_L("block_for_download", block_for_download.val));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cu64("piece", piece.val), pg_log_cu64("begin", msg.begin),
+           pg_log_cu64("data.len", msg.data.len),
+           pg_log_cu64("block_for_download", block_for_download.val));
     return PG_ERR_INVALID_VALUE;
   }
 
@@ -307,9 +310,10 @@ static void peer_on_file_write(uv_fs_t *req) {
                           block_for_piece.val)) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: received block we already have",
-           PG_L("address", peer->address), PG_L("piece", piece.val),
-           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
-           PG_L("block_for_download", block_for_download.val));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cu64("piece", piece.val), pg_log_cu64("begin", msg.begin),
+           pg_log_cu64("data.len", msg.data.len),
+           pg_log_cu64("block_for_download", block_for_download.val));
     return 0;
   }
 
@@ -348,8 +352,9 @@ static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(peer->download->pieces_have_count <= peer->download->pieces_count);
 
   pg_log(peer->logger, PG_LOG_LEVEL_INFO, "peer: verified piece",
-         PG_L("address", peer->address), PG_L("piece", piece.val),
-         PG_L("pieces_count", peer->download->pieces_count));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cu64("piece", piece.val),
+         pg_log_cu64("pieces_count", peer->download->pieces_count));
 
   // Actual disk write here, the rest is just metadata bookkeeping/validation.
 
@@ -387,22 +392,23 @@ static void peer_on_file_write(uv_fs_t *req) {
       uv_default_loop(), &req->req, peer->download->file.fd, req->bufs,
       (u32)req->bufs_len, (i64)offset, peer_on_file_write);
   if (err_file < 0) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-           "peer: failed to write piece to disk",
-           PG_L("address", peer->address), PG_L("piece", piece.val),
-           PG_L("begin", msg.begin), PG_L("data.len", msg.data.len),
-           PG_L("err", err_file),
-           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
+    pg_log(
+        peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to write piece to disk",
+        pg_log_cipv4("address", peer->address), pg_log_cu64("piece", piece.val),
+        pg_log_cu64("begin", msg.begin), pg_log_cu64("data.len", msg.data.len),
+        pg_log_ci32("err", err_file),
+        pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(err_file))));
     // TODO: Retry?
     peer_close_io_handles(peer);
     return (PgError)err_file;
   }
-  pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing piece to disk",
-         PG_L("address", peer->address), PG_L("piece", piece.val),
-         PG_L("pieces_have_count", peer->download->pieces_have_count),
-         PG_L("pieces_count", peer->download->pieces_count),
-         PG_L("blocks_count", peer->download->blocks_count),
-         PG_L("begin", msg.begin), PG_L("data_len", msg.data.len));
+  pg_log(
+      peer->logger, PG_LOG_LEVEL_DEBUG, "peer: writing piece to disk",
+      pg_log_cipv4("address", peer->address), pg_log_cu64("piece", piece.val),
+      pg_log_cu64("pieces_have_count", peer->download->pieces_have_count),
+      pg_log_cu64("pieces_count", peer->download->pieces_count),
+      pg_log_cu64("blocks_count", peer->download->blocks_count),
+      pg_log_cu64("begin", msg.begin), pg_log_cu64("data_len", msg.data.len));
 
   PG_SLICE_SWAP_REMOVE(&peer->downloading_pieces, pd_index);
   // TODO: finish download when all pieces are there.
@@ -487,9 +493,9 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   PeerMessageReadResult res = {0};
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: reading any message",
-         PG_L("address", peer->address),
-         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
-         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cu64("recv_read_space", pg_ring_read_space(peer->recv)),
+         pg_log_cu64("recv_write_space", pg_ring_write_space(peer->recv)));
 
   u32 length_announced = 0;
   {
@@ -502,18 +508,18 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     u32 length_announced_max = 16 + BLOCK_SIZE;
     if (length_announced > length_announced_max) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: length announced too big",
-             PG_L("address", peer->address),
-             PG_L("length_announced", length_announced),
-             PG_L("length_announced_max", length_announced_max));
+             pg_log_cipv4("address", peer->address),
+             pg_log_cu64("length_announced", length_announced),
+             pg_log_cu64("length_announced_max", length_announced_max));
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
 
     if (pg_ring_read_space(recv_tmp) < length_announced) {
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: need to read more data",
-             PG_L("address", peer->address),
-             PG_L("length_announced", length_announced),
-             PG_L("ring_read_space", pg_ring_read_space(recv_tmp)));
+             pg_log_cipv4("address", peer->address),
+             pg_log_cu64("length_announced", length_announced),
+             pg_log_cu64("ring_read_space", pg_ring_read_space(recv_tmp)));
       return res;
     }
     peer->recv = recv_tmp;
@@ -551,7 +557,7 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     if (peer->remote_bitfield_received) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
              "received bitfield message more than once",
-             PG_L("address", peer->address));
+             pg_log_cipv4("address", peer->address));
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -559,9 +565,10 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
     u64 bitfield_len = length_announced - 1;
     if (0 == bitfield_len || peer->download->pieces_have.len != bitfield_len) {
       pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
-             "invalid bitfield length received", PG_L("address", peer->address),
-             PG_L("len_actual", bitfield_len),
-             PG_L("len_expected", peer->download->pieces_have.len));
+             "invalid bitfield length received",
+             pg_log_cipv4("address", peer->address),
+             pg_log_cu64("len_actual", bitfield_len),
+             pg_log_cu64("len_expected", peer->download->pieces_have.len));
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -673,19 +680,20 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
   }
   default:
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: message unknown kind",
-           PG_L("address", peer->address),
-           PG_L("kind", peer_message_kind_to_string(res.res.kind)));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("kind", peer_message_kind_to_string(res.res.kind)));
     res.err = PG_ERR_INVALID_VALUE;
     return res;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: received message",
-         PG_L("address", peer->address),
-         PG_L("length_announced", length_announced), PG_L("err", res.err),
-         PG_L("err_s", pg_cstr_to_string(strerror((i32)res.err))),
-         PG_L("kind", peer_message_kind_to_string(res.res.kind)),
-         PG_L("recv_read_space", pg_ring_read_space(peer->recv)),
-         PG_L("recv_write_space", pg_ring_write_space(peer->recv)));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cu64("length_announced", length_announced),
+         pg_log_cerr("err", res.err),
+         pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res.err))),
+         pg_log_cs("kind", peer_message_kind_to_string(res.res.kind)),
+         pg_log_cu64("recv_read_space", pg_ring_read_space(peer->recv)),
+         pg_log_cu64("recv_write_space", pg_ring_write_space(peer->recv)));
 
   res.present = true;
   return res;
@@ -775,9 +783,10 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   Peer *peer = stream->data;
 
   if (nread < 0 && nread != UV_EOF) {
-    pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
+    pg_log(
+        peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp read",
+        pg_log_cipv4("address", peer->address),
+        pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
     goto err;
   }
   PgString data = uv_buf_to_string(*buf);
@@ -785,7 +794,7 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
 
   if (0 == nread || nread == UV_EOF) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp read EOF",
-           PG_L("address", peer->address));
+           pg_log_cipv4("address", peer->address));
     // TODO: Should we still try to decode the last chunk of data (`buf`)?
     goto err;
   }
@@ -793,13 +802,13 @@ static void peer_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   PG_ASSERT(nread > 0);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp read ok",
-         PG_L("address", peer->address), PG_L("nread", (u64)nread),
-         PG_L("data", data));
+         pg_log_cipv4("address", peer->address), pg_log_ci64("nread", nread),
+         pg_log_cs("data", data));
   if (!pg_ring_write_slice(&peer->recv, data)) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: tcp read too big",
-           PG_L("address", peer->address), PG_L("nread", (u64)nread),
-           PG_L("recv_write_space", pg_ring_write_space(peer->recv)),
-           PG_L("data", data));
+           pg_log_cipv4("address", peer->address), pg_log_ci64("nread", nread),
+           pg_log_cu64("recv_write_space", pg_ring_write_space(peer->recv)),
+           pg_log_cs("data", data));
 
     goto err;
   }
@@ -829,14 +838,14 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address), PG_L("len", len),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+           pg_log_cipv4("address", peer->address), pg_log_cu64("len", len),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(status))));
     peer_close_io_handles(peer);
     return;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: tcp write ok",
-         PG_L("address", peer->address), PG_L("len", len));
+         pg_log_cipv4("address", peer->address), pg_log_cu64("len", len));
 }
 
 [[nodiscard]] static PgError peer_ensure_local_interested(Peer *peer) {
@@ -845,7 +854,7 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: announcing interest",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   PeerMessage msg = {.kind = PEER_MSG_KIND_INTERESTED};
   PgString msg_encoded = peer_encode_message(msg, peer->allocator);
@@ -853,8 +862,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
                            peer->allocator, peer_on_tcp_write, peer);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
     peer_close_io_handles(peer);
     return (PgError)err_write;
   }
@@ -901,18 +910,20 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
             peer->download->piece_length);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "requesting block",
-         PG_L("address", peer->address),
-         PG_L("block_for_download", block_for_download.val),
-         PG_L("block_for_piece", block_for_piece.val), PG_L("piece", piece.val),
-         PG_L("begin", msg.request.begin), PG_L("block_length", block_length));
+         pg_log_cipv4("address", peer->address),
+         pg_log_cu64("block_for_download", block_for_download.val),
+         pg_log_cu64("block_for_piece", block_for_piece.val),
+         pg_log_cu64("piece", piece.val),
+         pg_log_cu64("begin", msg.request.begin),
+         pg_log_cu64("block_length", block_length));
 
   PgString msg_encoded = peer_encode_message(msg, peer->allocator);
   int err_write = do_write((uv_stream_t *)&peer->uv_tcp, msg_encoded,
                            peer->allocator, peer_on_tcp_write, peer);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
     peer_close_io_handles(peer);
     return (PgError)err_write;
   }
@@ -928,7 +939,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
   if (peer->remote_choked) {
     pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
            "peer: not requesting remote data since remote is choked",
-           PG_L("address", peer->address));
+           pg_log_cipv4("address", peer->address));
 
     return 0;
   }
@@ -943,9 +954,9 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
           peer->logger, PG_LOG_LEVEL_DEBUG,
           "peer: not requesting remote data since max concurrent downloads is "
           "reached",
-          PG_L("address", peer->address),
-          PG_L("concurrent_downloads",
-               peer->download->concurrent_downloads_count));
+          pg_log_cipv4("address", peer->address),
+          pg_log_cu64("concurrent_downloads",
+                      peer->download->concurrent_downloads_count));
 
       return 0;
     }
@@ -956,7 +967,7 @@ peer_request_block(Peer *peer, BlockForDownloadIndex block_for_download) {
       pg_log(peer->logger, PG_LOG_LEVEL_DEBUG,
              "peer: not requesting remote data since all blocks are already "
              "downloaded",
-             PG_L("address", peer->address));
+             pg_log_cipv4("address", peer->address));
       return 0;
     }
 
@@ -1005,15 +1016,15 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to connect",
-           PG_L("err", status),
-           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))),
-           PG_L("address", peer->address));
+           pg_log_ci32("err", status),
+           pg_log_cs("err_s", pg_cstr_to_string((char *)uv_strerror(status))),
+           pg_log_cipv4("address", peer->address));
     peer_close_io_handles(peer);
     return;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: connected",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   PG_ASSERT(0 == peer->recv.data.len);
   i32 recv_size = 0;
@@ -1029,20 +1040,20 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
                            peer->allocator, peer_on_tcp_write, peer);
   if (err_write < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
     peer_close_io_handles(peer);
     return;
   }
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: sending handshake",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   int err_read = uv_read_start((uv_stream_t *)&peer->uv_tcp, pg_uv_alloc,
                                peer_on_tcp_read);
   if (err_read < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp read",
-           PG_L("address", peer->address),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_read))));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(err_read))));
     peer_close_io_handles(peer);
     return;
   }
@@ -1054,8 +1065,9 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &peer->uv_tcp);
   if (err_tcp_init < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp init",
-           PG_L("address", peer->address),
-           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_init))));
+           pg_log_cipv4("address", peer->address),
+           pg_log_cs("err_s",
+                     pg_cstr_to_string((char *)uv_strerror(err_tcp_init))));
     peer_close_io_handles(peer);
     return (PgError)err_tcp_init;
   }
@@ -1071,16 +1083,18 @@ static void peer_on_tcp_connect(uv_connect_t *req, int status) {
       uv_tcp_connect(&peer->uv_req_connect, &peer->uv_tcp,
                      (struct sockaddr *)&sockaddr, peer_on_tcp_connect);
   if (err_tcp_connect < 0) {
-    pg_log(
-        peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to start tcp connect",
-        PG_L("address", peer->address), PG_L("err", err_tcp_connect),
-        PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_tcp_connect))));
+    pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
+           "peer: failed to start tcp connect",
+           pg_log_cipv4("address", peer->address),
+           pg_log_ci32("err", err_tcp_connect),
+           pg_log_cs("err_s",
+                     pg_cstr_to_string((char *)uv_strerror(err_tcp_connect))));
     peer_close_io_handles(peer);
     return (PgError)err_tcp_init;
   }
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: started tcp connect",
-         PG_L("address", peer->address));
+         pg_log_cipv4("address", peer->address));
 
   return 0;
 }

@@ -353,6 +353,76 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   return 0;
 }
 
+typedef PgError (*PgFileReadOnChunk)(PgString chunk, void *ctx);
+
+// TODO: Async.
+[[nodiscard]] [[maybe_unused]] static PgError
+pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
+                    void *ctx, PgArena arena) {
+
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  char path_c[PG_PATH_MAX] = {0};
+  if (!pg_cstr_mut_from_string(path_c, path)) {
+    return PG_ERR_INVALID_VALUE;
+  }
+
+  uv_fs_t req = {0};
+  int fd = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY, 0600,
+                      nullptr);
+  if (fd < 0) {
+    return (PgError)errno;
+  }
+
+  Pgu8Dyn chunk = {0};
+  PG_DYN_ENSURE_CAP(&chunk, chunk_size, allocator);
+  PgError err = 0;
+
+  for (;;) {
+    PgString space = PG_DYN_SPACE(PgString, &chunk);
+    if (pg_string_is_empty(space)) {
+      PG_ASSERT(chunk_size == chunk.len);
+      err = on_chunk(PG_DYN_SLICE(PgString, chunk), ctx);
+      if (err) {
+        goto end;
+      }
+
+      chunk.len = 0;
+      space = PG_DYN_SPACE(PgString, &chunk);
+    }
+
+    PG_ASSERT(space.len > 0);
+    PG_ASSERT(space.len <= chunk_size);
+
+    i64 ret = 0;
+    do {
+      req = (uv_fs_t){0};
+      uv_buf_t buf = string_to_uv_buf(space);
+      // TODO: Read many buffers at once.
+      ret = uv_fs_read(uv_default_loop(), &req, fd, &buf, 1, 0, nullptr);
+    } while (-1 == ret && EINTR == errno);
+
+    if (-1 == ret) {
+      err = (PgError)errno;
+      goto end;
+    }
+
+    if (0 == ret) { // EOF.
+      err = on_chunk(PG_DYN_SLICE(PgString, chunk), ctx);
+      goto end;
+    }
+
+    chunk.len += (u64)ret;
+  }
+
+end:
+  req = (uv_fs_t){0};
+  (void)uv_fs_close(uv_default_loop(), &req, fd, nullptr);
+
+  return err;
+}
+
 [[maybe_unused]] [[nodiscard]] static PgStringResult
 download_load_bitfield_pieces_from_disk(Download *download, PgString path,
                                         PgString info_hash) {

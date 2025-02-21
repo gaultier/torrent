@@ -23,7 +23,6 @@ const cflags: []const []const u8 = &.{
     "-Wno-unknown-warning-option",
     "-Wno-used-but-marked-unused",
     "-Werror",
-    "-flto",
     "-gsplit-dwarf",
     //"-v",
 };
@@ -76,10 +75,15 @@ pub fn build(b: *std.Build) void {
         exe.linkLibrary(libuv_dep.artifact("uv"));
         exe.linkLibC();
 
-        // This declares intent for the executable to be installed into the
-        // standard location when the user invokes the "install" step (the default
-        // step when running `zig build`).
-        b.installArtifact(exe);
+        const target_output = b.addInstallArtifact(exe, .{
+            .dest_dir = .{
+                .override = .{
+                    .custom = t.zigTriple(b.allocator) catch @panic("invalid zig triple"),
+                },
+            },
+        });
+
+        b.getInstallStep().dependOn(&target_output.step);
     }
 
     // This *creates* a Run step in the build graph, to be executed when another

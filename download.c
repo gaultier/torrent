@@ -343,9 +343,10 @@ download_file_on_chunk(PgString chunk, void *ctx) {
   PG_ASSERT(d->download->pieces_have_count <= d->download->pieces_count);
 
   pg_log(d->download->logger, PG_LOG_LEVEL_DEBUG, "chunk",
-         PG_L("len", chunk.len), PG_L("piece", d->piece_i),
-         PG_L("pieces_count", d->download->pieces_count), PG_L("eq", (u64)eq),
-         PG_L("pieces_have_count", d->download->pieces_have_count));
+         pg_log_cu64("len", chunk.len), pg_log_cu64("piece", d->piece_i),
+         pg_log_cu32("pieces_count", d->download->pieces_count),
+         pg_log_cu64("eq", (u64)eq),
+         pg_log_cu64("pieces_have_count", d->download->pieces_have_count));
 
   d->piece_i += 1;
 
@@ -358,7 +359,8 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   PG_ASSERT(download->pieces_have.len > 0);
   u64 start = pg_time_ns_now(PG_CLOCK_KIND_MONOTONIC).res;
   pg_log(download->logger, PG_LOG_LEVEL_ERROR,
-         "download_load_bitfield_pieces_from_disk start", PG_L("path", path));
+         "download_load_bitfield_pieces_from_disk start",
+         pg_log_cs("path", path));
 
   PgString filename = pg_path_base_name(path);
   PG_ASSERT(pg_string_eq(filename, path));
@@ -384,8 +386,8 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
 
   u64 end = pg_time_ns_now(PG_CLOCK_KIND_MONOTONIC).res;
   pg_log(download->logger, PG_LOG_LEVEL_ERROR,
-         "download_load_bitfield_pieces_from_disk end", PG_L("path", path),
-         PG_L("duration_ms", pg_ns_to_ms(end - start)));
+         "download_load_bitfield_pieces_from_disk end", pg_log_cs("path", path),
+         pg_log_cu64("duration_ms", pg_ns_to_ms(end - start)));
   return res;
 }
 
@@ -449,10 +451,10 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
 
       pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
              "download: picked next block for piece being downloaded",
-             PG_L("piece", piece_download->piece.val),
-             PG_L("block_for_piece", block_for_piece.val),
-             PG_L("block_for_download", block_for_download.val),
-             PG_L("piece_download_i", i));
+             pg_log_cu64("piece", piece_download->piece.val),
+             pg_log_cu64("block_for_piece", block_for_piece.val),
+             pg_log_cu64("block_for_download", block_for_download.val),
+             pg_log_cu64("piece_download_i", i));
 
       res.ok = true;
       res.res = block_for_download;
@@ -497,9 +499,9 @@ download_pick_next_block(Download *download, PgString remote_pieces_have,
 
     pg_log(download->logger, PG_LOG_LEVEL_DEBUG,
            "download: picked next block for new piece being downloaded",
-           PG_L("piece", piece_download->piece.val),
-           PG_L("block_for_piece", block_for_piece.val),
-           PG_L("block_for_download", block_for_download.val));
+           pg_log_cu64("piece", piece_download->piece.val),
+           pg_log_cu64("block_for_piece", block_for_piece.val),
+           pg_log_cu64("block_for_download", block_for_download.val));
     res.res = block_for_download;
     res.ok = true;
     return res;
@@ -545,7 +547,8 @@ download_verify_piece(Download *download, PieceDownload *pd) {
             PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verifying piece",
-         PG_L("file", download->file.fd), PG_L("piece", pd->piece.val));
+         pg_log_ci32("file", download->file.fd),
+         pg_log_cu64("piece", pd->piece.val));
 
   PgString hash_expected = PG_SLICE_RANGE(
       download->pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece.val,
@@ -559,8 +562,9 @@ download_verify_piece(Download *download, PieceDownload *pd) {
       pd->block_downloads, pd->block_downloads_len, hash_expected);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verified piece",
-         PG_L("file", download->file.fd), PG_L("piece", pd->piece.val),
-         PG_L("verified", (u64)verified));
+         pg_log_ci32("file", download->file.fd),
+         pg_log_cu64("piece", pd->piece.val),
+         pg_log_cu64("verified", (u64)verified));
 
   return verified;
 }

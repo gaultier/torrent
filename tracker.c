@@ -84,8 +84,8 @@ tracker_parse_compact_peers(PgString s, PgLogger *logger,
 
     {
       pg_log(logger, PG_LOG_LEVEL_DEBUG, "tracker_parse_compact_peers",
-             PG_L("res.peer_addresses.len", res.peer_addresses.len),
-             PG_L("address", address));
+             pg_log_cu64("res.peer_addresses.len", res.peer_addresses.len),
+             pg_log_cipv4("address", address));
     }
     *PG_DYN_PUSH(&res.peer_addresses, allocator) = address;
   }
@@ -271,7 +271,7 @@ static PgError tracker_init(Tracker *tracker, PgLogger *logger,
   int err_tcp_init = uv_tcp_init(uv_default_loop(), &tracker->uv_tcp);
   if (err_tcp_init < 0) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "tracker-> failed to tcp init",
-           PG_L("port", port), PG_L("host", host));
+           pg_log_cu16("port", port), pg_log_cs("host", host));
     return (PgError)err_tcp_init;
   }
 
@@ -309,9 +309,10 @@ tracker_read_http_response_body(Tracker *tracker) {
       if (res_bencode.err) {
         pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
                "tracker: failed to decode bencode response",
-               PG_L("err", res_bencode.err),
-               PG_L("err_s", pg_cstr_to_string(strerror((i32)res_bencode.err))),
-               PG_L("bencoded", s));
+               pg_log_cerr("err", res_bencode.err),
+               pg_log_cs("err_s",
+                         pg_cstr_to_string(strerror((i32)res_bencode.err))),
+               pg_log_cs("bencoded", s));
 
         res.err = res_bencode.err;
         return res;
@@ -319,9 +320,9 @@ tracker_read_http_response_body(Tracker *tracker) {
 
       pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
              "tracker: decoded bencode response",
-             PG_L("failure_reason", res_bencode.res.failure),
-             PG_L("peers.len", res_bencode.res.peer_addresses.len),
-             PG_L("interval_secs", res_bencode.res.interval_secs));
+             pg_log_cs("failure_reason", res_bencode.res.failure),
+             pg_log_cu64("peers.len", res_bencode.res.peer_addresses.len),
+             pg_log_cu64("interval_secs", res_bencode.res.interval_secs));
 
       PgIpv4AddressSlice peers =
           PG_DYN_SLICE(PgIpv4AddressSlice, res_bencode.res.peer_addresses);
@@ -329,8 +330,8 @@ tracker_read_http_response_body(Tracker *tracker) {
       for (u64 i = 0; i < peers.len; i++) {
         PgIpv4Address addr = PG_SLICE_AT(peers, i);
         pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: peer announced",
-               PG_L("addr", addr), PG_L("host", tracker->host),
-               PG_L("port", tracker->port));
+               pg_log_cipv4("addr", addr), pg_log_cs("host", tracker->host),
+               pg_log_cu16("port", tracker->port));
         Peer *peer =
             pg_alloc(tracker->allocator, sizeof(Peer), _Alignof(Peer), 1);
         *peer = peer_make(addr, tracker->metadata.info_hash, tracker->logger,
@@ -361,10 +362,11 @@ tracker_read_http_response_body(Tracker *tracker) {
     PgHttpResponseReadResult res_http =
         pg_http_read_response(&tracker->http_recv, 128, allocator);
     if (res_http.err) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to parse http response",
-             PG_L("err", res_http.err),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
+      pg_log(
+          tracker->logger, PG_LOG_LEVEL_ERROR,
+          "tracker: failed to parse http response",
+          pg_log_cerr("err", res_http.err),
+          pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
       return res_http.err;
     }
 
@@ -375,25 +377,26 @@ tracker_read_http_response_body(Tracker *tracker) {
 
     PgHttpResponse resp = res_http.res;
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: read http response",
-           PG_L("resp.status", resp.status),
-           PG_L("resp.version_major", (u64)resp.version_major),
-           PG_L("resp.version_minor", (u64)resp.version_minor),
-           PG_L("resp.headers.len", resp.headers.len));
+           pg_log_cu16("resp.status", resp.status),
+           pg_log_cu8("resp.version_major", resp.version_major),
+           pg_log_cu8("resp.version_minor", resp.version_minor),
+           pg_log_cu64("resp.headers.len", resp.headers.len));
 
     PgU64Result res_content_length = pg_http_headers_parse_content_length(
         PG_DYN_SLICE(PgKeyValueSlice, resp.headers), tracker->arena);
 
     if (res_content_length.err) {
-      pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-             "tracker: failed to parse http response content type",
-             PG_L("err", res_http.err),
-             PG_L("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
+      pg_log(
+          tracker->logger, PG_LOG_LEVEL_ERROR,
+          "tracker: failed to parse http response content type",
+          pg_log_cerr("err", res_http.err),
+          pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res_http.err))));
       return res_content_length.err;
     }
 
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
            "tracker: http response content length",
-           PG_L("length", res_content_length.res));
+           pg_log_cu64("length", res_content_length.res));
     if (res_content_length.res > 0) {
       tracker->http_response_content_length = res_content_length.res;
     }
@@ -430,14 +433,15 @@ static void tracker_on_close(uv_handle_t *handle) {
   Tracker *tracker = handle->data;
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: closed io handles",
-         PG_L("port", tracker->port));
+         pg_log_cu16("port", tracker->port));
 
   // TODO: Kick-start a retry here?
 }
 
 static void tracker_close_io_handles(Tracker *tracker) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG,
-         "tracker: start closing io handles", PG_L("port", tracker->port));
+         "tracker: start closing io handles",
+         pg_log_cu16("port", tracker->port));
 
   uv_close((uv_handle_t *)&tracker->uv_tcp, tracker_on_close);
   uv_timer_stop(&tracker->uv_tcp_timeout);
@@ -454,9 +458,10 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   Tracker *tracker = stream->data;
 
   if (nread < 0 && nread != UV_EOF) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
-           PG_L("port", tracker->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
+    pg_log(
+        tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
+        pg_log_cu16("port", tracker->port),
+        pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
     pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
     tracker_close_io_handles(tracker);
     return;
@@ -466,7 +471,7 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
 
   if (0 == nread || nread == UV_EOF) {
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
-           PG_L("port", tracker->port));
+           pg_log_cu16("port", tracker->port));
 
     pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
 
@@ -481,13 +486,14 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
   PG_ASSERT(nread > 0);
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read ok",
-         PG_L("port", tracker->port), PG_L("nread", (u64)nread),
-         PG_L("data", data));
+         pg_log_cu16("port", tracker->port), pg_log_ci64("nread", nread),
+         pg_log_cs("data", data));
   if (!pg_ring_write_slice(&tracker->http_recv, data)) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: tcp read too big",
-           PG_L("port", tracker->port), PG_L("nread", (u64)nread),
-           PG_L("recv_write_space", pg_ring_write_space(tracker->http_recv)),
-           PG_L("data", data));
+           pg_log_cu16("port", tracker->port), pg_log_ci64("nread", nread),
+           pg_log_cu64("recv_write_space",
+                       pg_ring_write_space(tracker->http_recv)),
+           pg_log_cs("data", data));
 
     pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
     tracker_close_io_handles(tracker);
@@ -514,23 +520,25 @@ static void tracker_on_tcp_write(uv_write_t *req, int err_write) {
 
   if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
-           PG_L("port", tracker->port), PG_L("len", len),
-           PG_L("err", err_write),
-           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_write))));
+           pg_log_cu16("port", tracker->port), pg_log_cu64("len", len),
+           pg_log_ci32("err", err_write),
+           pg_log_cs("err_msg",
+                     pg_cstr_to_string((char *)uv_strerror(err_write))));
     tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp write ok",
-         PG_L("len", len), PG_L("port", tracker->port));
+         pg_log_cu64("len", len), pg_log_cu16("port", tracker->port));
 
   int err_read = uv_read_start((uv_stream_t *)&tracker->uv_tcp, pg_uv_alloc,
                                tracker_on_tcp_read);
   if (err_read < 0) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to start tcp read", PG_L("port", tracker->port),
-           PG_L("err", err_read),
-           PG_L("err_msg", pg_cstr_to_string((char *)uv_strerror(err_read))));
+    pg_log(
+        tracker->logger, PG_LOG_LEVEL_ERROR,
+        "tracker: failed to start tcp read", pg_log_cu16("port", tracker->port),
+        pg_log_ci32("err", err_read),
+        pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(err_read))));
     tracker_close_io_handles(tracker);
     return;
   }
@@ -542,14 +550,14 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to tcp connect", PG_L("port", tracker->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(status))));
+           "tracker: failed to tcp connect", pg_log_cu16("port", tracker->port),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(status))));
     tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp connect ok",
-         PG_L("port", tracker->port));
+         pg_log_cu16("port", tracker->port));
 
   PgHttpRequest http_req =
       tracker_make_http_request(&tracker->metadata, &tracker->arena);
@@ -559,8 +567,8 @@ static void tracker_on_tcp_connect(uv_connect_t *req, int status) {
 
   if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",
-           PG_L("port", tracker->port),
-           PG_L("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
+           pg_log_cu16("port", tracker->port),
+           pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror(err_write))));
     tracker_close_io_handles(tracker);
     return;
   }
@@ -575,8 +583,8 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
   if (status < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to dns resolve the announce url",
-           PG_L("port", tracker->port), PG_L("err", status),
-           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(status))));
+           pg_log_cu16("port", tracker->port), pg_log_ci32("err", status),
+           pg_log_cs("err_s", pg_cstr_to_string((char *)uv_strerror(status))));
 
     uv_freeaddrinfo(res);
     tracker_close_io_handles(tracker);
@@ -588,8 +596,8 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
              PG_STATIC_ARRAY_LEN(human_readable_ip));
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolve successful",
-         PG_L("port", tracker->port),
-         PG_L("address", pg_cstr_to_string(human_readable_ip)));
+         pg_log_cu16("port", tracker->port),
+         pg_log_cs("address", pg_cstr_to_string(human_readable_ip)));
 
   tracker->uv_tcp.data = tracker;
   tracker->uv_req_connect.data = tracker;
@@ -607,16 +615,16 @@ static void tracker_on_dns_resolve(uv_getaddrinfo_t *req, int status,
   if (err_tcp_connect < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
            "tracker: failed to start tcp connect",
-           PG_L("address", pg_cstr_to_string(human_readable_ip)),
-           PG_L("port", tracker->port));
+           pg_log_cs("address", pg_cstr_to_string(human_readable_ip)),
+           pg_log_cu16("port", tracker->port));
     uv_freeaddrinfo(res);
     tracker_close_io_handles(tracker);
     return;
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: started tcp connect",
-         PG_L("port", tracker->port),
-         PG_L("address", pg_cstr_to_string(human_readable_ip)));
+         pg_log_cu16("port", tracker->port),
+         pg_log_cs("address", pg_cstr_to_string(human_readable_ip)));
   uv_freeaddrinfo(res);
 }
 
@@ -632,8 +640,8 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   }
 
   pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: timed out",
-         PG_L("host", tracker->host), PG_L("port", tracker->port),
-         PG_L("state", tracker->state));
+         pg_log_cs("host", tracker->host), pg_log_cu16("port", tracker->port),
+         pg_log_cu32("state", tracker->state));
   tracker_close_io_handles(tracker);
 
   // TODO: Start another timer to retry in X seconds?
@@ -642,7 +650,7 @@ static void tracker_on_timeout(uv_timer_t *timer) {
 [[maybe_unused]] static PgError tracker_start_dns_resolve(Tracker *tracker,
                                                           PgUrl url) {
   pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: dns resolving",
-         PG_L("host", url.host), PG_L("port", url.port));
+         pg_log_cs("host", url.host), pg_log_cu16("port", url.port));
 
   tracker->uv_dns_req.data = tracker;
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&tracker->arena);
@@ -658,11 +666,12 @@ static void tracker_on_timeout(uv_timer_t *timer) {
       &hints);
 
   if (err_getaddrinfo < 0) {
-    pg_log(
-        tracker->logger, PG_LOG_LEVEL_ERROR,
-        "tracker: failed to start dns resolving", PG_L("err", err_getaddrinfo),
-        PG_L("host", url.host), PG_L("port", url.port),
-        PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_getaddrinfo))));
+    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
+           "tracker: failed to start dns resolving",
+           pg_log_ci32("err", err_getaddrinfo), pg_log_cs("host", url.host),
+           pg_log_cu16("port", url.port),
+           pg_log_cs("err_s",
+                     pg_cstr_to_string((char *)uv_strerror(err_getaddrinfo))));
     return (PgError)-err_getaddrinfo;
   }
 
@@ -670,10 +679,11 @@ static void tracker_on_timeout(uv_timer_t *timer) {
   int err_timer = uv_timer_start(&tracker->uv_tcp_timeout, tracker_on_timeout,
                                  timeout_ms, 0);
   if (err_timer < 0) {
-    pg_log(tracker->logger, PG_LOG_LEVEL_ERROR,
-           "tracker: failed to start timeout timer", PG_L("host", url.host),
-           PG_L("port", url.port),
-           PG_L("err_s", pg_cstr_to_string((char *)uv_strerror(err_timer))));
+    pg_log(
+        tracker->logger, PG_LOG_LEVEL_ERROR,
+        "tracker: failed to start timeout timer", pg_log_cs("host", url.host),
+        pg_log_cu16("port", url.port),
+        pg_log_cs("err_s", pg_cstr_to_string((char *)uv_strerror(err_timer))));
     // Still continue as normal.
   }
 

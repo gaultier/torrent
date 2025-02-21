@@ -47,14 +47,14 @@ static void download_on_timer(uv_timer_t *timer) {
   PG_ASSERT(timer->data);
 
   Download *download = timer->data;
-  pg_log(
-      download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
-      PG_L("concurrent_downloads_count", download->concurrent_downloads_count),
-      PG_L("concurrent_downloads_max",
-           download->cfg->download_max_concurrent_downloads),
-      PG_L("peers_active", download->peers_active_count),
-      PG_L("pieces_count", download->pieces_count),
-      PG_L("pieces_have", pg_bitfield_count(download->pieces_have)));
+  pg_log(download->logger, PG_LOG_LEVEL_INFO, "download: metrics",
+         pg_log_cu64("concurrent_downloads_count",
+                     download->concurrent_downloads_count),
+         pg_log_cu64("concurrent_downloads_max",
+                     download->cfg->download_max_concurrent_downloads),
+         pg_log_cu64("peers_active", download->peers_active_count),
+         pg_log_cu64("pieces_count", download->pieces_count),
+         pg_log_cu64("pieces_have", pg_bitfield_count(download->pieces_have)));
 }
 
 typedef struct {
@@ -77,10 +77,10 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
   if (res_bitfield_pieces.err) {
     pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
            "failed to load bitfield from file",
-           PG_L("path", prepare->metainfo->name),
-           PG_L("err", res_bitfield_pieces.err),
-           PG_L("err_s",
-                pg_cstr_to_string(strerror((i32)res_bitfield_pieces.err))));
+           pg_log_cs("path", prepare->metainfo->name),
+           pg_log_cerr("err", res_bitfield_pieces.err),
+           pg_log_cs("err_s", pg_cstr_to_string(
+                                  strerror((i32)res_bitfield_pieces.err))));
 
     err = res_bitfield_pieces.err;
     goto end;
@@ -89,9 +89,10 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
   // blocking I/O, which forces us to update the loop time manually.
   uv_update_time(uv_default_loop());
   pg_log(prepare->download->logger, PG_LOG_LEVEL_DEBUG,
-         "loaded bitfield from file", PG_L("path", prepare->metainfo->name),
-         PG_L("local_bitfield_have_count",
-              pg_bitfield_count(prepare->download->pieces_have)));
+         "loaded bitfield from file",
+         pg_log_cs("path", prepare->metainfo->name),
+         pg_log_cu64("local_bitfield_have_count",
+                     pg_bitfield_count(prepare->download->pieces_have)));
 
   // Start tracker client.
   u16 port_torrent_ours = 6881;
@@ -106,9 +107,10 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
       prepare->metainfo->announce, info_hash, prepare->general_allocator);
   if (err_tracker) {
     pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
-           "failed to create tracker", PG_L("path", prepare->metainfo->name),
-           PG_L("err", err_tracker),
-           PG_L("err_s", pg_cstr_to_string(strerror((i32)err_tracker))));
+           "failed to create tracker",
+           pg_log_cs("path", prepare->metainfo->name),
+           pg_log_cerr("err", err_tracker),
+           pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)err_tracker))));
 
     err = err_tracker;
     goto end;
@@ -131,8 +133,8 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
     if (err_timer_start < 0) {
       pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
              "failed to start download metrics timer",
-             PG_L("path", prepare->metainfo->name),
-             PG_L("err", err_timer_start));
+             pg_log_cs("path", prepare->metainfo->name),
+             pg_log_ci32("err", err_timer_start));
 
       err = (PgError)err_timer_start;
       goto end;
@@ -142,13 +144,14 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
 end:
   if (err) {
     pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
-           "setup failed, stopping", PG_L("path", prepare->metainfo->name));
+           "setup failed, stopping",
+           pg_log_cs("path", prepare->metainfo->name));
     uv_stop(uv_default_loop());
   }
   uv_prepare_stop(uv_prepare);
 
   pg_log(prepare->download->logger, PG_LOG_LEVEL_INFO, "setup finished",
-         PG_L("path", prepare->metainfo->name));
+         pg_log_cs("path", prepare->metainfo->name));
 }
 
 int main(int argc, char *argv[]) {
@@ -173,18 +176,20 @@ int main(int argc, char *argv[]) {
           uv_default_loop(), &heap_profile_open_req, heap_profile_path,
           UV_FS_O_APPEND | UV_FS_O_CREAT, 0600, nullptr);
       if (heap_profile_file < 0) {
-        pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
-               PG_L("err", heap_profile_file),
-               PG_L("err_s", pg_cstr_to_string(strerror(heap_profile_file))),
-               PG_L("path", pg_cstr_to_string(heap_profile_path)));
+        pg_log(
+            &logger, PG_LOG_LEVEL_ERROR, "failed to open heap profile file",
+            pg_log_ci32("err", heap_profile_file),
+            pg_log_cs("err_s", pg_cstr_to_string(strerror(heap_profile_file))),
+            pg_log_cs("path", pg_cstr_to_string(heap_profile_path)));
       } else {
         PG_ASSERT(heap_profile_file > 0);
-        tracing_allocator = pg_make_tracing_allocator(heap_profile_file);
+        tracing_allocator = pg_make_tracing_allocator(
+            (PgFileDescriptor){.fd = heap_profile_file});
         general_allocator =
             pg_tracing_allocator_as_allocator(&tracing_allocator);
 
         pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using tracing allocator",
-               PG_L("heap_profile_file", heap_profile_file));
+               pg_log_ci32("heap_profile_file", heap_profile_file));
       }
     }
     // The tracing allocator could not be properly initialized, resort to the
@@ -194,7 +199,7 @@ int main(int argc, char *argv[]) {
       general_allocator = pg_heap_allocator_as_allocator(&heap_allocator);
 
       pg_log(&logger, PG_LOG_LEVEL_DEBUG, "using general heap allocator",
-             PG_L("_", PG_S("_")));
+             pg_log_cs("_", PG_S("_")));
     }
   }
 
@@ -222,19 +227,20 @@ int main(int argc, char *argv[]) {
   if (pg_string_eq(PG_S("https"), metainfo.announce.scheme)) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR,
            "announce url is using https but it is not yet implemented",
-           PG_L("path", torrent_file_path),
-           PG_L("announce.scheme", metainfo.announce.scheme),
-           PG_L("announce.host", metainfo.announce.host));
+           pg_log_cs("path", torrent_file_path),
+           pg_log_cs("announce.scheme", metainfo.announce.scheme),
+           pg_log_cs("announce.host", metainfo.announce.host));
     return 1;
   }
 
   PgFileResult res_target_file =
       download_file_create_if_not_exists(metainfo.name, metainfo.length);
   if (res_target_file.err) {
-    pg_log(
-        &logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
-        PG_L("path", metainfo.name), PG_L("err", res_target_file.err),
-        PG_L("err_s", pg_cstr_to_string(strerror((i32)res_target_file.err))));
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
+           pg_log_cs("path", metainfo.name),
+           pg_log_cerr("err", res_target_file.err),
+           pg_log_cs("err_s",
+                     pg_cstr_to_string(strerror((i32)res_target_file.err))));
     return 1;
   }
 
@@ -242,25 +248,26 @@ int main(int argc, char *argv[]) {
   Download download =
       download_make(&logger, &rng, &cfg, metainfo.piece_length, metainfo.length,
                     metainfo.pieces, res_target_file.res);
-  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "download", PG_L("path", metainfo.name),
-         PG_L("pieces_count", download.pieces_count),
-         PG_L("blocks_count", download.blocks_count),
-         PG_L("max_blocks_per_piece_count", download.blocks_per_piece_max),
-         PG_L("piece_length", download.piece_length),
-         PG_L("total_file_size", download.total_size),
-         PG_L("last_piece_blocks_count",
-              download_compute_blocks_count_for_piece(
-                  &download, (PieceIndex){download.pieces_count - 1})),
-         PG_L("last_piece_size",
-              download_compute_piece_length(
-                  &download, (PieceIndex){download.pieces_count - 1})),
-         PG_L("last_block_size",
-              download_compute_piece_length(
-                  &download, (PieceIndex){download.pieces_count - 1}) -
-                  (download_compute_blocks_count_for_piece(
-                       &download, (PieceIndex){download.pieces_count - 1}) -
-                   1) *
-                      BLOCK_SIZE));
+  pg_log(
+      &logger, PG_LOG_LEVEL_DEBUG, "download", pg_log_cs("path", metainfo.name),
+      pg_log_cu64("pieces_count", download.pieces_count),
+      pg_log_cu64("blocks_count", download.blocks_count),
+      pg_log_cu64("max_blocks_per_piece_count", download.blocks_per_piece_max),
+      pg_log_cu64("piece_length", download.piece_length),
+      pg_log_cu64("total_file_size", download.total_size),
+      pg_log_cu32("last_piece_blocks_count",
+                  download_compute_blocks_count_for_piece(
+                      &download, (PieceIndex){download.pieces_count - 1})),
+      pg_log_cu32("last_piece_size",
+                  download_compute_piece_length(
+                      &download, (PieceIndex){download.pieces_count - 1})),
+      pg_log_cu32("last_block_size",
+                  download_compute_piece_length(
+                      &download, (PieceIndex){download.pieces_count - 1}) -
+                      (download_compute_blocks_count_for_piece(
+                           &download, (PieceIndex){download.pieces_count - 1}) -
+                       1) *
+                          BLOCK_SIZE));
 
   // libuv async operations from this point on.
   Prepare prepare = {

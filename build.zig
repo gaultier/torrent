@@ -70,8 +70,6 @@ pub fn build(b: *std.Build) void {
         exe.linkLibrary(libuv_dep.artifact("uv"));
         exe.linkLibC();
 
-        //exe.addIncludePath(libuv_dep.path("include"));
-
         // This declares intent for the executable to be installed into the
         // standard location when the user invokes the "install" step (the default
         // step when running `zig build`).

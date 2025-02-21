@@ -356,8 +356,8 @@ typedef PgError (*PgFileReadOnChunk)(PgString chunk, void *ctx);
 
 // TODO: Async.
 [[nodiscard]] [[maybe_unused]] static PgError
-pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
-                    void *ctx, PgArena arena) {
+pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
+                    PgFileReadOnChunk on_chunk, void *ctx, PgArena arena) {
 
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -371,6 +371,9 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
   int fd = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY, 0600,
                       nullptr);
   if (fd < 0) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open file",
+           pg_log_cs("path", path), pg_log_ci32("err", fd),
+           pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(fd))));
     return (PgError)errno;
   }
 
@@ -386,10 +389,15 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
     // TODO: Read many buffers at once?
     int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, -1, nullptr);
 
-    if (-1 == ret) {
+    if (ret < 0) {
+      pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read file",
+             pg_log_cs("path", path), pg_log_ci32("err", ret),
+             pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(ret))));
       err = (PgError)errno;
       goto end;
     }
+    pg_log(logger, PG_LOG_LEVEL_DEBUG, "file chunk read",
+           pg_log_cs("path", path), pg_log_cu64("len", (u64)uv_buf.len));
 
     PG_ASSERT(pg_ring_write_slice(&ring, uv_buf_to_string(uv_buf)));
     while (pg_ring_read_slice(&ring, chunk)) {
@@ -432,8 +440,9 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   PgStringResult res = {0};
   {
     PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
-    PgError err = pg_file_read_chunks(filename, download->piece_length,
-                                      download_file_on_chunk, &ctx, arena);
+    PgError err =
+        pg_file_read_chunks(download->logger, filename, download->piece_length,
+                            download_file_on_chunk, &ctx, arena);
     (void)pg_arena_release(&arena);
 
     if (err) {

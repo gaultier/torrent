@@ -21,6 +21,7 @@ const cflags: []const []const u8 = &.{
     "-Wno-cast-qual",
     "-Wno-disabled-macro-expansion",
     "-Wno-unknown-warning-option",
+    "-Wno-used-but-marked-unused",
     "-Werror",
     //"-v",
 };

@@ -81,7 +81,7 @@ typedef struct {
 
   // TODO: Multiple files.
 
-  PgFile file;
+  PgFileDescriptor file;
   PgLogger *logger;
   PgRng *rng;
   PgArena arena;
@@ -111,7 +111,7 @@ download_compute_max_blocks_per_piece_count(u64 piece_length) {
 [[nodiscard]] [[maybe_unused]] static Download
 download_make(PgLogger *logger, PgRng *rng, Configuration *cfg,
               u64 piece_length, u64 total_size, PgString pieces_hash,
-              PgFile file /* TODO: multiple files */) {
+              PgFileDescriptor file /* TODO: multiple files */) {
   PG_ASSERT(0 == pieces_hash.len % PG_SHA1_DIGEST_LENGTH);
   PG_ASSERT(pieces_hash.len > 0);
 

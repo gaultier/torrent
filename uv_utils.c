@@ -5,10 +5,10 @@
 
 [[nodiscard]] [[maybe_unused]]
 static PgString uv_buf_to_string(uv_buf_t buf) {
-  return (PgString){.data = (u8 *)buf.base, .len = buf.len};
+  return (PgString){.data = (u8 *)buf.base, .len = (u64)buf.len};
 }
 
 [[nodiscard]]
 static uv_buf_t string_to_uv_buf(PgString s) {
-  return (uv_buf_t){.base = (char *)s.data, .len = s.len};
+  return (uv_buf_t){.base = (char *)s.data, .len = (size_t)s.len};
 }

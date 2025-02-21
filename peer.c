@@ -96,7 +96,8 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
   PG_ASSERT(buf);
   PgAllocator **allocator = handle->data;
 
-  buf->base = pg_alloc(*allocator, sizeof(u8), _Alignof(u8), suggested_size);
+  buf->base =
+      pg_alloc(*allocator, sizeof(u8), _Alignof(u8), (u64)suggested_size);
   buf->len = suggested_size;
 }
 
@@ -257,7 +258,7 @@ static void peer_on_file_write(uv_fs_t *req) {
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
          PG_L("address", peer->address), PG_L("len", len),
          PG_L("pieces_have_count", peer->download->pieces_have_count),
-         PG_L("req.result", uv_fs_get_result(req)));
+         PG_L("req.result", (i64)uv_fs_get_result(req)));
 }
 
 [[nodiscard]] static PgError peer_receive_block(Peer *peer,

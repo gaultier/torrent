@@ -23,6 +23,8 @@ const cflags: []const []const u8 = &.{
     "-Wno-unknown-warning-option",
     "-Wno-used-but-marked-unused",
     "-Werror",
+    "-flto",
+    "-gsplit-dwarf",
     //"-v",
 };
 
@@ -57,6 +59,9 @@ pub fn build(b: *std.Build) void {
             .name = "torrent",
             .target = target,
             .optimize = optimize,
+            .pic = true,
+            .omit_frame_pointer = false,
+            .unwind_tables = false,
         });
 
         exe.addCSourceFiles(.{

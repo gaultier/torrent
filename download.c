@@ -384,7 +384,7 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
 
     uv_buf_t uv_buf = string_to_uv_buf(buf);
     // TODO: Read many buffers at once?
-    int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, 0, nullptr);
+    int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, -1, nullptr);
 
     if (-1 == ret) {
       err = (PgError)errno;

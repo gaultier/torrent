@@ -10,5 +10,9 @@ static PgString uv_buf_to_string(uv_buf_t buf) {
 
 [[nodiscard]]
 static uv_buf_t string_to_uv_buf(PgString s) {
-  return (uv_buf_t){.base = (char *)s.data, .len = (size_t)s.len};
+  uv_buf_t res = {0};
+  res.base = (char *)s.data;
+  res.len = (typeof(res.len))s.len;
+
+  return res;
 }

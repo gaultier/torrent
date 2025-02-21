@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
   // Pick a general allocator.
   {
     if (0 == uv_os_getenv("HEAPPROFILE", heap_profile_path,
-                          &heap_profile_path_len)) {
+                          (usize *)&heap_profile_path_len)) {
       uv_fs_t heap_profile_open_req = {0};
       int heap_profile_file = uv_fs_open(
           uv_default_loop(), &heap_profile_open_req, heap_profile_path,

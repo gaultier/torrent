@@ -98,7 +98,7 @@ static void pg_uv_alloc(uv_handle_t *handle, size_t suggested_size,
 
   buf->base =
       pg_alloc(*allocator, sizeof(u8), _Alignof(u8), (u64)suggested_size);
-  buf->len = suggested_size;
+  buf->len = (typeof(buf->len))suggested_size;
 }
 
 [[nodiscard]] static PgError peer_request_remote_data_maybe(Peer *peer);

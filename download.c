@@ -396,7 +396,7 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
       err = (PgError)errno;
       goto end;
     }
-    uv_buf.len = (u64)ret;
+    uv_buf.len = (typeof(uv_buf.len))ret;
     pg_log(logger, PG_LOG_LEVEL_DEBUG, "file chunk read",
            pg_log_cs("path", path), pg_log_cu64("len", (u64)uv_buf.len));
 

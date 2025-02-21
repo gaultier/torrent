@@ -278,7 +278,7 @@ download_get_piece_for_block(Download *download,
 
 [[maybe_unused]] [[nodiscard]] static PgFileResult
 download_file_create_if_not_exists(PgString path, u64 size) {
-  PgString filename = pg_string_to_filename(path);
+  PgString filename = pg_path_base_name(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
   char filename_c[PG_PATH_MAX] = {0};
@@ -361,7 +361,7 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   pg_log(download->logger, PG_LOG_LEVEL_ERROR,
          "download_load_bitfield_pieces_from_disk start", PG_L("path", path));
 
-  PgString filename = pg_string_to_filename(path);
+  PgString filename = pg_path_base_name(path);
   PG_ASSERT(pg_string_eq(filename, path));
 
   DownloadLoadBitfieldFromDiskCtx ctx = {

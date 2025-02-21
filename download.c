@@ -391,16 +391,16 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
       goto end;
     }
 
-    if (0 == ret) { // EOF.
-      goto end;
-    }
-
     PG_ASSERT(pg_ring_write_slice(&ring, uv_buf_to_string(uv_buf)));
     while (pg_ring_read_slice(&ring, chunk)) {
       err = on_chunk(chunk, ctx);
       if (err) {
         goto end;
       }
+    }
+
+    if (0 == ret) { // EOF.
+      goto end;
     }
   }
 

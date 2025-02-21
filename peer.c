@@ -383,9 +383,9 @@ static void peer_on_file_write(uv_fs_t *req) {
   PG_ASSERT(offset + piece_length <= peer->download->total_size);
   PG_ASSERT(piece_length == len_total);
 
-  int err_file =
-      uv_fs_write(uv_default_loop(), &req->req, peer->download->file, req->bufs,
-                  (u32)req->bufs_len, (i64)offset, peer_on_file_write);
+  int err_file = uv_fs_write(
+      uv_default_loop(), &req->req, peer->download->file.fd, req->bufs,
+      (u32)req->bufs_len, (i64)offset, peer_on_file_write);
   if (err_file < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR,
            "peer: failed to write piece to disk",

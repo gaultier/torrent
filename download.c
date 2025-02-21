@@ -297,14 +297,13 @@ download_file_create_if_not_exists(PgString path, u64 size) {
       res.err = (PgError)err_open;
       goto end;
     }
-    res.res = err_open;
-    PG_ASSERT(res.res > 0);
+    res.res = (PgFileDescriptor){.fd = (i32)err_open};
   }
 
   // Truncate.
   {
-    int err_file =
-        uv_fs_ftruncate(uv_default_loop(), &req, res.res, (i64)size, nullptr);
+    int err_file = uv_fs_ftruncate(uv_default_loop(), &req, res.res.fd,
+                                   (i64)size, nullptr);
     if (err_file < 0) {
       res.err = (PgError)err_file;
       goto end;
@@ -313,8 +312,8 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
 end:
   if (res.err) {
-    if (res.res) {
-      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res, nullptr));
+    if (res.res.fd) {
+      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res.fd, nullptr));
     }
     uv_fs_req_cleanup(&req);
   }
@@ -546,7 +545,7 @@ download_verify_piece(Download *download, PieceDownload *pd) {
             PG_SHA1_DIGEST_LENGTH * download->pieces_count);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verifying piece",
-         PG_L("file", download->file), PG_L("piece", pd->piece.val));
+         PG_L("file", download->file.fd), PG_L("piece", pd->piece.val));
 
   PgString hash_expected = PG_SLICE_RANGE(
       download->pieces_hash, PG_SHA1_DIGEST_LENGTH * pd->piece.val,
@@ -560,7 +559,7 @@ download_verify_piece(Download *download, PieceDownload *pd) {
       pd->block_downloads, pd->block_downloads_len, hash_expected);
 
   pg_log(download->logger, PG_LOG_LEVEL_DEBUG, "download: verified piece",
-         PG_L("file", download->file), PG_L("piece", pd->piece.val),
+         PG_L("file", download->file.fd), PG_L("piece", pd->piece.val),
          PG_L("verified", (u64)verified));
 
   return verified;

@@ -329,7 +329,6 @@ typedef struct {
 
 [[maybe_unused]] [[nodiscard]] static PgError
 download_file_on_chunk(PgString chunk, void *ctx) {
-  (void)chunk;
   DownloadLoadBitfieldFromDiskCtx *d = ctx;
   PG_ASSERT(d->piece_i < d->download->pieces_count);
 
@@ -375,33 +374,17 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
     return (PgError)errno;
   }
 
-  Pgu8Dyn chunk = {0};
-  PG_DYN_ENSURE_CAP(&chunk, chunk_size, allocator);
   PgError err = 0;
+  PgRing ring = pg_ring_make(8 * PG_MiB, allocator);
+  PgString buf = pg_string_make(4 * PG_MiB, allocator);
+  PgString chunk = pg_string_make(chunk_size, allocator);
 
   for (;;) {
-    PgString space = PG_DYN_SPACE(PgString, &chunk);
-    if (pg_string_is_empty(space)) {
-      PG_ASSERT(chunk_size == chunk.len);
-      err = on_chunk(PG_DYN_SLICE(PgString, chunk), ctx);
-      if (err) {
-        goto end;
-      }
+    req = (uv_fs_t){0};
 
-      chunk.len = 0;
-      space = PG_DYN_SPACE(PgString, &chunk);
-    }
-
-    PG_ASSERT(space.len > 0);
-    PG_ASSERT(space.len <= chunk_size);
-
-    i64 ret = 0;
-    do {
-      req = (uv_fs_t){0};
-      uv_buf_t buf = string_to_uv_buf(space);
-      // TODO: Read many buffers at once.
-      ret = uv_fs_read(uv_default_loop(), &req, fd, &buf, 1, 0, nullptr);
-    } while (-1 == ret && EINTR == errno);
+    uv_buf_t uv_buf = string_to_uv_buf(buf);
+    // TODO: Read many buffers at once?
+    int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, 0, nullptr);
 
     if (-1 == ret) {
       err = (PgError)errno;
@@ -409,16 +392,22 @@ pg_file_read_chunks(PgString path, u64 chunk_size, PgFileReadOnChunk on_chunk,
     }
 
     if (0 == ret) { // EOF.
-      err = on_chunk(PG_DYN_SLICE(PgString, chunk), ctx);
       goto end;
     }
 
-    chunk.len += (u64)ret;
+    PG_ASSERT(pg_ring_write_slice(&ring, uv_buf_to_string(uv_buf)));
+    while (pg_ring_read_slice(&ring, chunk)) {
+      err = on_chunk(chunk, ctx);
+      if (err) {
+        goto end;
+      }
+    }
   }
 
 end:
   req = (uv_fs_t){0};
   (void)uv_fs_close(uv_default_loop(), &req, fd, nullptr);
+  // TODO: free stuff.
 
   return err;
 }
@@ -442,8 +431,7 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
 
   PgStringResult res = {0};
   {
-    // FIXME: Use libuv here.
-    PgArena arena = pg_arena_make_from_virtual_mem(download->piece_length);
+    PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
     PgError err = pg_file_read_chunks(filename, download->piece_length,
                                       download_file_on_chunk, &ctx, arena);
     (void)pg_arena_release(&arena);

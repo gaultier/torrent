@@ -157,7 +157,7 @@ end:
 int main(int argc, char *argv[]) {
   PG_ASSERT(argc == 2);
 
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_INFO);
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 

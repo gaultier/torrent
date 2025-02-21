@@ -325,16 +325,21 @@ typedef struct {
   PgString info_hash;
   u32 piece_i;
   Download *download;
+  PgRing ring;
+  u32 *pieces_cur_count;
 } DownloadLoadBitfieldFromDiskCtx;
 
-[[maybe_unused]] [[nodiscard]] static PgError
-download_file_on_chunk(PgString chunk, void *ctx) {
-  DownloadLoadBitfieldFromDiskCtx *d = ctx;
+[[maybe_unused]] static void download_on_piece_read(uv_fs_t *req) {
+  PG_ASSERT(req->data);
+
+  DownloadLoadBitfieldFromDiskCtx *d = req->data;
+
   PG_ASSERT(d->piece_i < d->download->pieces_count);
 
   PgString sha_expected =
       PG_SLICE_RANGE(d->info_hash, PG_SHA1_DIGEST_LENGTH * d->piece_i,
                      PG_SHA1_DIGEST_LENGTH * (d->piece_i + 1));
+
   bool eq = download_verify_piece_data(chunk, sha_expected);
 
   pg_bitfield_set(d->download->pieces_have, d->piece_i, eq);
@@ -348,16 +353,15 @@ download_file_on_chunk(PgString chunk, void *ctx) {
          pg_log_cu64("pieces_have_count", d->download->pieces_have_count));
 
   d->piece_i += 1;
-
-  return 0;
 }
 
 typedef PgError (*PgFileReadOnChunk)(PgString chunk, void *ctx);
 
 // TODO: Async.
 [[nodiscard]] [[maybe_unused]] static PgError
-pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
-                    PgFileReadOnChunk on_chunk, void *ctx, PgArena arena) {
+download_file_verify(PgLogger *logger, PgString path, u64 piece_size,
+                     u64 pieces_count, DownloadLoadBitfieldFromDiskCtx *ctx,
+                     PgArena arena) {
 
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -367,27 +371,43 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
     return PG_ERR_INVALID_VALUE;
   }
 
-  uv_fs_t req = {0};
-  int fd = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY, 0600,
-                      nullptr);
-  if (fd < 0) {
-    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open file",
-           pg_log_cs("path", path), pg_log_ci32("err", fd),
-           pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(fd))));
-    return (PgError)errno;
+  int fd = 0;
+  {
+    uv_fs_t req = {0};
+    fd = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY, 0600,
+                    nullptr);
+    if (fd < 0) {
+      pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open file",
+             pg_log_cs("path", path), pg_log_ci32("err", fd),
+             pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(fd))));
+      return (PgError)errno;
+    }
   }
 
   PgError err = 0;
-  PgRing ring = pg_ring_make(8 * PG_MiB, allocator);
-  PgString buf = pg_string_make(4 * PG_MiB, allocator);
-  PgString chunk = pg_string_make(chunk_size, allocator);
 
-  for (;;) {
-    req = (uv_fs_t){0};
+  UvFsSlice reqs = {
+      .data =
+          pg_alloc(allocator, sizeof(uv_fs_t), _Alignof(uv_fs_t), pieces_count),
+      .len = pieces_count,
+  };
+  UvBufSlice uv_bufs = {
+      .data = pg_alloc(allocator, sizeof(uv_buf_t), _Alignof(uv_buf_t),
+                       pieces_count),
+      .len = pieces_count,
+  };
+  ctx->ring = pg_ring_make(piece_size, allocator);
 
-    uv_buf_t uv_buf = string_to_uv_buf(buf);
-    // TODO: Read many buffers at once?
-    int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, -1, nullptr);
+  for (u64 i = 0; i < pieces_count; i++) {
+    uv_fs_t req = PG_SLICE_AT(reqs, i);
+    req.data = &ctx;
+
+    uv_buf_t uv_buf = PG_SLICE_AT(uv_bufs, i);
+    uv_buf.len = piece_size;
+    uv_buf.base = pg_alloc(allocator, sizeof(u8), _Alignof(u8), piece_size);
+
+    int ret = uv_fs_read(uv_default_loop(), &req, fd, uv_bufs.data,
+                         (u32)uv_bufs.len, -1, download_on_piece_read);
 
     if (ret < 0) {
       pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read file",
@@ -396,31 +416,20 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
       err = (PgError)errno;
       goto end;
     }
-    uv_buf.len = (typeof(uv_buf.len))ret;
-    pg_log(logger, PG_LOG_LEVEL_DEBUG, "file chunk read",
-           pg_log_cs("path", path), pg_log_cu64("len", (u64)uv_buf.len));
-
-    PG_ASSERT(pg_ring_write_slice(&ring, uv_buf_to_string(uv_buf)));
-    while (pg_ring_read_slice(&ring, chunk)) {
-      err = on_chunk(chunk, ctx);
-      if (err) {
-        goto end;
-      }
-    }
-
     if (0 == ret) { // EOF.
       goto end;
     }
   }
 
 end:
-  req = (uv_fs_t){0};
+  uv_fs_t req = {0};
   (void)uv_fs_close(uv_default_loop(), &req, fd, nullptr);
   // TODO: free stuff.
 
   return err;
 }
 
+// TODO: merge this with download_file_verify.
 [[maybe_unused]] [[nodiscard]] static PgStringResult
 download_load_bitfield_pieces_from_disk(Download *download, PgString path,
                                         PgString info_hash) {
@@ -442,8 +451,8 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   {
     PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
     PgError err =
-        pg_file_read_chunks(download->logger, filename, download->piece_length,
-                            download_file_on_chunk, &ctx, arena);
+        download_file_verify(download->logger, filename, download->piece_length,
+                             download->pieces_count, &ctx, arena);
     (void)pg_arena_release(&arena);
 
     if (err) {

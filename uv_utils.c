@@ -16,3 +16,6 @@ static uv_buf_t string_to_uv_buf(PgString s) {
 
   return res;
 }
+
+PG_SLICE(uv_fs_t) UvFsSlice;
+PG_SLICE(uv_buf_t) UvBufSlice;

@@ -367,40 +367,39 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
     return PG_ERR_INVALID_VALUE;
   }
 
-  uv_fs_t req = {0};
-  int fd = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY, 0600,
-                      nullptr);
-  if (fd < 0) {
+  PgFileDescriptorResult res_file =
+      pg_file_open(path, PG_FILE_ACCESS_READ, allocator);
+
+  if (res_file.err) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open file",
-           pg_log_cs("path", path), pg_log_ci32("err", fd),
-           pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(fd))));
-    return (PgError)errno;
+           pg_log_cs("path", path), pg_log_ci32("err", (i32)res_file.err),
+           pg_log_cs("err_msg", pg_cstr_to_string(
+                                    (char *)uv_strerror((i32)res_file.err))));
+    return res_file.err;
   }
 
+  PgFileDescriptor file = res_file.res;
   PgError err = 0;
-  PgRing ring = pg_ring_make(8 * PG_MiB, allocator);
   PgString buf = pg_string_make(4 * PG_MiB, allocator);
+  PgRing ring = pg_ring_make(2 * buf.len, allocator);
   PgString chunk = pg_string_make(chunk_size, allocator);
 
   for (;;) {
-    req = (uv_fs_t){0};
+    PgU64Result res_read = pg_file_read(file, buf);
 
-    uv_buf_t uv_buf = string_to_uv_buf(buf);
-    // TODO: Read many buffers at once?
-    int ret = uv_fs_read(uv_default_loop(), &req, fd, &uv_buf, 1, -1, nullptr);
-
-    if (ret < 0) {
-      pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read file",
-             pg_log_cs("path", path), pg_log_ci32("err", ret),
-             pg_log_cs("err_msg", pg_cstr_to_string((char *)uv_strerror(ret))));
-      err = (PgError)errno;
+    if (res_read.err) {
+      pg_log(
+          logger, PG_LOG_LEVEL_ERROR, "failed to read file",
+          pg_log_cs("path", path), pg_log_ci32("err", (i32)res_read.err),
+          pg_log_cs("err_msg", pg_cstr_to_string(strerror((i32)res_read.err))));
+      err = res_read.err;
       goto end;
     }
-    uv_buf.len = (typeof(uv_buf.len))ret;
+    PgString buf_read = PG_SLICE_RANGE(buf, 0, res_read.res);
     pg_log(logger, PG_LOG_LEVEL_DEBUG, "file chunk read",
-           pg_log_cs("path", path), pg_log_cu64("len", (u64)uv_buf.len));
+           pg_log_cs("path", path), pg_log_cu64("len", buf_read.len));
 
-    PG_ASSERT(pg_ring_write_slice(&ring, uv_buf_to_string(uv_buf)));
+    PG_ASSERT(pg_ring_write_slice(&ring, buf_read));
     while (pg_ring_read_slice(&ring, chunk)) {
       err = on_chunk(chunk, ctx);
       if (err) {
@@ -408,14 +407,13 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
       }
     }
 
-    if (0 == ret) { // EOF.
+    if (0 == buf_read.len) { // EOF.
       goto end;
     }
   }
 
 end:
-  req = (uv_fs_t){0};
-  (void)uv_fs_close(uv_default_loop(), &req, fd, nullptr);
+  (void)pg_file_close(file);
   // TODO: free stuff.
 
   return err;

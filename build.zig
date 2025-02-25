@@ -24,7 +24,6 @@ const cflags: []const []const u8 = &.{
     "-Wno-used-but-marked-unused",
     "-Werror",
     "-gsplit-dwarf",
-    //"-v",
 };
 
 const targets: []const std.Target.Query = &.{
@@ -32,7 +31,7 @@ const targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .aarch64, .os_tag = .macos },
     .{ .cpu_arch = .aarch64, .os_tag = .linux },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu },
-    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl, .cpu_model = .native },
     .{ .cpu_arch = .x86_64, .os_tag = .windows },
 };
 
@@ -72,6 +71,9 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        exe.link_data_sections = true;
+        exe.link_function_sections = true;
+        exe.link_gc_sections = true;
         exe.linkLibrary(libuv_dep.artifact("uv"));
         exe.linkLibC();
 

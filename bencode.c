@@ -496,6 +496,7 @@ PG_RESULT(TorrentFile) TorrentFileResult;
 torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   TorrentFileResult res = {0};
   res.res.arena = pg_arena_make_from_virtual_mem(
+      cfg->torrent_file_max_size + 4 * PG_KiB +
       cfg->torrent_file_max_bencode_alloc_bytes * PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -541,6 +542,10 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   PgStringResult res_read =
       pg_file_read_full_from_descriptor(file, file_size, allocator);
   if (res_read.err) {
+    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
+           pg_log_ci32("err", (i32)res_read.err),
+           pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res_read.err))),
+           pg_log_cs("path", path));
     res.err = res_read.err;
     return res;
   }

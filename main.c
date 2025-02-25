@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
 
   Configuration cfg = {
       .torrent_file_max_size = 5 * PG_MiB,
-      .torrent_file_max_bencode_alloc_bytes = 12 * PG_KiB,
+      .torrent_file_max_bencode_alloc_bytes = 1 * PG_MiB,
       .tracker_max_http_request_bytes = 64 * PG_KiB,
       .tracker_max_http_response_bytes = 64 * PG_KiB,
       .tracker_round_trip_timeout_ns = 20 * PG_Seconds,

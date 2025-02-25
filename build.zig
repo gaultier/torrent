@@ -26,13 +26,15 @@ const cflags: []const []const u8 = &.{
     "-gsplit-dwarf",
 };
 
+const min_x64_cpu_model = std.Target.Query.CpuModel{ .explicit = &std.Target.x86.cpu.tigerlake };
+
 const targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .x86_64, .os_tag = .macos },
     .{ .cpu_arch = .aarch64, .os_tag = .macos },
     .{ .cpu_arch = .aarch64, .os_tag = .linux },
-    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu },
-    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl, .cpu_model = .native },
-    .{ .cpu_arch = .x86_64, .os_tag = .windows },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu, .cpu_model = min_x64_cpu_model },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl, .cpu_model = min_x64_cpu_model },
+    .{ .cpu_arch = .x86_64, .os_tag = .windows, .cpu_model = min_x64_cpu_model },
 };
 
 // Although this function looks imperative, note that its job is to

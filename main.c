@@ -72,19 +72,6 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
 
   PgError err = 0;
 
-  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
-      prepare->download, prepare->metainfo->name, prepare->metainfo->pieces);
-  if (res_bitfield_pieces.err) {
-    pg_log(prepare->download->logger, PG_LOG_LEVEL_ERROR,
-           "failed to load bitfield from file",
-           pg_log_cs("path", prepare->metainfo->name),
-           pg_log_cerr("err", res_bitfield_pieces.err),
-           pg_log_cs("err_s", pg_cstr_to_string(
-                                  strerror((i32)res_bitfield_pieces.err))));
-
-    err = res_bitfield_pieces.err;
-    goto end;
-  }
   // TODO: Use `uv_fs_xxx` functions to read the file asynchronously, instead of
   // blocking I/O, which forces us to update the loop time manually.
   uv_update_time(uv_default_loop());
@@ -161,6 +148,11 @@ int main(int argc, char *argv[]) {
   // PgLogger logger = pg_log_make_logger_stdout_logfmt(PG_LOG_LEVEL_DEBUG);
   PgRng rng = pg_rand_make();
 
+  PgArena arena_tmp = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArenaAllocator arena_allocator_tmp = pg_make_arena_allocator(&arena_tmp);
+  PgAllocator *allocator_tmp =
+      pg_arena_allocator_as_allocator(&arena_allocator_tmp);
+
   PgAllocator *general_allocator = nullptr;
   char heap_profile_path[PG_PATH_MAX] = {0};
   u64 heap_profile_path_len = PG_PATH_MAX;
@@ -233,8 +225,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  PgFileDescriptorResult res_target_file =
-      download_file_create_if_not_exists(metainfo.name, metainfo.length);
+  PgFileDescriptorResult res_target_file = download_file_create_if_not_exists(
+      metainfo.name, metainfo.length, allocator_tmp);
   if (res_target_file.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",
            pg_log_cs("path", metainfo.name),
@@ -243,6 +235,7 @@ int main(int argc, char *argv[]) {
                      pg_cstr_to_string(strerror((i32)res_target_file.err))));
     return 1;
   }
+  PgFileDescriptor file = res_target_file.res;
 
   // Download.
   Download download =
@@ -268,6 +261,18 @@ int main(int argc, char *argv[]) {
                            &download, (PieceIndex){download.pieces_count - 1}) -
                        1) *
                           BLOCK_SIZE));
+
+  PgStringResult res_bitfield_pieces = download_load_bitfield_pieces_from_disk(
+      file, &download, metainfo.name, metainfo.pieces);
+  if (res_bitfield_pieces.err) {
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to load bitfield from file",
+           pg_log_cs("path", metainfo.name),
+           pg_log_cerr("err", res_bitfield_pieces.err),
+           pg_log_cs("err_s", pg_cstr_to_string(
+                                  strerror((i32)res_bitfield_pieces.err))));
+
+    return 1;
+  }
 
   // libuv async operations from this point on.
   Prepare prepare = {

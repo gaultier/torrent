@@ -284,8 +284,6 @@ download_file_create_if_not_exists(PgString path, u64 size,
 
   PgFileDescriptorResult res = {0};
 
-  uv_fs_t req = {0};
-
   // Open.
   PgFileDescriptor file = {0};
   {
@@ -298,10 +296,9 @@ download_file_create_if_not_exists(PgString path, u64 size,
 
   // Truncate.
   {
-    int err_file =
-        uv_fs_ftruncate(uv_default_loop(), &req, file.fd, (i64)size, nullptr);
-    if (err_file < 0) {
-      res.err = (PgError)err_file;
+    PgError err_truncate = pg_file_truncate(file, size);
+    if (err_truncate) {
+      res.err = err_truncate;
       goto end;
     }
   }
@@ -311,7 +308,6 @@ end:
     if (file.fd) {
       (void)pg_file_close(file);
     }
-    uv_fs_req_cleanup(&req);
   }
 
   return res;
@@ -352,29 +348,12 @@ typedef PgError (*PgFileReadOnChunk)(PgString chunk, void *ctx);
 
 // TODO: Async.
 [[nodiscard]] [[maybe_unused]] static PgError
-pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
+pg_file_read_chunks(PgFileDescriptor file, PgLogger *logger, u64 chunk_size,
                     PgFileReadOnChunk on_chunk, void *ctx, PgArena arena) {
 
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  char path_c[PG_PATH_MAX] = {0};
-  if (!pg_cstr_mut_from_string(path_c, path)) {
-    return PG_ERR_INVALID_VALUE;
-  }
-
-  PgFileDescriptorResult res_file =
-      pg_file_open(path, PG_FILE_ACCESS_READ, allocator);
-
-  if (res_file.err) {
-    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open file",
-           pg_log_cs("path", path), pg_log_ci32("err", (i32)res_file.err),
-           pg_log_cs("err_msg", pg_cstr_to_string(
-                                    (char *)uv_strerror((i32)res_file.err))));
-    return res_file.err;
-  }
-
-  PgFileDescriptor file = res_file.res;
   PgError err = 0;
   PgString buf = pg_string_make(4 * PG_MiB, allocator);
   PgRing ring = pg_ring_make(2 * buf.len, allocator);
@@ -386,14 +365,14 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
     if (res_read.err) {
       pg_log(
           logger, PG_LOG_LEVEL_ERROR, "failed to read file",
-          pg_log_cs("path", path), pg_log_ci32("err", (i32)res_read.err),
+          pg_log_ci32("err", (i32)res_read.err),
           pg_log_cs("err_msg", pg_cstr_to_string(strerror((i32)res_read.err))));
       err = res_read.err;
       goto end;
     }
     PgString buf_read = PG_SLICE_RANGE(buf, 0, res_read.res);
     pg_log(logger, PG_LOG_LEVEL_DEBUG, "file chunk read",
-           pg_log_cs("path", path), pg_log_cu64("len", buf_read.len));
+           pg_log_cu64("len", buf_read.len));
 
     PG_ASSERT(pg_ring_write_slice(&ring, buf_read));
     while (pg_ring_read_slice(&ring, chunk)) {
@@ -409,23 +388,20 @@ pg_file_read_chunks(PgLogger *logger, PgString path, u64 chunk_size,
   }
 
 end:
-  (void)pg_file_close(file);
   // TODO: free stuff.
 
   return err;
 }
 
 [[maybe_unused]] [[nodiscard]] static PgStringResult
-download_load_bitfield_pieces_from_disk(Download *download, PgString path,
+download_load_bitfield_pieces_from_disk(PgFileDescriptor file,
+                                        Download *download, PgString path,
                                         PgString info_hash) {
   PG_ASSERT(download->pieces_have.len > 0);
   u64 start = pg_time_ns_now(PG_CLOCK_KIND_MONOTONIC).res;
   pg_log(download->logger, PG_LOG_LEVEL_INFO,
          "download_load_bitfield_pieces_from_disk start",
          pg_log_cs("path", path));
-
-  PgString filename = pg_path_base_name(path);
-  PG_ASSERT(pg_string_eq(filename, path));
 
   DownloadLoadBitfieldFromDiskCtx ctx = {
       .info_hash = info_hash,
@@ -436,7 +412,7 @@ download_load_bitfield_pieces_from_disk(Download *download, PgString path,
   {
     PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
     PgError err =
-        pg_file_read_chunks(download->logger, filename, download->piece_length,
+        pg_file_read_chunks(file, download->logger, download->piece_length,
                             download_file_on_chunk, &ctx, arena);
     (void)pg_arena_release(&arena);
 

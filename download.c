@@ -277,33 +277,29 @@ download_get_piece_for_block(Download *download,
 }
 
 [[maybe_unused]] [[nodiscard]] static PgFileDescriptorResult
-download_file_create_if_not_exists(PgString path, u64 size) {
+download_file_create_if_not_exists(PgString path, u64 size,
+                                   PgAllocator *allocator) {
   PgString filename = pg_path_base_name(path);
   PG_ASSERT(pg_string_eq(filename, path));
-
-  char filename_c[PG_PATH_MAX] = {0};
-  PG_ASSERT(pg_cstr_mut_from_string(filename_c, filename));
 
   PgFileDescriptorResult res = {0};
 
   uv_fs_t req = {0};
 
   // Open.
+  PgFileDescriptor file = {0};
   {
-    int flags = UV_FS_O_CREAT | UV_FS_O_RDWR;
-    int err_open =
-        uv_fs_open(uv_default_loop(), &req, filename_c, flags, 0600, nullptr);
-    if (err_open < 0) {
-      res.err = (PgError)err_open;
+    res = pg_file_open(filename, PG_FILE_ACCESS_READ_WRITE, allocator);
+    if (res.err) {
       goto end;
     }
-    res.res = (PgFileDescriptor){.fd = (i32)err_open};
   }
+  file = res.res;
 
   // Truncate.
   {
-    int err_file = uv_fs_ftruncate(uv_default_loop(), &req, res.res.fd,
-                                   (i64)size, nullptr);
+    int err_file =
+        uv_fs_ftruncate(uv_default_loop(), &req, file.fd, (i64)size, nullptr);
     if (err_file < 0) {
       res.err = (PgError)err_file;
       goto end;
@@ -312,8 +308,8 @@ download_file_create_if_not_exists(PgString path, u64 size) {
 
 end:
   if (res.err) {
-    if (res.res.fd) {
-      PG_ASSERT(0 == uv_fs_close(uv_default_loop(), &req, res.res.fd, nullptr));
+    if (file.fd) {
+      (void)pg_file_close(file);
     }
     uv_fs_req_cleanup(&req);
   }

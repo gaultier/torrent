@@ -31,7 +31,7 @@ const min_x64_cpu_model = std.Target.Query.CpuModel{ .explicit = &std.Target.x86
 const targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .x86_64, .os_tag = .macos },
     .{ .cpu_arch = .aarch64, .os_tag = .macos },
-    .{ .cpu_arch = .aarch64, .os_tag = .linux },
+    .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu, .cpu_model = min_x64_cpu_model },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl, .cpu_model = min_x64_cpu_model },
     .{ .cpu_arch = .x86_64, .os_tag = .windows, .cpu_model = min_x64_cpu_model },

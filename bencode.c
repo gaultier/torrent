@@ -503,7 +503,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
 
   // Open file
   PgFileDescriptorResult res_file =
-      pg_file_open(path, PG_FILE_ACCESS_READ, allocator);
+      pg_file_open(path, PG_FILE_ACCESS_READ, false, allocator);
   if (res_file.err) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
            pg_log_ci32("err", (i32)res_file.err),

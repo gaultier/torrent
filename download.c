@@ -287,7 +287,7 @@ download_file_create_if_not_exists(PgString path, u64 size,
   // Open.
   PgFileDescriptor file = {0};
   {
-    res = pg_file_open(filename, PG_FILE_ACCESS_READ_WRITE, allocator);
+    res = pg_file_open(filename, PG_FILE_ACCESS_READ_WRITE, true, allocator);
     if (res.err) {
       goto end;
     }

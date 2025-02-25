@@ -462,7 +462,7 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
         tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp read",
         pg_log_cu16("port", tracker->port),
         pg_log_cs("err", pg_cstr_to_string((char *)uv_strerror((i32)nread))));
-    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+    pg_free(tracker->allocator, buf->base);
     tracker_close_io_handles(tracker);
     return;
   }
@@ -473,7 +473,7 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
     pg_log(tracker->logger, PG_LOG_LEVEL_DEBUG, "tracker: tcp read EOF",
            pg_log_cu16("port", tracker->port));
 
-    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+    pg_free(tracker->allocator, buf->base);
 
     PgError err_http = tracker_try_parse_http_response(tracker);
     if (err_http) {
@@ -495,11 +495,11 @@ static void tracker_on_tcp_read(uv_stream_t *stream, ssize_t nread,
                        pg_ring_write_space(tracker->http_recv)),
            pg_log_cs("data", data));
 
-    pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+    pg_free(tracker->allocator, buf->base);
     tracker_close_io_handles(tracker);
     return;
   }
-  pg_free(tracker->allocator, buf->base, sizeof(u8), buf->len);
+  pg_free(tracker->allocator, buf->base);
 
   PgError err_http = tracker_try_parse_http_response(tracker);
   if (err_http) {
@@ -515,8 +515,8 @@ static void tracker_on_tcp_write(uv_write_t *req, int err_write) {
   Tracker *tracker = wq->data;
 
   u64 len = wq->buf.len;
-  pg_free(tracker->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
-  pg_free(tracker->allocator, wq, sizeof(*wq), 1);
+  pg_free(tracker->allocator, wq->buf.base);
+  pg_free(tracker->allocator, wq);
 
   if (err_write < 0) {
     pg_log(tracker->logger, PG_LOG_LEVEL_ERROR, "tracker: failed to tcp write",

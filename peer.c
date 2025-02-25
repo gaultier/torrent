@@ -176,11 +176,9 @@ static void peer_on_close(uv_handle_t *handle) {
 
   // TODO: Could do one big allocation for the Peer and then point
   // `remote_bitfield` to it + an offset.
-  pg_free(peer->allocator, peer->remote_bitfield.data,
-          peer->remote_bitfield.len, 1);
-  pg_free(peer->allocator, peer->downloading_pieces.data,
-          peer->downloading_pieces.len, 1);
-  pg_free(peer->allocator, peer, sizeof(*peer), 1);
+  pg_free(peer->allocator, peer->remote_bitfield.data);
+  pg_free(peer->allocator, peer->downloading_pieces.data);
+  pg_free(peer->allocator, peer);
 }
 
 static void peer_close_io_handles(Peer *peer) {
@@ -251,10 +249,10 @@ static void peer_on_file_write(uv_fs_t *req) {
   for (u64 i = 0; i < fs_req->bufs_len; i++) {
     uv_buf_t buf = PG_C_ARRAY_AT(fs_req->bufs, fs_req->bufs_len, i);
     len += buf.len;
-    pg_free(peer->allocator, buf.base, sizeof(u8), buf.len);
+    pg_free(peer->allocator, buf.base);
   }
   uv_fs_req_cleanup(req);
-  pg_free(peer->allocator, fs_req, sizeof(FsWriteRequest), 1);
+  pg_free(peer->allocator, fs_req);
 
   pg_log(peer->logger, PG_LOG_LEVEL_DEBUG, "peer: saved block data to disk",
          pg_log_cipv4("address", peer->address), pg_log_cu64("len", len),
@@ -823,7 +821,7 @@ err:
   peer_close_io_handles(peer);
 
 end:
-  pg_free(peer->allocator, buf->base, sizeof(u8), buf->len);
+  pg_free(peer->allocator, buf->base);
 }
 
 static void peer_on_tcp_write(uv_write_t *req, int status) {
@@ -833,8 +831,8 @@ static void peer_on_tcp_write(uv_write_t *req, int status) {
   Peer *peer = wq->data;
 
   u64 len = wq->buf.len;
-  pg_free(peer->allocator, wq->buf.base, sizeof(u8), wq->buf.len);
-  pg_free(peer->allocator, wq, sizeof(*wq), 1);
+  pg_free(peer->allocator, wq->buf.base);
+  pg_free(peer->allocator, wq);
 
   if (status < 0) {
     pg_log(peer->logger, PG_LOG_LEVEL_ERROR, "peer: failed to tcp write",

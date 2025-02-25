@@ -233,7 +233,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  PgFileResult res_target_file =
+  PgFileDescriptorResult res_target_file =
       download_file_create_if_not_exists(metainfo.name, metainfo.length);
   if (res_target_file.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to create download file",

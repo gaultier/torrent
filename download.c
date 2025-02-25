@@ -276,7 +276,7 @@ download_get_piece_for_block(Download *download,
   return memcmp(hash_got.data, hash_expected.data, hash_expected.len) == 0;
 }
 
-[[maybe_unused]] [[nodiscard]] static PgFileResult
+[[maybe_unused]] [[nodiscard]] static PgFileDescriptorResult
 download_file_create_if_not_exists(PgString path, u64 size) {
   PgString filename = pg_path_base_name(path);
   PG_ASSERT(pg_string_eq(filename, path));
@@ -284,7 +284,7 @@ download_file_create_if_not_exists(PgString path, u64 size) {
   char filename_c[PG_PATH_MAX] = {0};
   PG_ASSERT(pg_cstr_mut_from_string(filename_c, filename));
 
-  PgFileResult res = {0};
+  PgFileDescriptorResult res = {0};
 
   uv_fs_t req = {0};
 

@@ -550,6 +550,7 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
     return res;
   }
 
+  res.res.file_data = res_read.res;
   pg_log(logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
          pg_log_cs("path", path), pg_log_cu64("len", res.res.file_data.len));
 

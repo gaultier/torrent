@@ -3,7 +3,6 @@
 #include "submodules/cstd/lib.c"
 
 #include "configuration.c"
-#include "uv_utils.c"
 
 typedef enum {
   BENCODE_KIND_NONE,
@@ -487,7 +486,6 @@ bencode_decode_metainfo(PgString s, PgAllocator *allocator) {
 
 typedef struct {
   PgArena arena;
-  PgLogger *logger;
   Metainfo metainfo;
   PgString file_data;
 } TorrentFile;
@@ -497,39 +495,38 @@ PG_RESULT(TorrentFile) TorrentFileResult;
 [[maybe_unused]] [[nodiscard]] static TorrentFileResult
 torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
   TorrentFileResult res = {0};
-  char path_c[PG_PATH_MAX] = {0};
-  PG_ASSERT(pg_cstr_mut_from_string(path_c, path));
-
-  res.res.logger = logger;
+  res.res.arena = pg_arena_make_from_virtual_mem(
+      cfg->torrent_file_max_bencode_alloc_bytes * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   // Open file
-  uv_fs_t req = {0};
-  int err_open = uv_fs_open(uv_default_loop(), &req, path_c, UV_FS_O_RDONLY,
-                            0600, nullptr);
-  if (err_open < 0) {
+  PgFileDescriptorResult res_file =
+      pg_file_open(path, PG_FILE_ACCESS_READ, allocator);
+  if (res_file.err) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to open torrent file",
-           pg_log_ci32("err", err_open),
-           pg_log_cs("err_s", pg_cstr_to_string(strerror(err_open))),
+           pg_log_ci32("err", (i32)res_file.err),
+           pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res_file.err))),
            pg_log_cs("path", path));
-    res.err = (PgError)err_open;
-    goto end;
-  }
-  uv_file file = err_open;
-  PG_ASSERT(file > 0);
 
+    res.err = res_file.err;
+    return res;
+  }
+
+  PgFileDescriptor file = res_file.res;
   // Get file size.
-  int err_stat = uv_fs_fstat(uv_default_loop(), &req, file, nullptr);
-  if (err_stat < 0) {
-    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
-           pg_log_ci32("err", err_stat),
-           pg_log_cs("err_s", pg_cstr_to_string(strerror(err_stat))),
-           pg_log_cs("path", path));
-    res.err = (PgError)err_stat;
+  PgU64Result res_file_size = pg_file_size(file);
+  if (res_file_size.err) {
+    pg_log(
+        logger, PG_LOG_LEVEL_ERROR, "failed to stat torrent file",
+        pg_log_ci32("err", (i32)res_file_size.err),
+        pg_log_cs("err_s", pg_cstr_to_string(strerror((i32)res_file_size.err))),
+        pg_log_cs("path", path));
+    res.err = res_file_size.err;
     goto end;
   }
 
-  // Read entire file.
-  u64 file_size = req.statbuf.st_size;
+  u64 file_size = res_file_size.res;
   if (file_size > cfg->torrent_file_max_size) {
     res.err = PG_ERR_TOO_BIG;
     pg_log(logger, PG_LOG_LEVEL_ERROR,
@@ -540,32 +537,16 @@ torrent_file_read_file(PgString path, Configuration *cfg, PgLogger *logger) {
            pg_log_cs("path", path));
     goto end;
   }
-  res.res.arena = pg_arena_make_from_virtual_mem(
-      file_size +
-      /* bencoding entities */ cfg->torrent_file_max_bencode_alloc_bytes *
-          PG_KiB);
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&res.res.arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  res.res.file_data = pg_string_make(file_size, allocator);
-  uv_buf_t buf = string_to_uv_buf(res.res.file_data);
-  int err_read = uv_fs_read(uv_default_loop(), &req, file, &buf, 1, 0, nullptr);
-  if (err_read < 0) {
-    pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to read torrent file",
-           pg_log_ci32("err", err_read),
-           pg_log_cs("err_s", pg_cstr_to_string(strerror(err_read))),
-           pg_log_cs("path", path));
-    res.err = (PgError)err_read;
-    goto end;
+  PgStringResult res_read =
+      pg_file_read_full_from_descriptor(file, file_size, allocator);
+  if (res_read.err) {
+    res.err = res_read.err;
+    return res;
   }
-  PG_ASSERT(file_size == res.res.file_data.len);
 
   pg_log(logger, PG_LOG_LEVEL_DEBUG, "read torrent file",
          pg_log_cs("path", path), pg_log_cu64("len", res.res.file_data.len));
-
-  // Close file.
-  (void)uv_fs_close(uv_default_loop(), &req, file, nullptr);
-  uv_fs_req_cleanup(&req);
 
   // Decode metainfo.
   DecodeMetaInfoResult res_decode_metainfo =

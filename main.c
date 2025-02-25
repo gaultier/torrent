@@ -74,7 +74,6 @@ static void on_prepare(uv_prepare_t *uv_prepare) {
 
   // TODO: Use `uv_fs_xxx` functions to read the file asynchronously, instead of
   // blocking I/O, which forces us to update the loop time manually.
-  uv_update_time(uv_default_loop());
   pg_log(prepare->download->logger, PG_LOG_LEVEL_DEBUG,
          "loaded bitfield from file",
          pg_log_cs("path", prepare->metainfo->name),

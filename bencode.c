@@ -147,8 +147,8 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
     // Ensure ordering.
     if (res.value.dict.len > 0) {
       PgString last_key = PG_SLICE_LAST(res.value.dict).key;
-      PgStringCompare cmp = pg_string_cmp(last_key, key);
-      if (PG_STRING_CMP_LESS != cmp) {
+      PgCompare cmp = pg_string_cmp(last_key, key);
+      if (PG_CMP_LESS != cmp) {
         res.err = PG_ERR_INVALID_VALUE;
         return res;
       }
@@ -377,8 +377,8 @@ bencode_encode(BencodeValue value, PgWriter *w, PgAllocator *allocator) {
       // Ensure ordering.
       if (i > 0) {
         PgString previous_key = PG_SLICE_AT(value.dict, i - 1).key;
-        PgStringCompare cmp = pg_string_cmp(previous_key, kv.key);
-        PG_ASSERT(PG_STRING_CMP_LESS == cmp);
+        PgCompare cmp = pg_string_cmp(previous_key, kv.key);
+        PG_ASSERT(PG_CMP_LESS == cmp);
       }
     }
     err = pg_writer_write_u8(w, 'e');

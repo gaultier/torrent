@@ -52,7 +52,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
       .value.kind = BENCODE_KIND_NUMBER,
   };
 
-  PgStringOk prefix = pg_string_consume_byte(s, 'i');
+  PgStringOk prefix = pg_string_consume_rune(s, 'i');
   if (!prefix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -66,7 +66,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
 
   res.value.num = num_res.n;
 
-  PgStringOk suffix = pg_string_consume_byte(num_res.remaining, 'e');
+  PgStringOk suffix = pg_string_consume_rune(num_res.remaining, 'e');
   if (!suffix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -94,7 +94,7 @@ bencode_decode_value(PgString s, u32 start, PgAllocator *allocator);
     return res;
   }
 
-  PgStringOk prefix = pg_string_consume_byte(num_res.remaining, ':');
+  PgStringOk prefix = pg_string_consume_rune(num_res.remaining, ':');
   if (!prefix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -119,7 +119,7 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
       .value.kind = BENCODE_KIND_DICTIONARY,
   };
 
-  PgStringOk prefix = pg_string_consume_byte(s, 'd');
+  PgStringOk prefix = pg_string_consume_rune(s, 'd');
   if (!prefix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -169,7 +169,7 @@ bencode_decode_dictionary(PgString s, u32 start, PgAllocator *allocator) {
     remaining = res_value.remaining;
   }
 
-  PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
+  PgStringOk suffix = pg_string_consume_rune(remaining, 'e');
   if (!suffix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -187,7 +187,7 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
       .value.kind = BENCODE_KIND_LIST,
   };
 
-  PgStringOk prefix = pg_string_consume_byte(s, 'l');
+  PgStringOk prefix = pg_string_consume_rune(s, 'l');
   if (!prefix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;
@@ -217,7 +217,7 @@ bencode_decode_list(PgString s, u32 start, PgAllocator *allocator) {
     remaining = res_value.remaining;
   }
 
-  PgStringOk suffix = pg_string_consume_byte(remaining, 'e');
+  PgStringOk suffix = pg_string_consume_rune(remaining, 'e');
   if (!suffix.ok) {
     res.err = PG_ERR_INVALID_VALUE;
     return res;

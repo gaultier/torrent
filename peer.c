@@ -429,53 +429,52 @@ peer_encode_message(PeerMessage msg, PgAllocator *allocator) {
 
   switch (msg.kind) {
   case PEER_MSG_KIND_KEEP_ALIVE:
-    pg_string_builder_append_u32_within_capacity(&sb, 0);
+    pg_byte_buffer_append_u32_within_capacity(&sb, 0);
     break;
 
   case PEER_MSG_KIND_CHOKE:
   case PEER_MSG_KIND_UNCHOKE:
   case PEER_MSG_KIND_INTERESTED:
   case PEER_MSG_KIND_UNINTERESTED:
-    pg_string_builder_append_u32_within_capacity(&sb, 1);
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1);
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
     break;
 
   case PEER_MSG_KIND_HAVE:
-    pg_string_builder_append_u32_within_capacity(&sb, 1 + sizeof(u32));
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1 + sizeof(u32));
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
-    pg_string_builder_append_u32_within_capacity(&sb, msg.have);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.have);
     break;
 
   case PEER_MSG_KIND_BITFIELD:
-    pg_string_builder_append_u32_within_capacity(&sb,
-                                                 1 + (u32)msg.bitfield.len);
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1 + (u32)msg.bitfield.len);
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
     PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, msg.bitfield);
     break;
 
   case PEER_MSG_KIND_REQUEST:
-    pg_string_builder_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
-    pg_string_builder_append_u32_within_capacity(&sb, msg.request.index);
-    pg_string_builder_append_u32_within_capacity(&sb, msg.request.begin);
-    pg_string_builder_append_u32_within_capacity(&sb, msg.request.length);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.request.index);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.request.begin);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.request.length);
     break;
 
   case PEER_MSG_KIND_PIECE:
-    pg_string_builder_append_u32_within_capacity(
-        &sb, 1 + 2 * sizeof(u32) + (u32)msg.piece.data.len);
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1 + 2 * sizeof(u32) +
+                                                       (u32)msg.piece.data.len);
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
-    pg_string_builder_append_u32_within_capacity(&sb, msg.piece.index);
-    pg_string_builder_append_u32_within_capacity(&sb, msg.piece.begin);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.piece.index);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.piece.begin);
     PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, msg.piece.data);
     break;
 
   case PEER_MSG_KIND_CANCEL:
-    pg_string_builder_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1 + 3 * sizeof(u32));
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = msg.kind;
-    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.index);
-    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.begin);
-    pg_string_builder_append_u32_within_capacity(&sb, msg.cancel.length);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.cancel.index);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.cancel.begin);
+    pg_byte_buffer_append_u32_within_capacity(&sb, msg.cancel.length);
     break;
   default:
     PG_ASSERT(0);
